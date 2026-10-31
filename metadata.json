@@ -1,0 +1,6 @@
+{
+  "name": "Ātmiya — Real-Time AI Human Companion",
+  "description": "A personal, multilingual AI companion with real-time voice, empathetic conversation, persistent memory, and an expressive animated avatar.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
