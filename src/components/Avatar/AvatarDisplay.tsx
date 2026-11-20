@@ -164,19 +164,30 @@ export const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
               : '0 10px 30px rgba(0, 0, 0, 0.5)',
         }}
       >
-        {/* SVG Human-Like Expressive Character */}
+        {/* Inner Avatar Portrait */}
         <div
-          className="w-full h-full rounded-full overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-indigo-950 flex items-center justify-center transition-transform duration-300"
+          className="w-full h-full rounded-full overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-indigo-950 flex items-center justify-center transition-transform duration-300 relative"
           style={{
             transform: `rotate(${headTilt}deg)`,
           }}
         >
-          <svg
-            viewBox="0 0 240 240"
-            className="w-full h-full"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+          {config.avatarType !== 'vector' ? (
+            <img
+              src={config.customImagePath || '/avatars/atmiya.png'}
+              alt="Ātmiya"
+              className="w-full h-full object-cover object-[center_20%] select-none"
+              onError={(e) => {
+                // If custom image path fails, fallback to local asset or hide
+                (e.target as HTMLImageElement).src = '/public/assets/aistudio/Friendly_3D_Avatar_Portrait_37d63c9f.png';
+              }}
+            />
+          ) : (
+            <svg
+              viewBox="0 0 240 240"
+              className="w-full h-full"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
             <defs>
               {/* Skin Tone Gradient */}
               <radialGradient id="skinGrad" cx="50%" cy="40%" r="55%">
@@ -388,6 +399,7 @@ export const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
             {/* Traditional Bindi / Subtle forehead jewel accent */}
             <circle cx="120" cy="74" r="1.8" fill="#e11d48" opacity="0.85" />
           </svg>
+          )}
         </div>
       </div>
 

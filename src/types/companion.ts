@@ -59,6 +59,9 @@ export interface AvatarAppearanceConfig {
   personaName: string;
   accentColor: string; // e.g. violet, cyan, amber, emerald
   clothingStyle: 'modern-casual' | 'traditional-kurta' | 'tech-hoodie';
+  avatarType?: '3d-glb' | 'custom-image' | 'vector';
+  customImagePath?: string;
+  glbModelPath?: string;
 }
 
 export interface CompanionSettings {

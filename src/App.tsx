@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { 
   CompanionSettings, 
   ConversationSession, 
@@ -17,7 +17,12 @@ import { speechService } from './services/speech';
 import { Navbar } from './components/Navbar';
 import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
 import { CompanionAvatar, CompanionEmotion } from './components/Avatar/CompanionAvatar';
+import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
 import { AvatarCustomizer } from './components/Avatar/AvatarCustomizer';
+
+const RealisticAvatar = lazy(() =>
+  import('./components/Avatar/RealisticAvatar').then((m) => ({ default: m.RealisticAvatar }))
+);
 import { ConversationSubtitle } from './components/Voice/ConversationSubtitle';
 import { VoiceControls } from './components/Voice/VoiceControls';
 import { ChatDrawer } from './components/Chat/ChatDrawer';
@@ -65,6 +70,7 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [suggestedMemory, setSuggestedMemory] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [glbInspection, setGlbInspection] = useState<GlbInspectionReport | null>(null);
 
   // Turn timer for automatic voice silence detection
   const speechTimeoutRef = useRef<any>(null);
@@ -548,16 +554,41 @@ export default function App() {
 
         {/* Center Character-First Video Stage */}
         <div className="flex-1 flex flex-col items-center justify-center p-4 relative z-10 overflow-hidden">
-          {/* Large Realistic Human Avatar with Talking Tom Interactive Responsiveness */}
+          {/* Large Realistic Human Avatar with 3D GLB + 2D Portrait Fallback */}
           <div className="w-full flex items-center justify-center my-auto transition-transform duration-500">
-            <CompanionAvatar
-              state={avatarState}
-              emotion={companionEmotion}
-              audioLevel={audioLevel}
-              config={settings.avatarConfig}
-              onInterrupt={handleInterrupt}
-              onTapAvatar={handleTapAvatar}
-            />
+            {(settings.avatarConfig.avatarType ?? '3d-glb') === '3d-glb' ? (
+              <Suspense
+                fallback={
+                  <CompanionAvatar
+                    state={avatarState}
+                    emotion={companionEmotion}
+                    audioLevel={audioLevel}
+                    config={settings.avatarConfig}
+                    onInterrupt={handleInterrupt}
+                    onTapAvatar={handleTapAvatar}
+                  />
+                }
+              >
+                <RealisticAvatar
+                  state={avatarState}
+                  emotion={companionEmotion}
+                  audioLevel={audioLevel}
+                  config={settings.avatarConfig}
+                  onInterrupt={handleInterrupt}
+                  onTapAvatar={handleTapAvatar}
+                  onInspectionComplete={setGlbInspection}
+                />
+              </Suspense>
+            ) : (
+              <CompanionAvatar
+                state={avatarState}
+                emotion={companionEmotion}
+                audioLevel={audioLevel}
+                config={settings.avatarConfig}
+                onInterrupt={handleInterrupt}
+                onTapAvatar={handleTapAvatar}
+              />
+            )}
           </div>
 
           {/* Subtitle / Live Transcript Pill below avatar */}
@@ -639,6 +670,7 @@ export default function App() {
         isOpen={isAvatarCustomizerOpen}
         onClose={() => setIsAvatarCustomizerOpen(false)}
         config={settings.avatarConfig}
+        glbInspection={glbInspection}
         onChange={(newConfig) => {
           const updated = { ...settings, avatarConfig: newConfig };
           setSettings(updated);

@@ -25,6 +25,9 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
     personaName: 'Ātmiya',
     accentColor: '#8b5cf6', // soft violet
     clothingStyle: 'modern-casual',
+    avatarType: '3d-glb',
+    customImagePath: '/avatars/atmiya.png',
+    glbModelPath: '/models/atmiya-avatar.glb',
   },
 };
 
@@ -53,7 +56,15 @@ export const storage = {
     try {
       const data = localStorage.getItem(SETTINGS_KEY);
       if (!data) return DEFAULT_SETTINGS;
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
+      const parsed = JSON.parse(data);
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        avatarConfig: {
+          ...DEFAULT_SETTINGS.avatarConfig,
+          ...(parsed.avatarConfig || {}),
+        },
+      };
     } catch {
       return DEFAULT_SETTINGS;
     }
