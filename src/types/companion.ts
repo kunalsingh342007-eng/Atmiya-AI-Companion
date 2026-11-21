@@ -161,6 +161,7 @@ export interface AvatarAppearanceConfig {
   threeWsAvatarId?: string;
   threeWsModelUrl?: string;
   threeWsMigrated?: boolean;
+  localGlbMigrated?: boolean;
 }
 
 export interface CompanionSettings {
@@ -175,7 +176,7 @@ export interface CompanionSettings {
   memoryEnabled: boolean;
   avatarConfig: AvatarAppearanceConfig;
   roomConfig?: RoomConfig;
-  theme: 'dark' | 'midnight' | 'warm-charcoal';
+  theme: 'dark' | 'light';
 }
 
 export interface SystemStatus {

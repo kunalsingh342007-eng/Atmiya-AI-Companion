@@ -49,7 +49,6 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
   const [tapReaction, setTapReaction] = useState<string | null>(null);
   const [tapBounce, setTapBounce] = useState(false);
   const [imgLoadFailed, setImgLoadFailed] = useState(false);
-  const [backupFailed, setBackupFailed] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const isImmersive = stageVariant === 'immersive';
@@ -170,8 +169,9 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
     return 1;
   }, [state, audioLevel, tapBounce]);
 
-  const avatarSrc = config.customImagePath || '/avatars/atmiya.png';
-  const showCustomImage = config.avatarType !== 'vector' && !imgLoadFailed;
+  const avatarSrc = config.customImagePath || '';
+  const showCustomImage =
+    config.avatarType === 'custom-image' && Boolean(avatarSrc) && !imgLoadFailed;
   const outfitBorderColor = config.outfitColor || '#1e3a5f';
   const accessory = config.accessory || 'none';
 
@@ -277,16 +277,6 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
                 style={{
                   background: `linear-gradient(to top, ${outfitBorderColor}88, transparent)`,
                 }}
-              />
-            </div>
-          ) : !backupFailed ? (
-            <div className="w-full h-full flex items-center justify-center bg-slate-900">
-              <img
-                src="/assets/aistudio/Friendly_3D_Avatar_Portrait_37d63c9f.png"
-                alt="Ātmiya AI Companion"
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover object-[center_18%]"
-                onError={() => setBackupFailed(true)}
               />
             </div>
           ) : (

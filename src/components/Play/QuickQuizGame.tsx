@@ -146,34 +146,36 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
   };
 
   return (
-    <div className="h-full w-full overflow-y-auto px-4 py-5 sm:py-7">
+    <div className="h-full w-full overflow-y-auto bg-slate-50 dark:bg-[#070d1a] px-4 py-5 sm:py-7">
       <div className="max-w-2xl mx-auto space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
             onClick={onBackToHub}
-            className="h-10 px-3.5 rounded-full bg-slate-900/80 hover:bg-slate-800 border border-indigo-200/20 text-xs font-semibold text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
+            className="h-10 px-3.5 rounded-xl bg-white dark:bg-[#0c1528] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Games</span>
           </button>
 
           {phase === 'playing' && (
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <span className="font-semibold text-sky-200 tabular-nums">
+            <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+              <span className="font-semibold text-blue-700 dark:text-sky-300 tabular-nums">
                 Question {currentIdx + 1}/{questions.length}
               </span>
-              <span aria-hidden="true" className="text-slate-500">·</span>
+              <span aria-hidden="true" className="text-slate-400">·</span>
               <span className="tabular-nums">Correct {correctCount}</span>
             </div>
           )}
         </div>
 
-        <div className="rounded-3xl bg-slate-900/90 border border-indigo-300/20 p-5 sm:p-6 shadow-2xl space-y-5">
+        <div className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm dark:shadow-2xl space-y-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-white">Quick Quiz</h2>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+                Quick Quiz
+              </h2>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
                 5 short general-knowledge questions with instant explanations.
               </p>
             </div>
@@ -181,7 +183,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
               <button
                 type="button"
                 onClick={startQuiz}
-                className="h-10 px-3.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-white/15 text-xs font-semibold text-slate-100 inline-flex items-center gap-1.5 cursor-pointer"
+                className="h-10 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Restart</span>
@@ -190,20 +192,22 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
           </div>
 
           {phase === 'ready' ? (
-            <div className="py-10 px-4 rounded-2xl bg-slate-950/70 border border-indigo-300/15 text-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-sky-500/20 border border-sky-300/40 text-sky-200 flex items-center justify-center mx-auto">
+            <div className="py-10 px-4 rounded-2xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-600 dark:text-sky-300 flex items-center justify-center mx-auto">
                 <HelpCircle className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-semibold text-white">Test your curiosity</h3>
-                <p className="text-xs text-slate-300 max-w-sm mx-auto">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                  Test your curiosity
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
                   Answer 5 quick questions across science, culture, and everyday facts. No timers, no pressure.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={startQuiz}
-                className="h-11 px-6 rounded-full bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-lg cursor-pointer"
+                className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm cursor-pointer"
               >
                 <Play className="w-4 h-4" />
                 <span>Start Quiz</span>
@@ -211,24 +215,27 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
             </div>
           ) : phase === 'won' ? (
             <div
-              className={`py-8 px-4 rounded-2xl bg-gradient-to-br from-indigo-950/90 via-slate-950 to-sky-950/80 border border-amber-300/35 text-center space-y-4 ${
+              className={`py-8 px-4 rounded-2xl bg-blue-50 dark:bg-[#081020] border border-amber-300 dark:border-amber-400/35 text-center space-y-4 ${
                 prefersReducedMotion ? '' : 'animate-fadeIn'
               }`}
             >
-              <div className="w-14 h-14 rounded-2xl bg-amber-400/20 border border-amber-300/50 text-amber-200 flex items-center justify-center mx-auto">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-400/20 border border-amber-300 dark:border-amber-300/50 text-amber-600 dark:text-amber-200 flex items-center justify-center mx-auto">
                 <Trophy className="w-7 h-7" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-xl font-bold text-white">Quiz Complete!</h3>
-                <p className="text-xs text-slate-200">
-                  You answered {correctCount} out of {questions.length} correctly · Score {correctCount * 20} · +{15 + correctCount * 3} XP
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Quiz Complete!
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-200 tabular-nums">
+                  You answered {correctCount} out of {questions.length} correctly · Score{' '}
+                  {correctCount * 20} · +{15 + correctCount * 3} XP
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={startQuiz}
-                  className="h-11 px-5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  className="h-11 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>Play Again</span>
@@ -236,25 +243,29 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                 <button
                   type="button"
                   onClick={onReturnHome}
-                  className="h-11 px-5 rounded-full bg-slate-800 hover:bg-slate-700 border border-white/15 text-slate-100 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  className="h-11 px-5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
                 >
                   <Home className="w-4 h-4" />
-                  <span>Back to Home</span>
+                  <span>Back to Companion</span>
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-4">
               {/* Progress Bar */}
-              <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-white/10">
+              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-[#081020] overflow-hidden border border-slate-200 dark:border-slate-800">
                 <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-sky-400 transition-all duration-300"
-                  style={{ width: `${((currentIdx + (selectedOption !== null ? 1 : 0)) / questions.length) * 100}%` }}
+                  className="h-full bg-gradient-to-r from-blue-600 to-sky-400 transition-all duration-300"
+                  style={{
+                    width: `${
+                      ((currentIdx + (selectedOption !== null ? 1 : 0)) / questions.length) * 100
+                    }%`,
+                  }}
                 />
               </div>
 
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/75 border border-indigo-200/15 space-y-4">
-                <p className="text-sm sm:text-base font-semibold text-white leading-relaxed">
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 space-y-4">
+                <p className="text-sm sm:text-base font-semibold text-slate-900 dark:text-white leading-relaxed">
                   {currentQuestion.prompt}
                 </p>
 
@@ -265,14 +276,17 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                     const revealed = selectedOption !== null;
 
                     let cardStyle =
-                      'bg-slate-900/90 hover:bg-indigo-950/70 border-indigo-200/20 text-slate-100';
+                      'bg-white dark:bg-[#0c1528] hover:bg-blue-50 dark:hover:bg-blue-950/60 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100';
                     if (revealed) {
                       if (isCorrect) {
-                        cardStyle = 'bg-emerald-950/80 border-emerald-400/70 text-emerald-100';
+                        cardStyle =
+                          'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-500 text-emerald-900 dark:text-emerald-100';
                       } else if (isPicked) {
-                        cardStyle = 'bg-rose-950/80 border-rose-400/70 text-rose-100';
+                        cardStyle =
+                          'bg-rose-50 dark:bg-rose-950/80 border-rose-500 text-rose-900 dark:text-rose-100';
                       } else {
-                        cardStyle = 'bg-slate-900/50 border-white/10 text-slate-400';
+                        cardStyle =
+                          'bg-slate-100 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-400';
                       }
                     }
 
@@ -282,14 +296,14 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                         type="button"
                         onClick={() => handleSelectOption(idx)}
                         disabled={revealed}
-                        className={`min-h-[48px] px-4 py-3 rounded-2xl border text-left text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition cursor-pointer disabled:cursor-default ${cardStyle}`}
+                        className={`min-h-[48px] px-4 py-3 rounded-xl border text-left text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition cursor-pointer disabled:cursor-default ${cardStyle}`}
                       >
                         <span>{opt}</span>
                         {revealed && isCorrect && (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300 shrink-0" />
                         )}
                         {revealed && isPicked && !isCorrect && (
-                          <XCircle className="w-4 h-4 text-rose-300 shrink-0" />
+                          <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-300 shrink-0" />
                         )}
                       </button>
                     );
@@ -297,12 +311,14 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                 </div>
 
                 {selectedOption !== null && (
-                  <div className="p-3.5 rounded-xl bg-indigo-950/60 border border-indigo-300/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
-                    <p className="text-xs text-slate-200 leading-relaxed">{currentQuestion.fact}</p>
+                  <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+                    <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+                      {currentQuestion.fact}
+                    </p>
                     <button
                       type="button"
                       onClick={handleNext}
-                      className="h-10 px-4 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shrink-0 cursor-pointer"
+                      className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shrink-0 cursor-pointer"
                     >
                       {currentIdx + 1 >= questions.length ? 'Finish Round' : 'Next Question'}
                     </button>

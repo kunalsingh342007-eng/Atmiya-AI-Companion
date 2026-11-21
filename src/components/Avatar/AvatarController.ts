@@ -7,13 +7,19 @@ import {
   MicPermissionStatus,
 } from '../../types/companion';
 import type { GlbInspectionReport } from './RealisticAvatar';
+import type { AvatarGesture } from './expressionRig';
 import { speechService } from '../../services/speech';
+
+export type { AvatarGesture } from './expressionRig';
+export type CameraPreset = 'close-up' | 'upper-body' | 'full-body';
 
 export interface AvatarControllerState {
   avatarState: AvatarState;
   emotion: AvatarEmotion;
   emotionIntensity: number;
   previewEmotion: AvatarEmotion | null;
+  activeGesture: AvatarGesture;
+  gestureNonce: number;
   audioLevel: number;
   micPermission: MicPermissionStatus;
   voiceError: string | null;
@@ -24,6 +30,8 @@ export interface AvatarControllerActions {
   onTapAvatar: () => void;
   onInterrupt: () => void;
   onSelectPreviewEmotion: (emotion: AvatarEmotion | null) => void;
+  onTriggerGesture: (gesture: AvatarGesture) => void;
+  onResetPose: () => void;
   onInspectionComplete: (report: GlbInspectionReport) => void;
 }
 

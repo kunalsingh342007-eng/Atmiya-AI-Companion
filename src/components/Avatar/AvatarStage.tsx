@@ -18,13 +18,13 @@ interface AvatarStageProps {
   onOpenCustomize?: () => void;
 }
 
-export const AvatarStage: React.FC<AvatarStageProps> = ({
+export const AvatarStage: React.FC<AvatarStageProps> = React.memo(({
   settings,
   controller,
   actions,
   onOpenCustomize,
 }) => {
-  const avatarType = settings.avatarConfig.avatarType ?? 'three-ws';
+  const avatarType = settings.avatarConfig.avatarType ?? '3d-glb';
   const activeEmotion = controller.previewEmotion ?? controller.emotion;
 
   const fallback2D = (
@@ -63,7 +63,11 @@ export const AvatarStage: React.FC<AvatarStageProps> = ({
             emotion={controller.emotion}
             emotionIntensity={controller.emotionIntensity}
             previewEmotion={controller.previewEmotion}
+            activeGesture={controller.activeGesture}
+            gestureNonce={controller.gestureNonce}
             onSelectPreviewEmotion={actions.onSelectPreviewEmotion}
+            onTriggerGesture={actions.onTriggerGesture}
+            onResetPose={actions.onResetPose}
             audioLevel={controller.audioLevel}
             config={settings.avatarConfig}
             onInterrupt={actions.onInterrupt}
@@ -77,4 +81,6 @@ export const AvatarStage: React.FC<AvatarStageProps> = ({
       )}
     </main>
   );
-};
+});
+
+AvatarStage.displayName = 'AvatarStage';

@@ -18,18 +18,19 @@ const HOME_HINT_KEY = 'atmiya_home_hint_dismissed_v1';
 export const DEFAULT_AVATAR_CONFIG: CompanionSettings['avatarConfig'] = {
   genderVibe: 'female',
   personaName: 'Ātmiya',
-  accentColor: '#6366f1', // soft indigo
+  accentColor: '#3b82f6', // navy-blue accent
   clothingStyle: 'modern-casual',
   outfitColor: '#1e3a5f',
   outfitStyleLabel: 'Navy Classic',
   accessory: 'none',
-  avatarType: 'three-ws',
+  avatarType: '3d-glb',
   customImagePath: '/avatars/atmiya.png',
   glbModelPath: '/models/atmiya-avatar.glb',
   threeWsAvatarId: '7f2a722a-ce89-4f13-adba-443f9d962c47',
   threeWsModelUrl:
     'https://three.ws/cdn/u/32cbe0d2-f178-4ef7-8d82-a29f6c6a18cb/wren-9c74a4/mwqqnhw6.glb',
   threeWsMigrated: true,
+  localGlbMigrated: true,
 };
 
 export const DEFAULT_ROOM_CONFIG: NonNullable<CompanionSettings['roomConfig']> = {
@@ -47,7 +48,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   autoSpeakResponse: true,
   handsFreeMode: false,
   memoryEnabled: true,
-  theme: 'midnight',
+  theme: 'dark',
   avatarConfig: DEFAULT_AVATAR_CONFIG,
   roomConfig: DEFAULT_ROOM_CONFIG,
 };
@@ -126,13 +127,15 @@ export const storage = {
         ...DEFAULT_AVATAR_CONFIG,
         ...parsedAvatar,
       };
-      if (parsedAvatar.avatarType === '3d-glb' && !parsedAvatar.threeWsMigrated) {
-        mergedAvatar.avatarType = 'three-ws';
-        mergedAvatar.threeWsMigrated = true;
+      if (!parsedAvatar.localGlbMigrated) {
+        mergedAvatar.avatarType = '3d-glb';
+        mergedAvatar.glbModelPath = mergedAvatar.glbModelPath || '/models/atmiya-avatar.glb';
+        mergedAvatar.localGlbMigrated = true;
       }
       return {
         ...DEFAULT_SETTINGS,
         ...parsed,
+        theme: parsed.theme === 'light' ? 'light' : 'dark',
         avatarConfig: mergedAvatar,
         roomConfig: {
           ...DEFAULT_ROOM_CONFIG,
@@ -490,6 +493,7 @@ export const storage = {
         const mergedSettings: CompanionSettings = {
           ...DEFAULT_SETTINGS,
           ...data.settings,
+          theme: data.settings.theme === 'light' ? 'light' : 'dark',
           avatarConfig: {
             ...DEFAULT_AVATAR_CONFIG,
             ...(data.settings.avatarConfig && typeof data.settings.avatarConfig === 'object'

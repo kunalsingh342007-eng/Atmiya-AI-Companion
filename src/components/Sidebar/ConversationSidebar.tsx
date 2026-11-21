@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { ConversationSession } from '../../types/companion';
-import { 
-  MessageSquare, 
-  Plus, 
-  Trash2, 
-  Edit2, 
-  Check, 
-  Search, 
-  Sparkles, 
-  X, 
-  AlertTriangle 
+import {
+  MessageSquare,
+  Plus,
+  Trash2,
+  Edit2,
+  Check,
+  Search,
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ConversationSidebarProps {
@@ -50,7 +49,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     setEditTitle(c.title);
   };
 
-  const handleSaveRename = (id: string, e: React.MouseEvent) => {
+  const handleSaveRename = (id: string, e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (editTitle.trim()) {
       onRenameChat(id, editTitle.trim());
@@ -60,53 +59,60 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
   return (
     <>
-      {/* Mobile Backdrop */}
+      {/* Backdrop */}
       {isOpen && (
         <div
           onClick={onClose}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-slate-950/50 dark:bg-black/60 backdrop-blur-xs transition-opacity"
         />
       )}
 
-      {/* Sidebar Container */}
+      {/* Slide-Over Sessions Drawer */}
       <aside
-        className={`fixed lg:static top-0 left-0 bottom-0 z-40 w-72 bg-slate-950 border-r border-slate-800/80 flex flex-col transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        aria-label="Conversation sessions"
+        aria-hidden={!isOpen}
+        className={`fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-white dark:bg-[#091224] border-r border-slate-200 dark:border-slate-800/80 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
         }`}
       >
         {/* Top Branding / Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-md shadow-violet-900/40 font-serif font-bold text-white text-base">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#0f2347] to-blue-600 flex items-center justify-center shadow-sm font-serif font-bold text-white text-base">
               आ
             </div>
             <div>
-              <span className="font-semibold text-sm tracking-wide text-white block">
-                Ātmiya <span className="font-normal text-xs text-violet-400 font-serif">आत्मीय</span>
+              <span className="font-semibold text-sm tracking-tight text-slate-900 dark:text-white block">
+                Sessions{' '}
+                <span className="font-normal text-xs text-blue-600 dark:text-sky-400 font-serif">
+                  बातचीत
+                </span>
               </span>
-              <span className="text-[10px] text-slate-400 block -mt-0.5">
-                AI Companion
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block -mt-0.5 tabular-nums">
+                {conversations.length} saved locally
               </span>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close conversation sidebar"
-            className="lg:hidden text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            aria-label="Close sessions drawer"
+            className="h-9 w-9 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* New Chat Button */}
         <div className="p-3">
           <button
+            type="button"
             onClick={() => {
               onNewChat();
-              if (window.innerWidth < 1024) onClose();
+              onClose();
             }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium text-xs shadow-lg shadow-violet-950/50 transition cursor-pointer"
+            className="w-full min-h-[42px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-sm transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
           >
             <Plus className="w-4 h-4" />
             <span>New Conversation (नई बातचीत)</span>
@@ -114,24 +120,25 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         </div>
 
         {/* Search */}
-        <div className="px-3 pb-2">
+        <div className="px-3 pb-2.5">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
+            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search conversations..."
-              className="w-full bg-slate-900/80 border border-slate-800/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-violet-500 transition"
+              placeholder="Search sessions..."
+              aria-label="Search conversation sessions"
+              className="w-full bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
             />
           </div>
         </div>
 
         {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto px-2 space-y-1">
+        <div className="flex-1 overflow-y-auto px-2.5 space-y-1">
           {filtered.length === 0 ? (
-            <div className="text-center py-8 text-xs text-slate-500">
-              No conversations found.
+            <div className="text-center py-8 px-3 text-xs text-slate-500 dark:text-slate-400">
+              No matching sessions found.
             </div>
           ) : (
             filtered.map((conv) => {
@@ -143,18 +150,29 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                   key={conv.id}
                   onClick={() => {
                     onSelect(conv.id);
-                    if (window.innerWidth < 1024) onClose();
+                    onClose();
                   }}
-                  className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition text-xs ${
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelect(conv.id);
+                      onClose();
+                    }
+                  }}
+                  className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                     isActive
-                      ? 'bg-violet-950/50 text-violet-200 border border-violet-500/40 font-medium'
-                      : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200 border border-transparent'
+                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-200 border border-blue-200 dark:border-blue-500/40 font-semibold'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/70 border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
                     <MessageSquare
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isActive ? 'text-violet-400' : 'text-slate-500'
+                        isActive
+                          ? 'text-blue-600 dark:text-sky-400'
+                          : 'text-slate-400 dark:text-slate-500'
                       }`}
                     />
                     {isEditing ? (
@@ -164,26 +182,31 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => setEditTitle(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveRename(conv.id, e as any);
+                          if (e.key === 'Enter') handleSaveRename(conv.id, e);
                           if (e.key === 'Escape') setEditingId(null);
                         }}
-                        className="bg-slate-900 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-slate-100 w-full focus:outline-none"
+                        className="bg-white dark:bg-slate-900 border border-blue-500 rounded px-1.5 py-0.5 text-xs text-slate-900 dark:text-slate-100 w-full focus:outline-none"
                         autoFocus
                       />
                     ) : (
-                      <span className="truncate block" title={conv.title}>
-                        {conv.title || 'Untitled Session'}
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="truncate block" title={conv.title}>
+                          {conv.title || 'Untitled Session'}
+                        </span>
+                        <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 tabular-nums">
+                          {conv.messages.length} msg{conv.messages.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
                     )}
                   </div>
 
-                  {/* Actions (always visible on touch/mobile, hover/focus reveal on desktop) */}
+                  {/* Actions */}
                   <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                     {isEditing ? (
                       <button
                         type="button"
                         onClick={(e) => handleSaveRename(conv.id, e)}
-                        className="p-1 text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                        className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded cursor-pointer"
                         title="Save rename"
                         aria-label="Save conversation title"
                       >
@@ -193,7 +216,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                       <button
                         type="button"
                         onClick={(e) => handleStartRename(conv, e)}
-                        className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded cursor-pointer"
                         title="Rename"
                         aria-label={`Rename ${conv.title || 'conversation'}`}
                       >
@@ -206,7 +229,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         e.stopPropagation();
                         onDeleteChat(conv.id);
                       }}
-                      className="p-1 text-slate-400 hover:text-rose-400 cursor-pointer"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded cursor-pointer"
                       title="Delete"
                       aria-label={`Delete ${conv.title || 'conversation'}`}
                     >
@@ -219,27 +242,29 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           )}
         </div>
 
-        {/* Clear All Confirmation Modal/Button */}
-        <div className="p-3 border-t border-slate-800/80">
+        {/* Clear All Confirmation */}
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800/80">
           {showClearConfirm ? (
-            <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-800 text-[11px] text-rose-200 space-y-2">
+            <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-[11px] text-rose-800 dark:text-rose-200 space-y-2">
               <div className="flex items-center gap-1.5 font-medium">
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                Clear all chats?
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
+                Clear all sessions?
               </div>
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => {
                     onClearAll();
                     setShowClearConfirm(false);
                   }}
-                  className="flex-1 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer"
+                  className="flex-1 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer"
                 >
                   Yes, Clear
                 </button>
                 <button
+                  type="button"
                   onClick={() => setShowClearConfirm(false)}
-                  className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                  className="flex-1 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -248,8 +273,9 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           ) : (
             conversations.length > 0 && (
               <button
+                type="button"
                 onClick={() => setShowClearConfirm(true)}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition cursor-pointer"
+                className="w-full min-h-[36px] flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer"
               >
                 <Trash2 className="w-3 h-3" />
                 <span>Clear History (इतिहास साफ करें)</span>

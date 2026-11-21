@@ -139,23 +139,23 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
         style={{
           background:
             avatarState === 'listening'
-              ? 'radial-gradient(circle at 50% 48%, rgba(56, 189, 248, 0.15), transparent 60%)'
+              ? 'radial-gradient(circle at 50% 48%, rgba(56, 189, 248, 0.18), transparent 60%)'
               : avatarState === 'speaking'
-              ? 'radial-gradient(circle at 50% 48%, rgba(139, 92, 246, 0.16), transparent 60%)'
+              ? 'radial-gradient(circle at 50% 48%, rgba(59, 130, 246, 0.18), transparent 60%)'
               : avatarState === 'thinking'
-              ? 'radial-gradient(circle at 50% 48%, rgba(251, 146, 60, 0.14), transparent 60%)'
+              ? 'radial-gradient(circle at 50% 48%, rgba(251, 146, 60, 0.15), transparent 60%)'
               : 'none',
         }}
       />
 
-      {/* Top & Bottom Contrast Scrims for HUD and Dialogue Legibility */}
+      {/* Top & Bottom Contrast Scrims for HUD and Dialogue Legibility across Light & Dark Themes */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-slate-950/65 via-slate-950/25 to-transparent pointer-events-none"
+        className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/55 via-white/15 dark:from-[#070d1a]/75 dark:via-[#070d1a]/30 to-transparent pointer-events-none"
       />
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-slate-950/88 via-slate-950/48 to-transparent pointer-events-none"
+        className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-slate-100/80 via-slate-100/35 dark:from-[#070d1a]/88 dark:via-[#070d1a]/48 to-transparent pointer-events-none"
       />
 
       {/* Room Foreground Content Layer */}

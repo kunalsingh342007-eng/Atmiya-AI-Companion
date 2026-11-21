@@ -66,6 +66,175 @@ function getGenAIClient(): GoogleGenAI | null {
   });
 }
 
+// Helper to extract structured error details from @google/genai ApiError
+function parseGeminiError(err: unknown): {
+  httpStatus: number;
+  code: string;
+  message: string;
+  retryAfterSeconds?: number;
+  isTimeout: boolean;
+  isQuota: boolean;
+  isAuth: boolean;
+  isBadRequest: boolean;
+} {
+  const anyErr = err as any;
+  const rawMessage = typeof anyErr?.message === 'string' ? anyErr.message : String(err || 'Unknown error');
+  const errName = typeof anyErr?.name === 'string' ? anyErr.name : '';
+
+  let status =
+    typeof anyErr?.status === 'number'
+      ? anyErr.status
+      : typeof anyErr?.code === 'number'
+      ? anyErr.code
+      : 0;
+
+  let extractedMessage = rawMessage;
+  let retryAfterSeconds: number | undefined;
+
+  // @google/genai ApiError often serializes JSON into err.message
+  const jsonStart = rawMessage.indexOf('{');
+  if (jsonStart !== -1) {
+    try {
+      const parsed = JSON.parse(rawMessage.slice(jsonStart));
+      const inner = parsed?.error ?? parsed;
+      if (!status && typeof inner?.code === 'number') {
+        status = inner.code;
+      }
+      if (typeof inner?.message === 'string' && inner.message.trim()) {
+        extractedMessage = inner.message.trim();
+      }
+      const details = Array.isArray(inner?.details) ? inner.details : [];
+      for (const d of details) {
+        if (typeof d?.retryDelay === 'string') {
+          const secMatch = d.retryDelay.match(/^(\d+(?:\.\d+)?)s$/i);
+          if (secMatch) {
+            retryAfterSeconds = Math.ceil(parseFloat(secMatch[1]));
+          }
+        }
+      }
+    } catch {
+      // Ignore JSON parse error and fall back to regex inspection
+    }
+  }
+
+  if (!retryAfterSeconds) {
+    const retryInMatch = rawMessage.match(/Please retry in\s+(?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i);
+    if (retryInMatch) {
+      const h = parseInt(retryInMatch[1] || '0', 10);
+      const m = parseInt(retryInMatch[2] || '0', 10);
+      const s = Math.ceil(parseFloat(retryInMatch[3] || '0'));
+      retryAfterSeconds = h * 3600 + m * 60 + s;
+    }
+  }
+
+  const isTimeout =
+    errName === 'TimeoutError' ||
+    errName === 'AbortError' ||
+    status === 408 ||
+    status === 504 ||
+    /timed?\s*out|aborted|DEADLINE_EXCEEDED/i.test(rawMessage);
+
+  const isQuota =
+    status === 429 ||
+    /RESOURCE_EXHAUSTED|quota|rate[- ]?limit/i.test(rawMessage);
+
+  const isAuth =
+    status === 401 ||
+    status === 403 ||
+    /API_KEY_INVALID|PERMISSION_DENIED|unauthenticated|forbidden/i.test(rawMessage);
+
+  const isBadRequest = status === 400;
+
+  if (isQuota) {
+    return {
+      httpStatus: 429,
+      code: 'QUOTA_EXCEEDED',
+      message:
+        'Gemini API quota limit reached for this key. Please retry shortly or add a billed API key in Settings > Secrets.',
+      retryAfterSeconds,
+      isTimeout: false,
+      isQuota: true,
+      isAuth: false,
+      isBadRequest: false,
+    };
+  }
+
+  if (isTimeout) {
+    return {
+      httpStatus: 504,
+      code: 'TIMEOUT',
+      message: 'The AI model took too long to respond. Please try sending your message again.',
+      isTimeout: true,
+      isQuota: false,
+      isAuth: false,
+      isBadRequest: false,
+    };
+  }
+
+  if (isAuth) {
+    return {
+      httpStatus: 403,
+      code: 'AUTH_ERROR',
+      message: 'Gemini API access was rejected. Please verify GEMINI_API_KEY in Settings > Secrets.',
+      isTimeout: false,
+      isQuota: false,
+      isAuth: true,
+      isBadRequest: false,
+    };
+  }
+
+  if (isBadRequest) {
+    return {
+      httpStatus: 400,
+      code: 'BAD_REQUEST',
+      message: extractedMessage.slice(0, 240),
+      isTimeout: false,
+      isQuota: false,
+      isAuth: false,
+      isBadRequest: true,
+    };
+  }
+
+  return {
+    httpStatus: status >= 400 && status < 600 ? status : 500,
+    code: 'GENERATION_ERROR',
+    message: extractedMessage.slice(0, 240) || 'An unexpected AI error occurred.',
+    isTimeout: false,
+    isQuota: false,
+    isAuth: false,
+    isBadRequest: false,
+  };
+}
+
+function createUpstreamAbortControl(res: Response, timeoutMs: number) {
+  const controller = new AbortController();
+  let timedOut = false;
+  let clientClosed = false;
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException(`Upstream request timed out after ${timeoutMs}ms`, 'TimeoutError'));
+  }, timeoutMs);
+
+  const onResClose = () => {
+    if (!res.writableEnded) {
+      clientClosed = true;
+      controller.abort(new DOMException('Client closed request', 'AbortError'));
+    }
+  };
+  res.on('close', onResClose);
+
+  return {
+    signal: controller.signal,
+    isTimedOut: () => timedOut,
+    isClientClosed: () => clientClosed,
+    cleanup: () => {
+      clearTimeout(timer);
+      res.off('close', onResClose);
+    },
+  };
+}
+
 // 1. Health and configuration status endpoint
 app.get('/api/status', (req: Request, res: Response) => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -74,7 +243,7 @@ app.get('/api/status', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     isKeyConfigured,
-    model: 'gemini-3.8-flash',
+    model: 'gemini-4-hydrogen',
     ttsModel: 'gemini-3.8-flash-lite-tts',
     transcribeModel: 'gemini-3.5-transcribe',
     serverTime: new Date().toISOString(),
@@ -222,30 +391,57 @@ ${memoryContext}
     };
 
     let rawModelText = '';
+    const primaryAbort = createUpstreamAbortControl(res, 20000);
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents,
         config: {
           systemInstruction,
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           responseMimeType: 'application/json',
           responseSchema: chatResponseSchema,
+          abortSignal: primaryAbort.signal,
         },
       });
       rawModelText = response.text || '';
     } catch (modelErr: any) {
-      console.warn('Primary model error, using gemini-3.1-flash-lite fallback:', modelErr?.message || 'Unknown error');
-      const fallbackResponse = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
-        contents,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-          responseSchema: chatResponseSchema,
-        },
-      });
-      rawModelText = fallbackResponse.text || '';
+      if (primaryAbort.isClientClosed()) {
+        return;
+      }
+      const parsedPrimary = parseGeminiError(modelErr);
+      if (parsedPrimary.isQuota || parsedPrimary.isAuth || parsedPrimary.isBadRequest) {
+        throw modelErr;
+      }
+
+      console.warn(
+        `Primary model (${parsedPrimary.code}) fallback to gemini-3.1-flash-lite:`,
+        parsedPrimary.message
+      );
+
+      const fallbackAbort = createUpstreamAbortControl(res, 20000);
+      try {
+        const fallbackResponse = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents,
+          config: {
+            systemInstruction,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            responseMimeType: 'application/json',
+            responseSchema: chatResponseSchema,
+            abortSignal: fallbackAbort.signal,
+          },
+        });
+        rawModelText = fallbackResponse.text || '';
+      } finally {
+        fallbackAbort.cleanup();
+      }
+    } finally {
+      primaryAbort.cleanup();
+    }
+
+    if (res.writableEnded) {
+      return;
     }
 
     let replyText = '';
@@ -312,13 +508,20 @@ ${memoryContext}
       memorySuggestion,
     });
   } catch (err: any) {
-    console.error('Error in /api/chat:', err);
-    const isProd = process.env.NODE_ENV === 'production';
-    res.status(500).json({
-      error: 'GENERATION_ERROR',
-      message: isProd
-        ? 'An error occurred while generating a response. Please try again.'
-        : err?.message || 'An error occurred while generating response.',
+    if (res.writableEnded || res.headersSent) return;
+    const parsed = parseGeminiError(err);
+    if (parsed.isQuota || parsed.isTimeout) {
+      console.warn(`/api/chat ${parsed.httpStatus} (${parsed.code}): ${parsed.message}`);
+    } else {
+      console.error('Error in /api/chat:', err);
+    }
+    if (parsed.retryAfterSeconds) {
+      res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
+    }
+    res.status(parsed.httpStatus).json({
+      error: parsed.code,
+      message: parsed.message,
+      ...(parsed.retryAfterSeconds ? { retryAfterSeconds: parsed.retryAfterSeconds } : {}),
     });
   }
 });
@@ -358,32 +561,41 @@ app.post('/api/tts', async (req: Request, res: Response) => {
     const validVoices = ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'];
     const chosenVoice = validVoices.includes(voice) ? voice : 'Kore';
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash-lite-tts',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: cleanedText,
-              speechMetadata: {
-                style: safeStyle,
+    const ttsAbort = createUpstreamAbortControl(res, 18000);
+    let base64Audio: string | undefined;
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash-lite-tts',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: cleanedText,
+                speechMetadata: {
+                  style: safeStyle,
+                },
               },
-            },
-          ],
-        },
-      ],
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: chosenVoice },
+            ],
           },
+        ],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: chosenVoice },
+            },
+          },
+          abortSignal: ttsAbort.signal,
         },
-      },
-    });
+      });
+      base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    } finally {
+      ttsAbort.cleanup();
+    }
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (res.writableEnded || res.headersSent) return;
+
     if (!base64Audio) {
       return res.status(502).json({ error: 'TTS_EMPTY', message: 'No audio data returned by model.' });
     }
@@ -395,11 +607,32 @@ app.post('/api/tts', async (req: Request, res: Response) => {
       voice: chosenVoice,
     });
   } catch (err: any) {
-    console.error('Error in /api/tts:', err);
-    const isProd = process.env.NODE_ENV === 'production';
-    res.status(500).json({
-      error: 'TTS_ERROR',
-      message: isProd ? 'Error generating TTS audio.' : err?.message || 'Error generating TTS audio.',
+    if (res.writableEnded || res.headersSent) return;
+    const parsed = parseGeminiError(err);
+
+    if (parsed.isQuota) {
+      console.warn(
+        `/api/tts quota exhausted (429)${parsed.retryAfterSeconds ? `, retryAfter=${parsed.retryAfterSeconds}s` : ''} — client falling back to browser voice.`
+      );
+      if (parsed.retryAfterSeconds) {
+        res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
+      }
+      return res.status(429).json({
+        error: 'TTS_QUOTA_EXCEEDED',
+        message: 'Gemini TTS free-tier quota reached. Switched to browser voice fallback.',
+        ...(parsed.retryAfterSeconds ? { retryAfterSeconds: parsed.retryAfterSeconds } : {}),
+      });
+    }
+
+    if (parsed.isTimeout) {
+      console.warn(`/api/tts timeout (504): ${parsed.message}`);
+    } else {
+      console.error('Error in /api/tts:', err);
+    }
+
+    res.status(parsed.httpStatus).json({
+      error: parsed.code === 'GENERATION_ERROR' ? 'TTS_ERROR' : parsed.code,
+      message: parsed.message,
     });
   }
 });
@@ -432,26 +665,40 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       },
     };
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-transcribe',
-      contents: {
-        parts: [
-          audioPart,
-          {
-            text: 'Transcribe this spoken audio accurately. The speech may be in Hindi, English, or Hinglish (Hindi in Roman script). Output only the exact transcribed words without extra preamble.',
-          },
-        ],
-      },
-    });
+    const transcribeAbort = createUpstreamAbortControl(res, 20000);
+    let transcription = '';
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-transcribe',
+        contents: {
+          parts: [
+            audioPart,
+            {
+              text: 'Transcribe this spoken audio accurately. The speech may be in Hindi, English, or Hinglish (Hindi in Roman script). Output only the exact transcribed words without extra preamble.',
+            },
+          ],
+        },
+        config: {
+          abortSignal: transcribeAbort.signal,
+        },
+      });
+      transcription = response.text?.trim() || '';
+    } finally {
+      transcribeAbort.cleanup();
+    }
 
-    const transcription = response.text?.trim() || '';
+    if (res.writableEnded || res.headersSent) return;
     res.json({ text: transcription });
   } catch (err: any) {
-    console.error('Error in /api/transcribe:', err);
-    const isProd = process.env.NODE_ENV === 'production';
-    res.status(500).json({
-      error: 'TRANSCRIBE_ERROR',
-      message: isProd ? 'Error transcribing audio.' : err?.message || 'Error transcribing audio.',
+    if (res.writableEnded || res.headersSent) return;
+    const parsed = parseGeminiError(err);
+    console.error('Error in /api/transcribe:', parsed.isQuota || parsed.isTimeout ? parsed.message : err);
+    if (parsed.retryAfterSeconds) {
+      res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
+    }
+    res.status(parsed.httpStatus).json({
+      error: parsed.code === 'GENERATION_ERROR' ? 'TRANSCRIBE_ERROR' : parsed.code,
+      message: parsed.message,
     });
   }
 });
@@ -488,15 +735,47 @@ Respond in pure JSON matching this structure:
   } | null
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
+    const extractAbort = createUpstreamAbortControl(res, 12000);
+    let rawResponseText = '';
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          abortSignal: extractAbort.signal,
+        },
+      });
+      rawResponseText = response.text || '{"hasMemory": false}';
+    } catch (primaryErr: any) {
+      if (extractAbort.isClientClosed()) return;
+      const parsedPrimary = parseGeminiError(primaryErr);
+      if (parsedPrimary.isQuota || parsedPrimary.isAuth || parsedPrimary.isBadRequest) {
+        throw primaryErr;
+      }
+      const fallbackAbort = createUpstreamAbortControl(res, 12000);
+      try {
+        const fallbackResponse = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt,
+          config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            responseMimeType: 'application/json',
+            abortSignal: fallbackAbort.signal,
+          },
+        });
+        rawResponseText = fallbackResponse.text || '{"hasMemory": false}';
+      } finally {
+        fallbackAbort.cleanup();
+      }
+    } finally {
+      extractAbort.cleanup();
+    }
 
-    const rawJson = (response.text || '{"hasMemory": false}')
+    if (res.writableEnded || res.headersSent) return;
+
+    const rawJson = rawResponseText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
       .replace(/\s*```$/i, '')
@@ -510,11 +789,12 @@ Respond in pure JSON matching this structure:
     }
     res.json(parsed);
   } catch (err: any) {
-    console.error('Error in /api/memories/extract:', err);
-    const isProd = process.env.NODE_ENV === 'production';
-    res.status(500).json({
-      error: 'FAILED',
-      message: isProd ? 'Memory extraction failed.' : err?.message || 'Memory extraction failed.',
+    if (res.writableEnded || res.headersSent) return;
+    const parsed = parseGeminiError(err);
+    console.warn(`/api/memories/extract ${parsed.httpStatus} (${parsed.code}): ${parsed.message}`);
+    res.status(parsed.httpStatus).json({
+      error: parsed.code,
+      message: parsed.message,
     });
   }
 });

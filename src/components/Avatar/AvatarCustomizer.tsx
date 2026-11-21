@@ -133,6 +133,7 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
                   onChange({
                     ...config,
                     avatarType: '3d-glb',
+                    localGlbMigrated: true,
                     glbModelPath: config.glbModelPath || '/models/atmiya-avatar.glb',
                   })
                 }
@@ -161,6 +162,7 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
                   onChange({
                     ...config,
                     avatarType: 'custom-image',
+                    localGlbMigrated: true,
                     customImagePath: config.customImagePath || '/avatars/atmiya.png',
                   })
                 }
@@ -173,14 +175,14 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
                 <div className="flex items-center justify-between font-semibold text-xs">
                   <span className="flex items-center gap-1.5">
                     <ImageIcon className="w-4 h-4 text-cyan-400" />
-                    2D Portrait Avatar
+                    2D Portrait Fallback
                   </span>
                   {activeType === 'custom-image' && (
                     <CheckCircle2 className="w-4 h-4 text-violet-400" />
                   )}
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Uses lightweight <code className="text-cyan-300">/avatars/atmiya.png</code> portrait.
+                  Uses lightweight 2D portrait or monogram fallback.
                 </p>
               </button>
             </div>

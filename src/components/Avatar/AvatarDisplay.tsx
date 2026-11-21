@@ -24,6 +24,7 @@ export const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
 }) => {
   const [isBlinking, setIsBlinking] = useState(false);
   const [headTilt, setHeadTilt] = useState(0);
+  const [imgLoadFailed, setImgLoadFailed] = useState(false);
 
   // Natural blinking effect
   useEffect(() => {
@@ -171,18 +172,12 @@ export const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
             transform: `rotate(${headTilt}deg)`,
           }}
         >
-          {config.avatarType !== 'vector' ? (
+          {config.avatarType === 'custom-image' && config.customImagePath && !imgLoadFailed ? (
             <img
-              src={config.customImagePath || '/avatars/atmiya.png'}
+              src={config.customImagePath}
               alt="Ātmiya"
               className="w-full h-full object-cover object-[center_20%] select-none"
-              onError={(e) => {
-                const img = e.target as HTMLImageElement;
-                if (!img.dataset.fallbackApplied) {
-                  img.dataset.fallbackApplied = '1';
-                  img.src = '/assets/aistudio/Friendly_3D_Avatar_Portrait_37d63c9f.png';
-                }
-              }}
+              onError={() => setImgLoadFailed(true)}
             />
           ) : (
             <svg

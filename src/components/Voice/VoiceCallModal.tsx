@@ -211,8 +211,8 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
       }
     };
 
-    // Try Gemini Native TTS if selected
-    if (settings.voiceEngine === 'gemini-native') {
+    // Try Gemini Native TTS if selected and not in quota cooldown
+    if (settings.voiceEngine === 'gemini-native' && !api.isTtsInCooldown()) {
       try {
         const ttsRes = await api.generateTTS({
           text: replyText,
@@ -231,8 +231,8 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
           );
           return;
         }
-      } catch (err) {
-        console.warn('Gemini TTS error, falling back to Browser TTS:', err);
+      } catch (err: any) {
+        console.warn('Gemini TTS fallback to Browser TTS:', err?.message || err);
       }
     }
 

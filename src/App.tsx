@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ActiveNavTab,
   AVATAR_EMOTIONS,
@@ -31,6 +31,7 @@ import { SettingsScreen } from './components/Settings/SettingsScreen';
 import {
   AvatarControllerActions,
   AvatarControllerState,
+  AvatarGesture,
   useMicrophonePermission,
 } from './components/Avatar/AvatarController';
 import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
@@ -55,7 +56,7 @@ export default function App() {
   const [memories, setMemories] = useState<UserMemory[]>(storage.getMemories());
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     isKeyConfigured: false,
-    model: 'gemini-3.8-flash',
+    model: 'gemini-4-hydrogen',
     ttsModel: 'gemini-3.8-flash-lite-tts',
     transcribeModel: 'gemini-3.5-transcribe',
     supportedVoices: ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'],
@@ -75,28 +76,40 @@ export default function App() {
   const [userTranscript, setUserTranscript] = useState<string>('');
   const [aiSpokenText, setAiSpokenText] = useState<string>('');
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [suggestedMemory, setSuggestedMemory] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [glbInspection, setGlbInspection] = useState<GlbInspectionReport | null>(null);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [activeGesture, setActiveGesture] = useState<AvatarGesture>('none');
+  const [gestureNonce, setGestureNonce] = useState<number>(0);
 
   const [micPermission, refreshMicPermission] = useMicrophonePermission();
 
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isProcessingRef = useRef<boolean>(false);
   const avatarStateRef = useRef<AvatarState>(avatarState);
   const turnEpochRef = useRef<number>(0);
   const activeAbortRef = useRef<AbortController | null>(null);
+  const lastFailedMessageRef = useRef<string | null>(null);
+  const ttsQuotaNotifiedRef = useRef<boolean>(false);
 
   const isSoundEnabled = settings.voiceEngine !== 'none' && settings.autoSpeakResponse;
 
   useEffect(() => {
     avatarStateRef.current = avatarState;
   }, [avatarState]);
+
+  useEffect(() => {
+    const isLight = settings.theme === 'light';
+    document.documentElement.classList.toggle('dark', !isLight);
+    document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
+  }, [settings.theme]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
@@ -157,6 +170,7 @@ export default function App() {
       speechService.stopRecognition();
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       if (bubbleTimeoutRef.current) clearTimeout(bubbleTimeoutRef.current);
+      if (gestureTimeoutRef.current) clearTimeout(gestureTimeoutRef.current);
     };
   }, []);
 
@@ -399,7 +413,7 @@ export default function App() {
     }
   };
 
-  const handleInterrupt = () => {
+  const handleInterrupt = useCallback(() => {
     cancelActiveTurn();
     const interruptEpoch = turnEpochRef.current;
     speechService.stopSpeaking();
@@ -413,7 +427,7 @@ export default function App() {
       if (turnEpochRef.current !== interruptEpoch) return;
       setAvatarState('idle');
     }, 450);
-  };
+  }, []);
 
   const handleEndCall = () => {
     cancelActiveTurn();
@@ -421,17 +435,47 @@ export default function App() {
     speechService.stopRecognition();
     setIsSpeaking(false);
     setVoiceError(null);
+    setChatError(null);
     setAvatarState('idle');
     setCompanionEmotion('neutral');
     setUserTranscript('');
     showToast('Turn reset');
   };
 
+  const triggerAvatarGesture = useCallback((gesture: AvatarGesture, durationMs?: number) => {
+    if (gestureTimeoutRef.current) {
+      clearTimeout(gestureTimeoutRef.current);
+      gestureTimeoutRef.current = null;
+    }
+    setActiveGesture(gesture);
+    setGestureNonce((n) => n + 1);
+    if (gesture !== 'none') {
+      const autoReturnMs = durationMs ?? (gesture === 'wave' ? 2800 : 1500);
+      gestureTimeoutRef.current = setTimeout(() => {
+        setActiveGesture('none');
+        gestureTimeoutRef.current = null;
+      }, autoReturnMs);
+    }
+  }, []);
+
+  const handleResetPose = useCallback(() => {
+    if (gestureTimeoutRef.current) {
+      clearTimeout(gestureTimeoutRef.current);
+      gestureTimeoutRef.current = null;
+    }
+    setActiveGesture('none');
+    setPreviewEmotion(null);
+    if (!isProcessingRef.current && avatarStateRef.current === 'idle') {
+      setCompanionEmotion('neutral');
+    }
+  }, []);
+
   const triggerCompanionReaction = (
     emotion: AvatarEmotion,
     activityLabel: string,
     line: string,
-    speakLine = false
+    speakLine = false,
+    gesture: AvatarGesture = 'none'
   ) => {
     if (isProcessingRef.current || speechService.getIsSpeaking()) return;
 
@@ -441,6 +485,9 @@ export default function App() {
     showSpeechBubble(line);
     setCompanionEmotion(emotion);
     setEmotionIntensity(0.78);
+    if (gesture !== 'none') {
+      triggerAvatarGesture(gesture);
+    }
 
     const { progress: nextProg, newlyUnlockedRooms } = storage.recordInteraction(activityLabel, 5);
     setProgress(nextProg);
@@ -477,7 +524,7 @@ export default function App() {
       'Haanji! I am right here and listening whenever you are ready.',
     ];
     const picked = greetings[Math.floor(Math.random() * greetings.length)];
-    triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true);
+    triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true, 'nod');
   };
 
   const handleSendMessage = async (text: string) => {
@@ -492,6 +539,8 @@ export default function App() {
 
     setPreviewEmotion(null);
     setVoiceError(null);
+    setChatError(null);
+    lastFailedMessageRef.current = null;
     speechService.stopRecognition();
     speechService.stopSpeaking();
 
@@ -599,7 +648,7 @@ export default function App() {
           }
         };
 
-        if (settings.voiceEngine === 'gemini-native') {
+        if (settings.voiceEngine === 'gemini-native' && !api.isTtsInCooldown()) {
           try {
             const ttsRes = await api.generateTTS(
               {
@@ -624,7 +673,19 @@ export default function App() {
             if (e?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
               return;
             }
-            console.warn('TTS playback error, trying browser fallback:', e);
+            const isQuotaError =
+              e?.status === 429 ||
+              e?.code === 'TTS_QUOTA_EXCEEDED' ||
+              e?.code === 'TTS_QUOTA_COOLDOWN';
+            if (isQuotaError) {
+              if (!ttsQuotaNotifiedRef.current) {
+                ttsQuotaNotifiedRef.current = true;
+                showToast('Gemini voice quota reached — switched to browser voice.');
+              }
+              console.warn('Gemini TTS quota reached, using browser voice fallback.');
+            } else {
+              console.warn('TTS playback error, trying browser fallback:', e?.message || e);
+            }
           }
         }
 
@@ -647,13 +708,22 @@ export default function App() {
       isProcessingRef.current = false;
       setAvatarState('error');
       setCompanionEmotion('neutral');
-      setVoiceError(err?.message || 'Connection failed');
-      showToast('Error: ' + (err.message || 'Connection failed'));
+      const errMsg = err?.message || 'Connection failed. Please check API configuration or retry.';
+      lastFailedMessageRef.current = trimmed;
+      setChatError(errMsg);
+      setVoiceError(errMsg);
+      showToast('Error: ' + errMsg);
     } finally {
       if (activeAbortRef.current === abortController) {
         activeAbortRef.current = null;
       }
     }
+  };
+
+  const handleRetryLastMessage = () => {
+    const retryText = lastFailedMessageRef.current;
+    if (!retryText || isProcessingRef.current) return;
+    handleSendMessage(retryText);
   };
 
   // Desktop keyboard shortcuts on Home
@@ -740,9 +810,32 @@ export default function App() {
   };
 
   const handleSaveSettings = (newSettings: CompanionSettings, toastText = 'Settings saved') => {
+    if (newSettings.voiceEngine === 'gemini-native' && newSettings.voiceEngine !== settings.voiceEngine) {
+      api.resetTtsCooldown();
+      ttsQuotaNotifiedRef.current = false;
+    }
     setSettings(newSettings);
     storage.saveSettings(newSettings);
     showToast(toastText);
+  };
+
+  const handleToggleTheme = () => {
+    const nextTheme = settings.theme === 'light' ? 'dark' : 'light';
+    const updated: CompanionSettings = { ...settings, theme: nextTheme };
+    handleSaveSettings(
+      updated,
+      nextTheme === 'light' ? 'Switched to Soft Light theme' : 'Switched to Deep Navy theme'
+    );
+  };
+
+  const handleNewChat = () => {
+    const newConv = storage.createConversation(settings.personality, settings.language);
+    setConversations(storage.getConversations());
+    setActiveConvId(newConv.id);
+    handleEndCall();
+    setAiSpokenText('');
+    setSuggestedMemory(null);
+    showToast('New session started');
   };
 
   const handleApplyWardrobe = (newAvatar: AvatarAppearanceConfig, newRoom: RoomConfig) => {
@@ -795,43 +888,73 @@ export default function App() {
     showToast('Backup restored successfully');
   };
 
-  const avatarControllerState: AvatarControllerState = {
-    avatarState,
-    emotion: companionEmotion,
-    emotionIntensity,
-    previewEmotion,
-    audioLevel,
-    micPermission,
-    voiceError,
-    glbInspection,
-  };
+  const tapAvatarRef = useRef(handleTapAvatar);
+  tapAvatarRef.current = handleTapAvatar;
 
-  const avatarControllerActions: AvatarControllerActions = {
-    onTapAvatar: handleTapAvatar,
-    onInterrupt: handleInterrupt,
-    onSelectPreviewEmotion: setPreviewEmotion,
-    onInspectionComplete: setGlbInspection,
-  };
+  const stableOnTapAvatar = useCallback(() => {
+    tapAvatarRef.current();
+  }, []);
+
+  const avatarControllerState: AvatarControllerState = useMemo(
+    () => ({
+      avatarState,
+      emotion: companionEmotion,
+      emotionIntensity,
+      previewEmotion,
+      activeGesture,
+      gestureNonce,
+      audioLevel,
+      micPermission,
+      voiceError,
+      glbInspection,
+    }),
+    [
+      avatarState,
+      companionEmotion,
+      emotionIntensity,
+      previewEmotion,
+      activeGesture,
+      gestureNonce,
+      audioLevel,
+      micPermission,
+      voiceError,
+      glbInspection,
+    ]
+  );
+
+  const avatarControllerActions: AvatarControllerActions = useMemo(
+    () => ({
+      onTapAvatar: stableOnTapAvatar,
+      onInterrupt: handleInterrupt,
+      onSelectPreviewEmotion: setPreviewEmotion,
+      onTriggerGesture: triggerAvatarGesture,
+      onResetPose: handleResetPose,
+      onInspectionComplete: setGlbInspection,
+    }),
+    [stableOnTapAvatar, handleInterrupt, triggerAvatarGesture, handleResetPose]
+  );
 
   return (
     <GameShell
       activeTab={activeTab}
       onSelectTab={handleSelectTab}
       memoriesCount={memories.length}
+      theme={settings.theme}
+      onToggleTheme={handleToggleTheme}
     >
       {/* Toast Notification */}
       {toastMessage && (
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-16 right-4 sm:right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-950/92 border border-indigo-300/30 text-white text-xs font-medium shadow-2xl backdrop-blur-md animate-fadeIn max-w-[90vw]"
+          className="fixed top-16 right-4 sm:right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 dark:bg-[#0b1528]/95 border border-slate-200 dark:border-blue-400/30 text-slate-900 dark:text-white text-xs font-medium shadow-2xl backdrop-blur-md animate-fadeIn max-w-[90vw]"
         >
-          <Check className="w-4 h-4 text-emerald-300 shrink-0" />
+          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
-      {/* Session History Sidebar Drawer (accessible from Home Header) */}
+      {/* Session History Slide-Over Drawer */}
       <ConversationSidebar
         conversations={conversations}
         activeId={activeConvId}
@@ -844,6 +967,7 @@ export default function App() {
           setIsSpeaking(false);
           setAvatarState('idle');
           setSuggestedMemory(null);
+          setChatError(null);
           const selected = conversations.find((c) => c.id === id);
           const lastModel = selected?.messages
             ? [...selected.messages].reverse().find((m) => m.role === 'model')
@@ -851,14 +975,7 @@ export default function App() {
           setAiSpokenText(lastModel ? lastModel.content : '');
           setUserTranscript('');
         }}
-        onNewChat={() => {
-          const newConv = storage.createConversation(settings.personality, settings.language);
-          setConversations(storage.getConversations());
-          setActiveConvId(newConv.id);
-          handleEndCall();
-          setAiSpokenText('');
-          showToast('New session started');
-        }}
+        onNewChat={handleNewChat}
         onDeleteChat={(id) => {
           storage.deleteConversation(id);
           const remaining = storage.getConversations();
@@ -904,28 +1021,44 @@ export default function App() {
           userTranscript={userTranscript}
           aiSpokenText={aiSpokenText}
           voiceError={voiceError}
+          chatError={chatError}
           isMicMuted={isMicMuted}
           isThinking={isThinking}
           isSpeaking={isSpeaking}
           isChatDrawerOpen={isChatDrawerOpen}
-          unreadCount={messages.length}
+          sessionTitle={currentConversation?.title || 'New Conversation'}
+          messages={messages}
+          suggestedMemory={suggestedMemory}
           onDismissBubble={() => setSpeechBubbleText(null)}
           onDismissHint={dismissHint}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          onNewChat={handleNewChat}
           onToggleSound={handleToggleSound}
+          onToggleTheme={handleToggleTheme}
           onChangeLanguage={(lang) => handleSaveSettings({ ...settings, language: lang })}
           onOpenSettings={() => handleSelectTab('settings')}
           onNavigatePlay={() => handleSelectTab('play')}
           onNavigateWardrobe={() => handleSelectTab('wardrobe')}
           onSendMessage={handleSendMessage}
+          onRetryLastMessage={handleRetryLastMessage}
           onToggleListen={handleToggleListen}
           onToggleMute={handleToggleMute}
           onInterrupt={handleInterrupt}
           onEndCall={handleEndCall}
           onRetryMic={handleRetryMic}
           onToggleChatDrawer={() => setIsChatDrawerOpen((prev) => !prev)}
-          onQuickReaction={(emotion, label, line) =>
-            triggerCompanionReaction(emotion, label, line, false)
+          onSaveSuggestedMemory={(candidateText) => {
+            handleAddMemory({
+              content: candidateText,
+              category: 'preference',
+              approvedByUser: true,
+              sourceText: candidateText,
+            });
+            setSuggestedMemory(null);
+          }}
+          onDismissMemorySuggestion={() => setSuggestedMemory(null)}
+          onQuickReaction={(emotion, label, line, gesture) =>
+            triggerCompanionReaction(emotion, label, line, false, gesture ?? 'none')
           }
         />
       )}
@@ -975,13 +1108,15 @@ export default function App() {
         />
       )}
 
-      {/* Slide-Over Full Scrollable Chat & Code Notes Drawer (Home) */}
+      {/* Slide-Over Full Scrollable Chat & Code Notes Drawer (Mobile/Tablet) */}
       <ChatDrawer
         isOpen={isChatDrawerOpen}
         onClose={() => setIsChatDrawerOpen(false)}
         messages={messages}
         isThinking={isThinking}
         isSpeaking={isSpeaking}
+        chatError={chatError}
+        onRetryLastMessage={handleRetryLastMessage}
         onInterrupt={handleInterrupt}
         settings={settings}
         onSendMessage={handleSendMessage}

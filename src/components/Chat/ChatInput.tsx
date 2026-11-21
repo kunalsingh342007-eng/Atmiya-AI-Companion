@@ -1,13 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Send, 
-  Mic, 
-  MicOff, 
-  PauseCircle, 
-  Globe, 
-  Sparkles,
-  Paperclip
-} from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Send, Mic, MicOff, PauseCircle } from 'lucide-react';
 import { CompanionLanguage } from '../../types/companion';
 import { speechService } from '../../services/speech';
 
@@ -58,10 +50,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       return;
     }
 
-    let langLocale: any = 'en-IN';
-    if (language === 'hi') langLocale = 'hi-IN';
-    else if (language === 'en') langLocale = 'en-IN';
-    else langLocale = 'en-IN';
+    const langLocale: 'hi-IN' | 'en-IN' = language === 'hi' ? 'hi-IN' : 'en-IN';
 
     const started = speechService.startRecognition(langLocale, {
       onStart: () => {
@@ -76,7 +65,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       },
       onError: (err) => {
         setIsRecording(false);
-        setRecordingStatus('Microphone error: ' + err);
+        setRecordingStatus(err);
         setTimeout(() => setRecordingStatus(null), 3500);
       },
       onEnd: () => {
@@ -92,88 +81,81 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4">
-      {/* Recording status pill if active */}
+    <div className="w-full p-2">
       {recordingStatus && (
         <div className="mb-2 flex items-center justify-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 text-xs shadow-md animate-pulse">
-            <Mic className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/80 border border-sky-200 dark:border-sky-500/40 text-sky-800 dark:text-sky-200 text-xs">
+            <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
             <span>{recordingStatus}</span>
           </div>
         </div>
       )}
 
-      {/* Main Input Box */}
-      <div className="relative rounded-2xl bg-slate-900/90 border border-slate-800 focus-within:border-violet-500/60 shadow-xl backdrop-blur-md transition-all">
-        {/* Text Area */}
+      <div className="relative rounded-2xl bg-slate-50 dark:bg-[#0c162b] border border-slate-200 dark:border-slate-700/80 focus-within:border-blue-500 transition-colors">
         <textarea
           ref={textareaRef}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Message Ātmiya in Hindi, Hinglish, or English (e.g. 'Aaj thodi baat karo' or 'Help me plan my day')..."
+          placeholder="Message Ātmiya in Hindi, Hinglish, or English..."
           rows={2}
-          className="w-full bg-transparent p-3.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none leading-relaxed"
+          aria-label="Message Ātmiya"
+          className="w-full bg-transparent px-3.5 pt-3 pb-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none resize-none leading-relaxed"
         />
 
-        {/* Input Bar Footer Controls */}
-        <div className="px-3 pb-2.5 pt-1 flex items-center justify-between border-t border-slate-800/60 text-xs">
-          {/* Left accessories: Language badge & speech interrupt */}
+        <div className="px-3 pb-2.5 pt-1.5 flex items-center justify-between border-t border-slate-200/80 dark:border-slate-800/80 text-xs">
           <div className="flex items-center gap-2">
             <select
+              aria-label="Response language"
               value={language}
               onChange={(e) => onChangeLanguage(e.target.value as CompanionLanguage)}
-              className="bg-slate-950 border border-slate-800 text-[11px] text-slate-400 hover:text-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-violet-500 cursor-pointer"
+              className="bg-white dark:bg-[#081020] border border-slate-200 dark:border-slate-700 text-[11px] font-medium text-slate-700 dark:text-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
             >
-              <option value="auto">🌐 Auto Language</option>
-              <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
-              <option value="hinglish">✨ Hinglish</option>
-              <option value="en">🇬🇧 English</option>
+              <option value="auto">Auto Language</option>
+              <option value="hi">हिन्दी (Hindi)</option>
+              <option value="hinglish">Hinglish</option>
+              <option value="en">English</option>
             </select>
 
-            {/* Quick Interrupt button when companion is speaking */}
             {isSpeaking && (
               <button
+                type="button"
                 onClick={onInterrupt}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[11px] font-semibold transition shadow cursor-pointer animate-pulse"
-                title="Interrupt Ātmiya immediately"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold transition cursor-pointer"
+                title="Stop speaking"
               >
                 <PauseCircle className="w-3.5 h-3.5" />
-                <span>Interrupt (रोकें)</span>
+                <span>Stop</span>
               </button>
             )}
           </div>
 
-          {/* Right actions: Mic & Send */}
           <div className="flex items-center gap-2">
-            {/* Microphone button */}
             <button
+              type="button"
               onClick={toggleRecording}
-              className={`p-2 rounded-xl transition cursor-pointer ${
+              aria-label={isRecording ? 'Stop voice recording' : 'Record voice message'}
+              className={`h-9 w-9 rounded-xl flex items-center justify-center transition cursor-pointer ${
                 isRecording
-                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-950/50 animate-bounce'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
-              title={isRecording ? 'Stop recording voice' : 'Record voice in Hindi/English'}
+              title={isRecording ? 'Stop recording' : 'Record voice'}
             >
               {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
 
-            {/* Send button */}
             <button
+              type="button"
               onClick={handleSend}
               disabled={!inputText.trim() || isThinking}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-violet-950/50 disabled:opacity-40 disabled:pointer-events-none transition transform hover:scale-[1.02] active:scale-95 cursor-pointer"
+              className="h-9 inline-flex items-center gap-1.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer"
             >
               <span>Send</span>
               <Send className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
-      </div>
-
-      <div className="mt-2 text-center text-[11px] text-slate-500">
-        Ātmiya is an empathetic AI companion. For emergencies, please seek qualified human professional care.
       </div>
     </div>
   );

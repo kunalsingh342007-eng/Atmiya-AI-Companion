@@ -81,9 +81,9 @@ const ROOM_OPTIONS: {
 
 const OUTFIT_PALETTES = [
   { label: 'Navy Classic', color: '#1e3a5f' },
-  { label: 'Soft Indigo', color: '#4f46e5' },
-  { label: 'Violet Dusk', color: '#7c3aed' },
-  { label: 'Sky Mist', color: '#0284c7' },
+  { label: 'Ocean Blue', color: '#2563eb' },
+  { label: 'Sky Slate', color: '#0284c7' },
+  { label: 'Deep Indigo', color: '#4f46e5' },
   { label: 'Coral Dawn', color: '#e11d48' },
 ];
 
@@ -132,23 +132,23 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
     onApplyWardrobe(resetAvatar, resetRoom);
   };
 
-  const activeType = draftAvatar.avatarType || 'three-ws';
+  const activeType = draftAvatar.avatarType || '3d-glb';
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-slate-950 via-indigo-950/35 to-slate-950 px-4 sm:px-6 py-6">
+    <div className="h-full w-full overflow-y-auto bg-slate-50 dark:bg-gradient-to-b dark:from-[#070d1a] dark:via-[#0b162d] dark:to-[#070d1a] px-4 sm:px-6 py-6">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-rose-500/20 border border-rose-300/35 text-rose-200 flex items-center justify-center">
+            <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/35 text-blue-600 dark:text-sky-300 flex items-center justify-center shrink-0">
               <Palette className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                 Wardrobe & Companion Room
               </h1>
-              <p className="text-xs sm:text-sm text-slate-300">
-                Preview room themes, portrait accents, and overlay accessories before applying.
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                Preview room themes, portrait accents, and renderer mode before applying.
               </p>
             </div>
           </div>
@@ -157,7 +157,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
             <button
               type="button"
               onClick={handleReset}
-              className="h-10 px-4 rounded-full bg-slate-900 hover:bg-slate-800 border border-white/15 text-xs font-semibold text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
+              className="h-10 px-4 rounded-xl bg-white dark:bg-[#0c1528] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset Default</span>
@@ -167,10 +167,10 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
               type="button"
               onClick={handleApply}
               disabled={!hasChanges}
-              className={`h-10 px-5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer disabled:cursor-default ${
+              className={`h-10 px-5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer disabled:cursor-default ${
                 hasChanges
-                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg'
-                  : 'bg-slate-800 text-slate-400 border border-white/10'
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
               }`}
             >
               <Check className="w-3.5 h-3.5" />
@@ -179,14 +179,16 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
           </div>
         </header>
 
-        {/* Main Grid: Live Preview + Customization Controls */}
+        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Left Column: Live Preview Card + Transparency Note */}
+          {/* Left Column */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="rounded-3xl overflow-hidden border border-indigo-300/25 shadow-2xl bg-slate-900">
-              <div className="px-4 py-2.5 bg-slate-950/90 border-b border-white/10 flex items-center justify-between text-xs">
-                <span className="font-semibold text-indigo-200">Live Stage Preview</span>
-                <span className="text-slate-400">
+            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-2xl bg-white dark:bg-[#0c1528]">
+              <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#081020] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+                <span className="font-semibold text-blue-700 dark:text-sky-300">
+                  Live Stage Preview
+                </span>
+                <span className="text-slate-500 dark:text-slate-400">
                   {hasChanges ? 'Previewing draft' : 'Current active look'}
                 </span>
               </div>
@@ -200,7 +202,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                       config={draftAvatar}
                       compactPreview
                     />
-                    <div className="mt-2 px-3 py-1 rounded-full bg-slate-950/75 border border-white/15 text-[11px] text-slate-100 font-medium backdrop-blur-md">
+                    <div className="mt-2 px-3 py-1 rounded-xl bg-white/90 dark:bg-[#091224]/85 border border-slate-200 dark:border-slate-700/70 text-[11px] text-slate-900 dark:text-slate-100 font-medium backdrop-blur-md">
                       {draftAvatar.personaName || 'Ātmiya'} · {draftAvatar.outfitStyleLabel || 'Navy Classic'}
                     </div>
                   </div>
@@ -208,35 +210,35 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
               </div>
             </div>
 
-            {/* Honesty & Scope Disclosure */}
-            <div className="rounded-2xl bg-slate-900/85 border border-sky-400/25 p-4 text-xs text-slate-300 space-y-1.5 leading-relaxed">
-              <div className="font-semibold text-sky-200 flex items-center gap-1.5">
+            {/* Scope Disclosure */}
+            <div className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-4 text-xs text-slate-600 dark:text-slate-300 space-y-1.5 leading-relaxed">
+              <div className="font-semibold text-blue-700 dark:text-sky-300 flex items-center gap-1.5">
                 <Info className="w-4 h-4 shrink-0" />
                 <span>About Visual Customization</span>
               </div>
-              <p className="text-[11px] text-slate-300">
-                Room themes, outfit palette trims, and badge accessories customize the companion stage and 2D portrait frame. Changing colors or overlays here does not alter a 3D <code className="text-sky-200">.glb</code> mesh’s geometry unless the uploaded 3D model includes custom material/morph slots.
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                Room themes, outfit palette trims, and badge accessories customize the companion stage and 2D portrait frame. Changing palette colors does not alter a 3D <code className="text-blue-700 dark:text-sky-300">.glb</code> mesh’s geometry.
               </p>
             </div>
 
-            {/* Live GLB Inspection Summary if a 3D GLB was loaded */}
+            {/* Live GLB Inspection Summary */}
             {glbInspection && (
-              <div className="rounded-2xl bg-slate-900/85 border border-emerald-500/30 p-4 text-xs space-y-2">
-                <div className="font-semibold text-emerald-300 flex items-center gap-1.5">
+              <div className="rounded-2xl bg-white dark:bg-[#0c1528] border border-emerald-200 dark:border-emerald-500/30 p-4 text-xs space-y-2">
+                <div className="font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Loaded 3D Asset ({glbInspection.modelUrl})</span>
                 </div>
-                <div className="text-[11px] text-slate-300">
+                <div className="text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
                   Meshes: {glbInspection.meshes.length} · Bones: {glbInspection.bones.length} · Morphs: {glbInspection.morphTargets.length}
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {AVATAR_EMOTIONS.slice(0, 8).map((expr) => (
                     <span
                       key={expr}
-                      className={`px-1.5 py-0.5 rounded text-[10px] border ${
+                      className={`text-[11px] ${
                         glbInspection.supportedExpressions[expr]
-                          ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200'
-                          : 'bg-slate-950 border-slate-800 text-slate-500'
+                          ? 'text-emerald-700 dark:text-emerald-300 font-medium'
+                          : 'text-slate-400 dark:text-slate-500'
                       }`}
                     >
                       {AVATAR_EMOTION_LABELS[expr]}
@@ -247,13 +249,13 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
             )}
           </div>
 
-          {/* Right Column: Room Themes, Outfit Accent, Accessories & Display Name */}
+          {/* Right Column */}
           <div className="lg:col-span-7 space-y-5">
             {/* Room Backgrounds */}
-            <section className="rounded-3xl bg-slate-900/85 border border-indigo-300/20 p-5 space-y-3">
+            <section className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 space-y-3 shadow-xs">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-white">Room Backgrounds</h2>
-                <span className="text-[11px] text-sky-200 font-medium tabular-nums">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Room Backgrounds</h2>
+                <span className="text-[11px] text-blue-700 dark:text-sky-300 font-semibold tabular-nums">
                   {progress.unlockedRoomIds.length}/{ROOM_OPTIONS.length} unlocked · {progress.xp} XP
                 </span>
               </div>
@@ -276,41 +278,43 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                           lightingMood: room.lightingMood,
                         })
                       }
-                      className={`p-3.5 rounded-2xl border text-left transition ${
+                      className={`p-3.5 rounded-xl border text-left transition ${
                         !isUnlocked
-                          ? 'border-slate-800 bg-slate-950/50 text-slate-400 cursor-not-allowed opacity-80'
+                          ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-[#081020]/60 text-slate-400 cursor-not-allowed opacity-75'
                           : isSelected
-                          ? 'border-indigo-400 bg-indigo-950/60 text-white cursor-pointer shadow-md'
-                          : 'border-white/10 bg-slate-950/60 text-slate-200 hover:border-indigo-300/40 cursor-pointer'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-slate-900 dark:text-white cursor-pointer'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-800 dark:text-slate-200 hover:border-blue-300 dark:hover:border-slate-700 cursor-pointer'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 font-semibold text-xs">
                         <span className="flex items-center gap-1.5">
-                          <Icon className="w-4 h-4 text-amber-300 shrink-0" />
+                          <Icon className="w-4 h-4 text-amber-500 dark:text-amber-300 shrink-0" />
                           {room.title}
                         </span>
                         {!isUnlocked ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-200">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300 tabular-nums">
                             <Lock className="w-3 h-3" />
                             {room.requiredXp} XP
                           </span>
                         ) : isSelected ? (
-                          <CheckCircle2 className="w-4 h-4 text-indigo-300 shrink-0" />
+                          <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-sky-400 shrink-0" />
                         ) : null}
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">{room.desc}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                        {room.desc}
+                      </p>
                     </button>
                   );
                 })}
               </div>
 
               {progress.unlockedRoomIds.length < ROOM_OPTIONS.length && (
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-300">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-600 dark:text-slate-300">
                   <span>Play mini-games to earn XP and unlock remaining rooms.</span>
                   <button
                     type="button"
                     onClick={onNavigatePlay}
-                    className="text-sky-300 hover:text-sky-200 font-semibold underline cursor-pointer"
+                    className="text-blue-600 dark:text-sky-300 hover:underline font-semibold cursor-pointer"
                   >
                     Go to Play Hub
                   </button>
@@ -319,13 +323,13 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
             </section>
 
             {/* Outfit Palette Accent & Overlay Accessories */}
-            <section className="rounded-3xl bg-slate-900/85 border border-indigo-300/20 p-5 space-y-5">
+            <section className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 space-y-5 shadow-xs">
               <div>
-                <h2 className="text-sm font-bold text-white">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
                   Outfit Frame & Theme Palette
                 </h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Updates portrait rim trim and room glow accent.
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Updates portrait rim trim and ambient lighting accent.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {OUTFIT_PALETTES.map((item) => {
@@ -342,14 +346,14 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                             accentColor: item.color,
                           })
                         }
-                        className={`h-10 px-3.5 rounded-full border text-xs font-medium inline-flex items-center gap-2 transition cursor-pointer ${
+                        className={`h-10 px-3.5 rounded-xl border text-xs font-medium inline-flex items-center gap-2 transition cursor-pointer ${
                           isSelected
-                            ? 'border-white bg-white/15 text-white'
-                            : 'border-white/10 bg-slate-950/60 text-slate-300 hover:border-indigo-300/40'
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
                         }`}
                       >
                         <span
-                          className="w-3.5 h-3.5 rounded-full border border-white/30"
+                          className="w-3.5 h-3.5 rounded-full border border-black/15 dark:border-white/30"
                           style={{ backgroundColor: item.color }}
                         />
                         <span>{item.label}</span>
@@ -360,8 +364,10 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
               </div>
 
               <div>
-                <h2 className="text-sm font-bold text-white">Portrait Overlay Accessories</h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Portrait Overlay Accessories
+                </h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Optional decorative badges displayed on the 2D companion portrait frame.
                 </p>
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -372,14 +378,16 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                         key={acc.id}
                         type="button"
                         onClick={() => setDraftAvatar({ ...draftAvatar, accessory: acc.id })}
-                        className={`p-2.5 rounded-2xl border text-left transition cursor-pointer ${
+                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
                           isSelected
-                            ? 'border-indigo-400 bg-indigo-950/60 text-white'
-                            : 'border-white/10 bg-slate-950/60 text-slate-300 hover:border-indigo-300/40'
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
                         }`}
                       >
                         <div className="text-xs font-semibold">{acc.label}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{acc.desc}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          {acc.desc}
+                        </div>
                       </button>
                     );
                   })}
@@ -387,9 +395,9 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
               </div>
 
               {/* Display Name & Renderer Mode */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/10">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
                     Companion Display Name
                   </label>
                   <input
@@ -399,12 +407,12 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                       setDraftAvatar({ ...draftAvatar, personaName: e.target.value })
                     }
                     placeholder="Ātmiya"
-                    className="w-full h-10 bg-slate-950 border border-white/15 rounded-xl px-3.5 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    className="w-full h-10 bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
                     Avatar Renderer Mode
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -413,37 +421,39 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                       onClick={() =>
                         setDraftAvatar({
                           ...draftAvatar,
-                          avatarType: 'three-ws',
+                          avatarType: '3d-glb',
                           threeWsMigrated: true,
+                          localGlbMigrated: true,
+                          glbModelPath: draftAvatar.glbModelPath || '/models/atmiya-avatar.glb',
                         })
                       }
                       className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
-                        activeType === 'three-ws'
-                          ? 'border-indigo-400 bg-indigo-950/60 text-white'
-                          : 'border-white/10 bg-slate-950/60 text-slate-300'
+                        activeType === '3d-glb'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300'
                       }`}
                     >
-                      <Box className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                      <span className="truncate">3D Avatar</span>
+                      <Box className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300 shrink-0" />
+                      <span className="truncate">Local GLB</span>
                     </button>
                     <button
                       type="button"
                       onClick={() =>
                         setDraftAvatar({
                           ...draftAvatar,
-                          avatarType: '3d-glb',
+                          avatarType: 'three-ws',
                           threeWsMigrated: true,
-                          glbModelPath: draftAvatar.glbModelPath || '/models/atmiya-avatar.glb',
+                          localGlbMigrated: true,
                         })
                       }
                       className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
-                        activeType === '3d-glb'
-                          ? 'border-indigo-400 bg-indigo-950/60 text-white'
-                          : 'border-white/10 bg-slate-950/60 text-slate-300'
+                        activeType === 'three-ws'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300'
                       }`}
                     >
-                      <Box className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
-                      <span className="truncate">Local GLB</span>
+                      <Box className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300 shrink-0" />
+                      <span className="truncate">three.ws</span>
                     </button>
                     <button
                       type="button"
@@ -452,16 +462,17 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                           ...draftAvatar,
                           avatarType: 'custom-image',
                           threeWsMigrated: true,
+                          localGlbMigrated: true,
                           customImagePath: draftAvatar.customImagePath || '/avatars/atmiya.png',
                         })
                       }
                       className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
                         activeType === 'custom-image'
-                          ? 'border-indigo-400 bg-indigo-950/60 text-white'
-                          : 'border-white/10 bg-slate-950/60 text-slate-300'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300'
                       }`}
                     >
-                      <ImageIcon className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                      <ImageIcon className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300 shrink-0" />
                       <span className="truncate">2D Portrait</span>
                     </button>
                   </div>
@@ -471,31 +482,33 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
           </div>
         </div>
 
-        {/* Companion Progress: Achievements & Recent Interactions */}
+        {/* Companion Progress */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <section className="rounded-3xl bg-slate-900/85 border border-indigo-300/20 p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Award className="w-4 h-4 text-amber-300" />
-                <span>Unlocked Achievements ({progress.achievements.length})</span>
-              </h2>
-            </div>
+          <section className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 space-y-3 shadow-xs">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Award className="w-4 h-4 text-amber-500 dark:text-amber-300" />
+              <span>Unlocked Achievements ({progress.achievements.length})</span>
+            </h2>
             {progress.achievements.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4">
-                Play any mini-game or tap Wave/Cheer on Home to earn your first badge.
+              <p className="text-xs text-slate-500 dark:text-slate-400 py-4">
+                Play any mini-game or tap Wave/Cheer on Companion Home to earn your first badge.
               </p>
             ) : (
               <div className="space-y-2">
                 {progress.achievements.map((ach) => (
                   <div
                     key={ach.id}
-                    className="p-3 rounded-2xl bg-slate-950/70 border border-amber-300/20 flex items-start justify-between gap-2"
+                    className="p-3 rounded-xl bg-slate-50 dark:bg-[#081020] border border-amber-200 dark:border-amber-400/20 flex items-start justify-between gap-2"
                   >
                     <div>
-                      <div className="text-xs font-semibold text-amber-100">{ach.title}</div>
-                      <div className="text-[11px] text-slate-400">{ach.description}</div>
+                      <div className="text-xs font-semibold text-slate-900 dark:text-amber-100">
+                        {ach.title}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {ach.description}
+                      </div>
                     </div>
-                    <span className="text-[10px] text-slate-500 shrink-0">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
                       {new Date(ach.unlockedAt).toLocaleDateString()}
                     </span>
                   </div>
@@ -504,13 +517,13 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
             )}
           </section>
 
-          <section className="rounded-3xl bg-slate-900/85 border border-indigo-300/20 p-5 space-y-3">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-sky-300" />
+          <section className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 space-y-3 shadow-xs">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Clock className="w-4 h-4 text-blue-600 dark:text-sky-300" />
               <span>Recent Companion Activity</span>
             </h2>
             {progress.interactionHistory.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400 py-4">
                 Your recent mini-game finishes and playful interactions will appear here.
               </p>
             ) : (
@@ -518,10 +531,12 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                 {progress.interactionHistory.slice(0, 8).map((entry) => (
                   <div
                     key={entry.id}
-                    className="px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10 flex items-center justify-between gap-2 text-xs"
+                    className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-xs"
                   >
-                    <span className="text-slate-200 truncate">{entry.label}</span>
-                    <span className="text-sky-300 font-semibold tabular-nums shrink-0">
+                    <span className="text-slate-700 dark:text-slate-200 truncate">
+                      {entry.label}
+                    </span>
+                    <span className="text-blue-700 dark:text-sky-300 font-semibold tabular-nums shrink-0">
                       +{entry.xpEarned} XP
                     </span>
                   </div>
