@@ -34,6 +34,13 @@ export const MessageList: React.FC<MessageListProps> = ({
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const speakRequestIdRef = React.useRef<number>(0);
+
+  React.useEffect(() => {
+    return () => {
+      speakRequestIdRef.current += 1;
+    };
+  }, []);
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -43,15 +50,18 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   const handleSpeak = async (id: string, text: string) => {
     if (speakingMessageId === id) {
+      speakRequestIdRef.current += 1;
       speechService.stopSpeaking();
       setSpeakingMessageId(null);
       return;
     }
 
+    const reqId = ++speakRequestIdRef.current;
     speechService.stopSpeaking();
     setSpeakingMessageId(id);
 
     const onFinish = () => {
+      if (speakRequestIdRef.current !== reqId) return;
       setSpeakingMessageId(null);
     };
 
@@ -61,20 +71,24 @@ export const MessageList: React.FC<MessageListProps> = ({
           text,
           voice: settings.selectedVoice || 'Kore',
         });
+        if (speakRequestIdRef.current !== reqId) return;
         if (res.audioBase64) {
           await speechService.playWavAudio(res.audioBase64, onFinish, () => {
+            if (speakRequestIdRef.current !== reqId) return;
             speechService.speakWithBrowserTTS(text, settings.language, settings.speechRate, onFinish);
           });
           return;
         }
       } catch (e) {
+        if (speakRequestIdRef.current !== reqId) return;
         console.warn('TTS playback error:', e);
       }
     }
 
+    if (speakRequestIdRef.current !== reqId) return;
     speechService.speakWithBrowserTTS(
       text,
-      settings.language === 'hi' ? 'hi-IN' : 'en-IN',
+      settings.language,
       settings.speechRate,
       onFinish
     );

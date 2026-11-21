@@ -16,6 +16,7 @@
     "@react-three/drei": "^10",
     "@react-three/fiber": "^9",
     "@tailwindcss/vite": "^4.3.3",
+    "@three-ws/avatar": "^0.2.3",
     "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",

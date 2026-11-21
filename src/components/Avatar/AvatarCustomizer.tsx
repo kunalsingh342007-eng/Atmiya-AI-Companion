@@ -1,27 +1,36 @@
 import React from 'react';
-import { AvatarAppearanceConfig } from '../../types/companion';
+import {
+  AVATAR_EMOTIONS,
+  AVATAR_EMOTION_LABELS,
+  AvatarAppearanceConfig,
+  RoomConfig,
+} from '../../types/companion';
 import { GlbInspectionReport } from './RealisticAvatar';
-import { Palette, Sparkles, Box, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
+import { Palette, Sparkles, Box, Image as ImageIcon, CheckCircle2, Sun, Moon } from 'lucide-react';
 
 interface AvatarCustomizerProps {
   config: AvatarAppearanceConfig;
+  roomConfig?: RoomConfig;
   onChange: (newConfig: AvatarAppearanceConfig) => void;
+  onChangeRoom?: (newRoom: RoomConfig) => void;
   isOpen: boolean;
   onClose: () => void;
   glbInspection?: GlbInspectionReport | null;
 }
 
 const ACCENT_COLORS = [
-  { label: 'Violet (वायलेट)', value: '#8b5cf6' },
-  { label: 'Cyan (स्यान)', value: '#06b6d4' },
-  { label: 'Rose (गुलाबी)', value: '#ec4899' },
-  { label: 'Amber (सुनहरा)', value: '#f59e0b' },
-  { label: 'Emerald (पन्ना)', value: '#10b981' },
+  { label: 'Violet', value: '#8b5cf6' },
+  { label: 'Cyan', value: '#06b6d4' },
+  { label: 'Rose', value: '#ec4899' },
+  { label: 'Amber', value: '#f59e0b' },
+  { label: 'Emerald', value: '#10b981' },
 ];
 
 export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
   config,
+  roomConfig = { environment: 'sunlit-study', lightingMood: 'natural' },
   onChange,
+  onChangeRoom,
   isOpen,
   onClose,
   glbInspection,
@@ -29,6 +38,7 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
   if (!isOpen) return null;
 
   const activeType = config.avatarType || '3d-glb';
+  const activeRoom = roomConfig.environment || 'sunlit-study';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
@@ -38,11 +48,13 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
           <div className="flex items-center gap-2.5">
             <Palette className="w-5 h-5 text-violet-400" />
             <h3 className="text-lg font-semibold tracking-wide">
-              Companion Avatar & Appearance (अवतार सेटिंग्स)
+              Room & Companion Settings
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close room and companion settings"
             className="text-slate-400 hover:text-slate-200 text-sm px-2 py-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
           >
             ✕
@@ -50,6 +62,66 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
         </div>
 
         <div className="mt-5 space-y-6">
+          {/* Room Atmosphere Selector */}
+          {onChangeRoom && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Virtual Room Atmosphere
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeRoom({ environment: 'sunlit-study', lightingMood: 'natural' })
+                  }
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                    activeRoom === 'sunlit-study'
+                      ? 'border-amber-400/70 bg-amber-950/30 text-amber-50'
+                      : 'border-slate-800 bg-slate-950/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-semibold text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Sun className="w-4 h-4 text-amber-300" />
+                      Sunlit Sage Study
+                    </span>
+                    {activeRoom === 'sunlit-study' && (
+                      <CheckCircle2 className="w-4 h-4 text-amber-300" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Warm daylight window, sage walls, cream bedding, oak bookshelf.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeRoom({ environment: 'evening-lounge', lightingMood: 'soft-evening' })
+                  }
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                    activeRoom === 'evening-lounge'
+                      ? 'border-violet-400/70 bg-violet-950/40 text-violet-50'
+                      : 'border-slate-800 bg-slate-950/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-semibold text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Moon className="w-4 h-4 text-violet-300" />
+                      Evening Lamp Lounge
+                    </span>
+                    {activeRoom === 'evening-lounge' && (
+                      <CheckCircle2 className="w-4 h-4 text-violet-300" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Cozy twilight window, warm bedside lamp glow, muted blue accents.
+                  </p>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Avatar Mode Selector: 3D GLB vs 2D Custom Portrait */}
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
@@ -116,7 +188,7 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
 
           {/* Live GLB Inspection Summary (when a GLB model is loaded) */}
           {glbInspection && (
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-1.5">
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-2.5">
               <div className="font-semibold text-emerald-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Inspected GLB Asset ({glbInspection.modelUrl})
@@ -126,14 +198,47 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
                 <div>Bones: {glbInspection.bones.length}</div>
                 <div>Clips: {glbInspection.animations.length}</div>
                 <div>Morphs: {glbInspection.morphTargets.length}</div>
+                <div>Blinking: {glbInspection.capabilities.hasBlinking ? 'Detected' : 'Missing'}</div>
+                <div>
+                  Speech Mouth:{' '}
+                  {glbInspection.capabilities.hasSpeechMorphs
+                    ? 'Morphs'
+                    : glbInspection.capabilities.hasJawBone
+                    ? 'Jaw Bone'
+                    : 'Missing'}
+                </div>
+                <div>Eye Gaze Bones: {glbInspection.capabilities.hasEyeBones ? 'Detected' : 'Missing'}</div>
+                <div>Head/Neck Rig: {glbInspection.capabilities.hasHeadNeckBones ? 'Detected' : 'Missing'}</div>
               </div>
               <div className="text-[11px] text-slate-400">
-                Idle clip: {glbInspection.activeIdleClip || 'None found (static pose)'}
+                Idle clip: {glbInspection.activeIdleClip || 'None found'}
                 {' • '}
                 Speech morphs:{' '}
-                {glbInspection.hasFacialControls
+                {glbInspection.activeSpeechMorphs.length > 0
                   ? glbInspection.activeSpeechMorphs.join(', ')
-                  : 'None detected in GLB'}
+                  : 'None detected'}
+              </div>
+              <div className="pt-1 border-t border-slate-800/80">
+                <div className="text-[11px] font-medium text-slate-300 mb-1.5">
+                  Supported Expressions ({AVATAR_EMOTIONS.filter((e) => glbInspection.supportedExpressions[e]).length}/{AVATAR_EMOTIONS.length})
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {AVATAR_EMOTIONS.map((expr) => {
+                    const ok = glbInspection.supportedExpressions[expr];
+                    return (
+                      <span
+                        key={expr}
+                        className={`px-1.5 py-0.5 rounded text-[10px] border ${
+                          ok
+                            ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200'
+                            : 'bg-slate-900 border-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {AVATAR_EMOTION_LABELS[expr]}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -181,14 +286,16 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
           {/* Animation & Lip-Sync Architectural Transparency */}
           <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-400 space-y-2 leading-relaxed">
             <span className="font-semibold text-violet-300 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-violet-400" /> 3D Rigging & Lip-Sync Behavior
+              <Sparkles className="w-3.5 h-3.5 text-violet-400" /> 3D Rigging & Expression Requirements
             </span>
             <p className="text-[11px] text-slate-300">
-              Ātmiya inspects the GLB asset at runtime for real animation clips and speech morph
-              targets (e.g., <code className="text-violet-300">jawOpen</code>,{' '}
-              <code className="text-violet-300">viseme_aa</code>). If the GLB has no facial morph
-              targets, lip-sync is not faked and the avatar uses state-driven lighting and fallback
-              portrait framing cleanly.
+              Place a rigged <code className="text-violet-300">.glb</code> avatar with ARKit / Ready
+              Player Me facial blendshapes (e.g. <code className="text-violet-300">jawOpen</code>,{' '}
+              <code className="text-violet-300">eyeBlinkLeft</code>,{' '}
+              <code className="text-violet-300">mouthSmileLeft</code>,{' '}
+              <code className="text-violet-300">browInnerUp</code>) and humanoid bones at{' '}
+              <code className="text-violet-300">public/models/atmiya-avatar.glb</code>. Unsupported
+              morphs are reported honestly rather than faked.
             </p>
           </div>
         </div>

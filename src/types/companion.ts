@@ -1,27 +1,72 @@
 export type CompanionLanguage = 'auto' | 'hi' | 'hinglish' | 'en';
 
-export type CompanionPersonality = 
-  | 'calm' 
-  | 'friendly' 
-  | 'reflective' 
-  | 'study' 
+export type CompanionPersonality =
+  | 'calm'
+  | 'friendly'
+  | 'reflective'
+  | 'study'
   | 'creative';
 
-export type AvatarState = 
-  | 'idle' 
-  | 'listening' 
-  | 'thinking' 
-  | 'speaking' 
-  | 'interrupted' 
-  | 'connecting' 
+export type AvatarState =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'interrupted'
+  | 'connecting'
   | 'error';
 
-export type MemoryCategory = 
-  | 'language' 
-  | 'preference' 
-  | 'project' 
-  | 'learning_goal' 
-  | 'fact' 
+export const AVATAR_EMOTIONS = [
+  'neutral',
+  'happy',
+  'smile',
+  'laughing',
+  'sad',
+  'thinking',
+  'confused',
+  'surprised',
+  'curious',
+  'worried',
+  'empathetic',
+  'excited',
+  'calm',
+  'disappointed',
+  'winking',
+  'talking',
+] as const;
+
+export type AvatarEmotion = (typeof AVATAR_EMOTIONS)[number];
+
+export const AVATAR_EMOTION_LABELS: Record<AvatarEmotion, string> = {
+  neutral: 'Neutral / Listening',
+  happy: 'Happy',
+  smile: 'Natural Smile',
+  laughing: 'Laughing',
+  sad: 'Sad',
+  thinking: 'Thinking',
+  confused: 'Confused',
+  surprised: 'Surprised',
+  curious: 'Curious',
+  worried: 'Worried',
+  empathetic: 'Empathetic',
+  excited: 'Excited',
+  calm: 'Calm',
+  disappointed: 'Disappointed',
+  winking: 'Winking',
+  talking: 'Talking',
+};
+
+export interface EmotionMetadata {
+  emotion: AvatarEmotion;
+  intensity: number;
+}
+
+export type MemoryCategory =
+  | 'language'
+  | 'preference'
+  | 'project'
+  | 'learning_goal'
+  | 'fact'
   | 'custom';
 
 export interface UserMemory {
@@ -40,6 +85,8 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   detectedLanguage?: string;
+  emotion?: AvatarEmotion;
+  emotionIntensity?: number;
   audioUrl?: string;
   isVoiceInput?: boolean;
 }
@@ -54,14 +101,66 @@ export interface ConversationSession {
   language: CompanionLanguage;
 }
 
+export type ActiveNavTab = 'home' | 'play' | 'wardrobe' | 'memories' | 'settings';
+
+export type RoomEnvironmentId =
+  | 'sunlit-study'
+  | 'evening-lounge'
+  | 'indigo-loft'
+  | 'cream-solarium';
+
+export type PortraitAccessoryId =
+  | 'none'
+  | 'lotus-pin'
+  | 'star-clip'
+  | 'glasses-frame';
+
+export interface RoomConfig {
+  environment: RoomEnvironmentId;
+  lightingMood: 'natural' | 'warm' | 'soft-evening';
+}
+
+export type MicPermissionStatus = 'granted' | 'denied' | 'prompt' | 'unsupported' | 'unknown';
+
+export type GameId = 'memory-match' | 'quick-quiz' | 'pattern-match';
+
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  unlockedAt: number;
+}
+
+export interface InteractionHistoryEntry {
+  id: string;
+  label: string;
+  xpEarned: number;
+  timestamp: number;
+}
+
+export interface GameProgress {
+  xp: number;
+  gamesCompleted: number;
+  bestScores: Partial<Record<GameId, number>>;
+  achievements: Achievement[];
+  unlockedRoomIds: RoomEnvironmentId[];
+  interactionHistory: InteractionHistoryEntry[];
+}
+
 export interface AvatarAppearanceConfig {
   genderVibe: 'female' | 'male' | 'androgynous';
   personaName: string;
-  accentColor: string; // e.g. violet, cyan, amber, emerald
+  accentColor: string;
   clothingStyle: 'modern-casual' | 'traditional-kurta' | 'tech-hoodie';
-  avatarType?: '3d-glb' | 'custom-image' | 'vector';
+  outfitColor?: string;
+  outfitStyleLabel?: string;
+  accessory?: PortraitAccessoryId;
+  avatarType?: 'three-ws' | '3d-glb' | 'custom-image' | 'vector';
   customImagePath?: string;
   glbModelPath?: string;
+  threeWsAvatarId?: string;
+  threeWsModelUrl?: string;
+  threeWsMigrated?: boolean;
 }
 
 export interface CompanionSettings {
@@ -69,12 +168,13 @@ export interface CompanionSettings {
   language: CompanionLanguage;
   personality: CompanionPersonality;
   voiceEngine: 'gemini-native' | 'browser-tts' | 'none';
-  selectedVoice: string; // e.g. Kore, Puck, Fenrir, Zephyr, Charon or browser voice
-  speechRate: number; // 0.8 to 1.3
+  selectedVoice: string;
+  speechRate: number;
   autoSpeakResponse: boolean;
-  handsFreeMode: boolean; // Auto-listen after speech finishes
+  handsFreeMode: boolean;
   memoryEnabled: boolean;
   avatarConfig: AvatarAppearanceConfig;
+  roomConfig?: RoomConfig;
   theme: 'dark' | 'midnight' | 'warm-charcoal';
 }
 

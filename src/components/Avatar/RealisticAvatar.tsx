@@ -3,9 +3,33 @@ import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, useGLTF } from '@react-three/drei';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { AvatarAppearanceConfig, AvatarState } from '../../types/companion';
-import { CompanionAvatar, CompanionEmotion } from './CompanionAvatar';
-import { AlertCircle, Loader2, Mic, RefreshCw, Sparkles, Volume2 } from 'lucide-react';
+import {
+  AVATAR_EMOTIONS,
+  AVATAR_EMOTION_LABELS,
+  AvatarAppearanceConfig,
+  AvatarEmotion,
+  AvatarState,
+} from '../../types/companion';
+import { CompanionAvatar } from './CompanionAvatar';
+import {
+  clearAllRigMorphs,
+  createRigRuntime,
+  inspectGlbRig,
+  RigCapabilities,
+  updateExpressionRig,
+} from './expressionRig';
+import {
+  AlertCircle,
+  Loader2,
+  Mic,
+  PauseCircle,
+  RefreshCw,
+  RotateCcw,
+  Smile,
+  Sparkles,
+  Volume2,
+  X,
+} from 'lucide-react';
 
 export interface GlbInspectionReport {
   modelUrl: string;
@@ -16,18 +40,26 @@ export interface GlbInspectionReport {
   morphTargets: string[];
   activeIdleClip: string | null;
   activeSpeechMorphs: string[];
+  activeBlinkMorphs: string[];
   hasFacialControls: boolean;
+  capabilities: RigCapabilities;
+  supportedExpressions: Record<AvatarEmotion, boolean>;
   boundingSize: [number, number, number];
 }
 
 interface RealisticAvatarProps {
+  stageVariant?: 'circle' | 'immersive';
   state: AvatarState;
-  emotion?: CompanionEmotion;
+  emotion?: AvatarEmotion;
+  emotionIntensity?: number;
+  previewEmotion?: AvatarEmotion | null;
+  onSelectPreviewEmotion?: (emotion: AvatarEmotion | null) => void;
   audioLevel?: number;
   config?: AvatarAppearanceConfig;
   onInterrupt?: () => void;
   onTapAvatar?: () => void;
   onInspectionComplete?: (report: GlbInspectionReport) => void;
+  onOpenCustomize?: () => void;
   className?: string;
 }
 
@@ -48,7 +80,6 @@ const detectSoftwareWebGL = (): boolean => {
   }
 };
 
-// ErrorBoundary to catch Three.js / GLTFLoader / WebGL errors cleanly
 interface ErrorBoundaryState {
   hasError: boolean;
   errorMessage: string;
@@ -98,23 +129,11 @@ const StudioEnvironment: React.FC = () => {
   return null;
 };
 
-// Known speech-related morph target names checked ONLY against actual morphTargetDictionary keys
-const CANDIDATE_SPEECH_MORPHS = [
-  'jawOpen',
-  'mouthOpen',
-  'viseme_aa',
-  'viseme_O',
-  'viseme_E',
-  'viseme_PP',
-  'A',
-  'O',
-  'mouth_open',
-  'JawOpen',
-];
-
 interface GlbModelSceneProps {
   modelUrl: string;
   state: AvatarState;
+  emotion: AvatarEmotion;
+  emotionIntensity: number;
   audioLevel: number;
   prefersReducedMotion: boolean;
   onInspected: (report: GlbInspectionReport) => void;
@@ -124,6 +143,8 @@ interface GlbModelSceneProps {
 const GlbModelScene: React.FC<GlbModelSceneProps> = ({
   modelUrl,
   state,
+  emotion,
+  emotionIntensity,
   audioLevel,
   prefersReducedMotion,
   onInspected,
@@ -132,10 +153,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
   const gltf = useGLTF(modelUrl);
   const rootRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
-  const idleActionRef = useRef<THREE.AnimationAction | null>(null);
-  const morphMeshesRef = useRef<{ mesh: THREE.Mesh; indices: number[] }[]>([]);
-  const smoothedTiltX = useRef(0);
-  const smoothedTiltZ = useRef(0);
+  const rigRuntimeRef = useRef(createRigRuntime());
 
   // Measure actual GLB bounding box, inspect bones/clips/morphs, and calibrate framing
   const modelMetrics = useMemo(() => {
@@ -145,8 +163,6 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
     const meshes: string[] = [];
     const materialsSet = new Set<string>();
     const bonesSet = new Set<string>();
-    const morphTargetsSet = new Set<string>();
-    const detectedMorphMeshes: { mesh: THREE.Mesh; indices: number[] }[] = [];
 
     sceneRoot.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
@@ -170,25 +186,12 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
             if (b.name) bonesSet.add(b.name);
           });
         }
-
-        if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-          const keys = Object.keys(mesh.morphTargetDictionary);
-          const matchedIndices: number[] = [];
-          keys.forEach((k) => {
-            morphTargetsSet.add(k);
-            if (CANDIDATE_SPEECH_MORPHS.includes(k)) {
-              const idx = mesh.morphTargetDictionary![k];
-              if (typeof idx === 'number') matchedIndices.push(idx);
-            }
-          });
-          if (matchedIndices.length > 0) {
-            detectedMorphMeshes.push({ mesh, indices: matchedIndices });
-          }
-        }
       }
     });
 
-    // Compute raw bounding box without assuming units or orientation
+    const rig = inspectGlbRig(sceneRoot);
+
+    // Compute raw bounding box without assuming units
     const rawBox = new THREE.Box3().setFromObject(sceneRoot);
     const rawSize = new THREE.Vector3();
     const rawCenter = new THREE.Vector3();
@@ -201,13 +204,12 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
     const normWidth = Math.max(rawSize.x, rawSize.z) * normScale;
     const aspectRatio = normHeight / Math.max(normWidth, 0.001);
 
-    // Offset so normalized model sits centered horizontally at x=0, z=0 and bottom at y=-1
+    // Offset so normalized model sits centered horizontally at x=0, z=0
     const offsetX = -rawCenter.x * normScale;
     const offsetY = -rawBox.min.y * normScale - normHeight / 2;
     const offsetZ = -rawCenter.z * normScale;
 
-    // Frame portrait for video-call view:
-    // Tall full-body humanoid -> frame upper chest & head; bust/head -> frame center
+    // Frame front-facing head-and-shoulders video-call composition
     const isFullBody = aspectRatio > 1.8;
     const targetY = isFullBody ? normHeight * 0.28 : 0.0;
     const cameraY = isFullBody ? normHeight * 0.30 : 0.05;
@@ -218,20 +220,19 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
       clips.find((c) => /idle|breath|stand/i.test(c.name)) ||
       (clips.length > 0 ? clips[0] : null);
 
-    const speechMorphNames = Array.from(morphTargetsSet).filter((k) =>
-      CANDIDATE_SPEECH_MORPHS.includes(k)
-    );
-
     const report: GlbInspectionReport = {
       modelUrl,
       meshes,
       materials: Array.from(materialsSet),
       bones: Array.from(bonesSet),
       animations: clips.map((c) => ({ name: c.name || 'UnnamedClip', duration: c.duration })),
-      morphTargets: Array.from(morphTargetsSet),
+      morphTargets: Array.from(rig.availableMorphKeys),
       activeIdleClip: idleClip ? idleClip.name || 'Clip[0]' : null,
-      activeSpeechMorphs: speechMorphNames,
-      hasFacialControls: speechMorphNames.length > 0,
+      activeSpeechMorphs: rig.activeSpeechMorphs,
+      activeBlinkMorphs: rig.activeBlinkMorphs,
+      hasFacialControls: rig.capabilities.hasSpeechMorphs || rig.capabilities.hasExpressionMorphs,
+      capabilities: rig.capabilities,
+      supportedExpressions: rig.supportedExpressions,
       boundingSize: [
         Number(rawSize.x.toFixed(3)),
         Number(rawSize.y.toFixed(3)),
@@ -245,14 +246,13 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
       targetY,
       cameraY,
       cameraZ,
-      detectedMorphMeshes,
+      rig,
       idleClip,
       report,
     };
   }, [gltf, modelUrl]);
 
   useEffect(() => {
-    morphMeshesRef.current = modelMetrics.detectedMorphMeshes;
     onInspected(modelMetrics.report);
     onFramingReady(modelMetrics.targetY, modelMetrics.cameraZ, modelMetrics.cameraY);
   }, [modelMetrics, onInspected, onFramingReady]);
@@ -262,7 +262,6 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
     const sceneRoot = gltf.scene;
     if (!modelMetrics.idleClip) {
       mixerRef.current = null;
-      idleActionRef.current = null;
       return;
     }
 
@@ -270,69 +269,49 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
     const action = mixer.clipAction(modelMetrics.idleClip);
     action.setEffectiveTimeScale(0.85);
     action.play();
-
     mixerRef.current = mixer;
-    idleActionRef.current = action;
 
     return () => {
       action.stop();
       mixer.stopAllAction();
       mixer.uncacheRoot(sceneRoot);
       mixerRef.current = null;
-      idleActionRef.current = null;
     };
   }, [gltf.scene, modelMetrics.idleClip]);
 
-  // Immediately clear speaking morph targets when interrupted or leaving speaking state
+  // Immediately clear speaking mouth/jaw targets when interrupted or leaving speaking state
   useEffect(() => {
-    if (state !== 'speaking') {
-      morphMeshesRef.current.forEach(({ mesh, indices }) => {
-        if (!mesh.morphTargetInfluences) return;
-        indices.forEach((idx) => {
-          mesh.morphTargetInfluences![idx] = 0;
-        });
-      });
+    if (state === 'interrupted' || state === 'error') {
+      clearAllRigMorphs(modelMetrics.rig);
     }
-  }, [state]);
+  }, [state, modelMetrics.rig]);
 
-  // Per-frame update: mixer + gentle damped posture + real morph targets (if GLB has them)
-  useFrame((_, rawDelta) => {
+  // Per-frame update: mixer + blinking + gaze + breathing + 16-expression morph/bone rig
+  useFrame((frameState, rawDelta) => {
     const delta = Math.min(rawDelta, 0.1);
 
     if (mixerRef.current && !prefersReducedMotion) {
       mixerRef.current.update(delta);
     }
 
-    // Drive ONLY actually detected morph targets when speaking
-    if (morphMeshesRef.current.length > 0) {
-      const targetWeight = state === 'speaking' ? Math.min(0.85, audioLevel * 1.1) : 0;
-      morphMeshesRef.current.forEach(({ mesh, indices }) => {
-        if (!mesh.morphTargetInfluences) return;
-        indices.forEach((idx) => {
-          mesh.morphTargetInfluences![idx] = THREE.MathUtils.damp(
-            mesh.morphTargetInfluences![idx] || 0,
-            targetWeight,
-            14,
-            delta
-          );
-        });
-      });
-    }
-
-    // Subtle damped posture feedback for listening/thinking/idle without shaking the face
-    if (rootRef.current && !prefersReducedMotion) {
-      const desiredTiltZ = state === 'listening' ? 0.03 : 0;
-      const desiredTiltX = state === 'thinking' ? -0.035 : 0;
-      smoothedTiltZ.current = THREE.MathUtils.damp(smoothedTiltZ.current, desiredTiltZ, 6, delta);
-      smoothedTiltX.current = THREE.MathUtils.damp(smoothedTiltX.current, desiredTiltX, 6, delta);
-      rootRef.current.rotation.z = smoothedTiltZ.current;
-      rootRef.current.rotation.x = smoothedTiltX.current;
-    }
+    updateExpressionRig({
+      rig: modelMetrics.rig,
+      runtime: rigRuntimeRef.current,
+      rootGroup: rootRef.current,
+      state,
+      emotion,
+      emotionIntensity,
+      audioLevel,
+      prefersReducedMotion,
+      elapsed: frameState.clock.elapsedTime,
+      delta,
+    });
   });
 
-  // Dispose geometries/materials/textures cleanly on full unmount
+  // Dispose geometries/materials cleanly and clear useGLTF cache so remounting reloads valid GPU buffers
   useEffect(() => {
     return () => {
+      clearAllRigMorphs(modelMetrics.rig);
       gltf.scene.traverse((obj) => {
         if ((obj as THREE.Mesh).isMesh) {
           const mesh = obj as THREE.Mesh;
@@ -341,8 +320,9 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
           mats.forEach((m) => m?.dispose());
         }
       });
+      useGLTF.clear(modelUrl);
     };
-  }, [gltf.scene]);
+  }, [gltf.scene, modelUrl, modelMetrics.rig]);
 
   return (
     <group ref={rootRef}>
@@ -355,21 +335,28 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = ({
   );
 };
 
-const CameraRig: React.FC<{ targetY: number; cameraZ: number; cameraY: number }> = ({
-  targetY,
-  cameraZ,
-  cameraY,
-}) => {
+const CameraRig: React.FC<{
+  targetY: number;
+  cameraZ: number;
+  cameraY: number;
+  resetTrigger: number;
+}> = ({ targetY, cameraZ, cameraY, resetTrigger }) => {
   const { camera } = useThree();
+  const controlsRef = useRef<any>(null);
 
   useEffect(() => {
     camera.position.set(0, cameraY, cameraZ);
     camera.lookAt(0, targetY, 0);
     camera.updateProjectionMatrix();
-  }, [camera, targetY, cameraZ, cameraY]);
+    if (controlsRef.current) {
+      controlsRef.current.target.set(0, targetY, 0);
+      controlsRef.current.update();
+    }
+  }, [camera, targetY, cameraZ, cameraY, resetTrigger]);
 
   return (
     <OrbitControls
+      ref={controlsRef}
       target={[0, targetY, 0]}
       enablePan={false}
       enableZoom={true}
@@ -383,28 +370,127 @@ const CameraRig: React.FC<{ targetY: number; cameraZ: number; cameraY: number }>
   );
 };
 
+interface ExpressionPreviewDrawerProps {
+  activeEmotion: AvatarEmotion;
+  previewEmotion: AvatarEmotion | null;
+  supportedExpressions?: Record<AvatarEmotion, boolean>;
+  hasGlbLoaded: boolean;
+  onSelect: (emotion: AvatarEmotion | null) => void;
+  onClose: () => void;
+}
+
+const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
+  activeEmotion,
+  previewEmotion,
+  supportedExpressions,
+  hasGlbLoaded,
+  onSelect,
+  onClose,
+}) => (
+  <div className="mt-3 w-full max-w-md rounded-2xl bg-slate-900/95 border border-slate-700/80 p-3 shadow-2xl backdrop-blur-md text-left">
+    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-200">
+        <Smile className="w-3.5 h-3.5 text-violet-400" />
+        <span>Expression Preview (16 States)</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {previewEmotion && (
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            className="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
+          >
+            Auto
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+          aria-label="Close expression preview"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+
+    <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+      {AVATAR_EMOTIONS.map((expr) => {
+        const isActive = (previewEmotion ?? activeEmotion) === expr;
+        const isSupportedInGlb = Boolean(hasGlbLoaded && supportedExpressions?.[expr]);
+        return (
+          <button
+            key={expr}
+            type="button"
+            onClick={() => onSelect(previewEmotion === expr ? null : expr)}
+            className={`px-2 py-1.5 rounded-lg border text-[11px] text-left transition cursor-pointer flex items-center justify-between gap-1 ${
+              isActive
+                ? 'border-violet-400 bg-violet-600/30 text-white font-semibold'
+                : 'border-slate-800 bg-slate-950/70 text-slate-300 hover:border-slate-700'
+            }`}
+            title={
+              hasGlbLoaded
+                ? isSupportedInGlb
+                  ? 'Supported by loaded 3D GLB morph/rig'
+                  : 'Not supported by loaded 3D GLB morph targets'
+                : 'No 3D GLB loaded yet (previewing fallback state only)'
+            }
+          >
+            <span className="truncate">{AVATAR_EMOTION_LABELS[expr]}</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                !hasGlbLoaded
+                  ? 'bg-amber-400/70'
+                  : isSupportedInGlb
+                  ? 'bg-emerald-400'
+                  : 'bg-slate-600'
+              }`}
+            />
+          </button>
+        );
+      })}
+    </div>
+
+    <p className="mt-2 text-[10px] text-slate-400 leading-snug">
+      {hasGlbLoaded
+        ? 'Green dot = morphs/bones detected on loaded GLB. Gray dot = requires additional blendshapes on the model.'
+        : 'Amber dot = no 3D GLB model loaded at /models/atmiya-avatar.glb yet (preview applies 2D aura/posture fallback).'}
+    </p>
+  </div>
+);
+
 export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
+  stageVariant = 'circle',
   state,
   emotion = 'neutral',
+  emotionIntensity = 0.7,
+  previewEmotion = null,
+  onSelectPreviewEmotion,
   audioLevel = 0,
   config,
   onInterrupt,
   onTapAvatar,
   onInspectionComplete,
+  onOpenCustomize,
   className = '',
 }) => {
   const modelUrl = config?.glbModelPath || '/models/atmiya-avatar.glb';
+  const isImmersive = stageVariant === 'immersive';
 
   const [assetStatus, setAssetStatus] = useState<'checking' | 'ready' | 'missing' | 'error'>('checking');
   const [errorReason, setErrorReason] = useState<string>('');
   const [inspection, setInspection] = useState<GlbInspectionReport | null>(null);
   const [framing, setFraming] = useState({ targetY: 0.45, cameraZ: 1.25, cameraY: 0.48 });
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [isTabHidden, setIsTabHidden] = useState(false);
   const [retryCounter, setRetryCounter] = useState(0);
+  const [resetCameraTrigger, setResetCameraTrigger] = useState(0);
+  const [isExpressionPanelOpen, setIsExpressionPanelOpen] = useState(false);
+  const [contextLost, setContextLost] = useState(false);
 
   const isSoftwareGl = useMemo(() => detectSoftwareWebGL(), []);
+  const effectiveEmotion = previewEmotion ?? emotion;
 
-  // Respect prefers-reduced-motion
   useEffect(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
       const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -413,6 +499,14 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
       mq.addEventListener('change', listener);
       return () => mq.removeEventListener('change', listener);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisibilityChange = () => setIsTabHidden(document.hidden);
+    setIsTabHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 
   // Preflight check so missing /models/atmiya-avatar.glb (or SPA HTML fallback) fails cleanly & immediately
@@ -428,11 +522,10 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
         if (!res.ok || contentType.includes('text/html')) {
           setAssetStatus('missing');
           setErrorReason(
-            `3D model not found at ${modelUrl}. Place your GLB file at public${modelUrl} to enable the 3D avatar.`
+            `3D GLB not found at ${modelUrl}.`
           );
           return;
         }
-        // Verify binary glTF magic header ("glTF") when partial/full bytes returned
         const buf = await res.arrayBuffer();
         if (cancelled) return;
         const header = new Uint8Array(buf.slice(0, 4));
@@ -457,6 +550,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
 
   const handleRetry = () => {
     useGLTF.clear(modelUrl);
+    setContextLost(false);
     setRetryCounter((c) => c + 1);
   };
 
@@ -476,56 +570,122 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
     }
   }, [state, config?.accentColor]);
 
-  // Fallback to existing portrait avatar cleanly when GLB is missing or errors
-  if (assetStatus === 'missing' || assetStatus === 'error') {
+  // Fallback to 2D portrait avatar cleanly when GLB is missing, errors, or WebGL context drops
+  if (assetStatus === 'missing' || assetStatus === 'error' || contextLost) {
     return (
       <div className={`relative flex flex-col items-center ${className}`}>
         <CompanionAvatar
+          stageVariant={stageVariant}
           state={state}
-          emotion={emotion}
+          emotion={effectiveEmotion}
+          emotionIntensity={emotionIntensity}
           audioLevel={audioLevel}
           config={config}
           onInterrupt={onInterrupt}
           onTapAvatar={onTapAvatar}
         />
-        <div className="mt-3 max-w-md px-3.5 py-2 rounded-xl bg-slate-900/90 border border-amber-500/40 text-[11px] text-amber-200 flex items-center gap-2 shadow-lg">
-          <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <span className="flex-1 text-left">
-            {errorReason} Using 2D portrait fallback.
-          </span>
-          <button
-            onClick={handleRetry}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-100 font-medium transition cursor-pointer shrink-0"
-            title="Retry loading 3D GLB model"
-          >
-            <RefreshCw className="w-3 h-3" />
-            Retry
-          </button>
-        </div>
+
+        {isImmersive ? (
+          <div className="mt-1.5 px-3 py-1 rounded-xl bg-slate-950/60 border border-white/10 backdrop-blur-md text-[11px] text-slate-200/90 flex items-center gap-2">
+            <span>2D Portrait Fallback (No GLB)</span>
+            <span className="text-slate-500" aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="text-amber-200 hover:text-white underline cursor-pointer whitespace-nowrap"
+              title={errorReason}
+            >
+              Retry GLB
+            </button>
+            {onOpenCustomize && (
+              <>
+                <span className="text-slate-500" aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={onOpenCustomize}
+                  className="text-violet-200 hover:text-white underline cursor-pointer whitespace-nowrap"
+                >
+                  Details
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="mt-3 max-w-md px-3.5 py-2 rounded-xl bg-slate-900/90 border border-amber-500/40 text-[11px] text-amber-200 flex items-center gap-2 shadow-lg">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="flex-1 text-left">
+              {errorReason} Using 2D portrait fallback.
+            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onSelectPreviewEmotion && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpressionPanelOpen((v) => !v)}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition cursor-pointer"
+                  title="Preview 16 expressions"
+                >
+                  <Smile className="w-3 h-3" />
+                  Expressions
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-100 font-medium transition cursor-pointer"
+                title="Retry loading 3D GLB model"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isExpressionPanelOpen && onSelectPreviewEmotion && (
+          <ExpressionPreviewDrawer
+            activeEmotion={emotion}
+            previewEmotion={previewEmotion}
+            hasGlbLoaded={false}
+            onSelect={onSelectPreviewEmotion}
+            onClose={() => setIsExpressionPanelOpen(false)}
+          />
+        )}
       </div>
     );
   }
 
+  const pauseContinuousLoop = isTabHidden || (prefersReducedMotion && state === 'idle' && !previewEmotion);
+
+  const stageContainerClasses = isImmersive
+    ? 'relative w-60 h-64 sm:w-80 sm:h-96 md:w-[26rem] md:h-[26rem]'
+    : 'relative w-56 h-56 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-full overflow-hidden border border-white/15 bg-gradient-to-b from-slate-900 via-slate-950 to-indigo-950 shadow-2xl transition-shadow duration-300';
+
   return (
     <div className={`relative flex flex-col items-center justify-center select-none ${className}`}>
-      {/* Video-Call 3D Stage Container */}
+      {/* 3D Stage Container */}
       <div
-        className="relative w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-full overflow-hidden border border-white/15 bg-gradient-to-b from-slate-900 via-slate-950 to-indigo-950 shadow-2xl transition-shadow duration-300"
-        style={{
-          boxShadow:
-            state === 'speaking'
-              ? `0 0 ${24 + audioLevel * 38}px rgba(168, 85, 247, ${0.45 + audioLevel * 0.35})`
-              : state === 'listening'
-              ? '0 0 32px rgba(6, 182, 212, 0.45)'
-              : state === 'thinking'
-              ? '0 0 28px rgba(245, 158, 11, 0.35)'
-              : '0 20px 50px rgba(0, 0, 0, 0.75)',
-        }}
+        className={stageContainerClasses}
+        style={
+          isImmersive
+            ? undefined
+            : {
+                boxShadow:
+                  state === 'speaking'
+                    ? `0 0 ${24 + audioLevel * 38}px rgba(168, 85, 247, ${0.45 + audioLevel * 0.35})`
+                    : state === 'listening'
+                    ? '0 0 32px rgba(6, 182, 212, 0.45)'
+                    : state === 'thinking'
+                    ? '0 0 28px rgba(245, 158, 11, 0.35)'
+                    : '0 20px 50px rgba(0, 0, 0, 0.75)',
+              }
+        }
       >
         {assetStatus === 'checking' ? (
-          <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 gap-2">
-            <Loader2 className="w-7 h-7 text-violet-400 animate-spin" />
-            <span className="text-xs">Loading 3D Avatar...</span>
+          <div className="w-full h-full flex flex-col items-center justify-center text-slate-100 gap-2">
+            <Loader2 className="w-7 h-7 text-amber-200 animate-spin" />
+            <span className="text-xs px-3 py-1 rounded-lg bg-slate-950/60 backdrop-blur-sm">
+              Loading 3D Companion...
+            </span>
           </div>
         ) : (
           <AvatarErrorBoundary
@@ -536,38 +696,54 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
           >
             <Suspense
               fallback={
-                <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 gap-2">
-                  <Loader2 className="w-7 h-7 text-violet-400 animate-spin" />
-                  <span className="text-xs">Preparing 3D Scene...</span>
+                <div className="w-full h-full flex flex-col items-center justify-center text-slate-100 gap-2">
+                  <Loader2 className="w-7 h-7 text-amber-200 animate-spin" />
+                  <span className="text-xs px-3 py-1 rounded-lg bg-slate-950/60 backdrop-blur-sm">
+                    Preparing 3D Scene...
+                  </span>
                 </div>
               }
             >
               <Canvas
+                frameloop={pauseContinuousLoop ? 'demand' : 'always'}
                 dpr={isSoftwareGl ? 1 : [1, 2]}
                 shadows={!isSoftwareGl}
                 camera={{ fov: 35, near: 0.1, far: 50, position: [0, framing.cameraY, framing.cameraZ] }}
                 gl={{
+                  alpha: isImmersive,
                   antialias: !isSoftwareGl,
                   powerPreference: 'high-performance',
                   toneMapping: THREE.ACESFilmicToneMapping,
                   toneMappingExposure: 1.05,
                 }}
+                onCreated={({ gl }) => {
+                  const canvasEl = gl.domElement;
+                  canvasEl.addEventListener('webglcontextlost', (ev) => {
+                    ev.preventDefault();
+                    setContextLost(true);
+                  });
+                  canvasEl.addEventListener('webglcontextrestored', () => {
+                    setContextLost(false);
+                  });
+                }}
                 className="w-full h-full"
               >
                 <StudioEnvironment />
-                <hemisphereLight args={['#dbeafe', '#1e1b4b', 0.55]} />
+                <hemisphereLight args={['#fef3c7', '#1e1b4b', 0.6]} />
                 <directionalLight
                   position={[2.5, 3.5, 3]}
-                  intensity={1.5}
+                  intensity={1.45}
                   color="#fff5eb"
                   castShadow={!isSoftwareGl}
                 />
-                <directionalLight position={[-2.5, 2, 2]} intensity={0.6} color="#93c5fd" />
-                <directionalLight position={[0, 2.5, -2.5]} intensity={1.1} color={rimLightColor} />
+                <directionalLight position={[-2.5, 2, 2]} intensity={0.65} color="#bfdbfe" />
+                <directionalLight position={[0, 2.5, -2.5]} intensity={1.0} color={rimLightColor} />
 
                 <GlbModelScene
                   modelUrl={modelUrl}
                   state={state}
+                  emotion={effectiveEmotion}
+                  emotionIntensity={emotionIntensity}
                   audioLevel={audioLevel}
                   prefersReducedMotion={prefersReducedMotion}
                   onInspected={(report) => {
@@ -582,6 +758,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
                   targetY={framing.targetY}
                   cameraZ={framing.cameraZ}
                   cameraY={framing.cameraY}
+                  resetTrigger={resetCameraTrigger}
                 />
               </Canvas>
             </Suspense>
@@ -589,41 +766,108 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = ({
         )}
       </div>
 
-      {/* Status Pill below Avatar */}
-      <div className="mt-4 flex flex-col items-center gap-1.5">
-        {state === 'listening' ? (
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-950/85 border border-cyan-500/50 text-cyan-200 text-xs font-medium shadow-lg">
-            <Mic className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Listening to you (सुन रही हूँ)...</span>
-          </div>
-        ) : state === 'thinking' ? (
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-950/85 border border-amber-500/50 text-amber-200 text-xs font-medium shadow-lg">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-            <span>Ātmiya is thinking (सोच रही हूँ)...</span>
-          </div>
-        ) : state === 'speaking' ? (
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-950/85 border border-violet-500/50 text-violet-200 text-xs font-medium shadow-lg">
-            <Volume2 className="w-3.5 h-3.5 text-violet-400" />
-            <span>
-              {inspection?.hasFacialControls
-                ? 'Ātmiya is speaking...'
-                : 'Speaking (audio active)...'}
-            </span>
-          </div>
-        ) : state === 'interrupted' ? (
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-950/80 border border-amber-500/50 text-amber-200 text-xs font-medium">
-            <span>Interrupted (रूक गई)</span>
-          </div>
-        ) : state === 'error' ? (
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-medium">
-            <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-            <span>Needs attention</span>
-          </div>
-        ) : (
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 text-xs font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>3D Avatar Ready</span>
-          </div>
+      {/* Ground shadow in immersive mode */}
+      {isImmersive && (
+        <div
+          aria-hidden="true"
+          className="w-40 sm:w-52 h-3.5 rounded-full bg-slate-950/45 blur-md pointer-events-none"
+        />
+      )}
+
+      {/* Viewer Controls below 3D Avatar */}
+      <div className="mt-2 flex flex-col items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {!isImmersive && (
+            state === 'listening' ? (
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-950/85 border border-cyan-500/50 text-cyan-200 text-xs font-medium shadow-lg">
+                <Mic className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Listening to you...</span>
+              </div>
+            ) : state === 'thinking' ? (
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-950/85 border border-amber-500/50 text-amber-200 text-xs font-medium shadow-lg">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                <span>Ātmiya is thinking...</span>
+              </div>
+            ) : state === 'speaking' ? (
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-950/85 border border-violet-500/50 text-violet-200 text-xs font-medium shadow-lg">
+                <Volume2 className="w-3.5 h-3.5 text-violet-400" />
+                <span>
+                  {inspection?.capabilities.hasSpeechMorphs || inspection?.capabilities.hasJawBone
+                    ? 'Ātmiya is speaking...'
+                    : 'Speaking (audio active)...'}
+                </span>
+              </div>
+            ) : state === 'interrupted' ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-950/80 border border-amber-500/50 text-amber-200 text-xs font-medium">
+                <span>Interrupted</span>
+              </div>
+            ) : state === 'error' ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-medium">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span>Needs attention</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 text-xs font-medium">
+                <span>
+                  {effectiveEmotion !== 'neutral'
+                    ? `3D Avatar · ${AVATAR_EMOTION_LABELS[effectiveEmotion]}`
+                    : '3D Avatar Ready'}
+                </span>
+              </div>
+            )
+          )}
+
+          {assetStatus === 'ready' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setResetCameraTrigger((n) => n + 1)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-950/70 hover:bg-slate-900 border border-white/15 text-slate-200 text-[11px] font-medium backdrop-blur-md transition cursor-pointer"
+                title="Reset 3D camera to front-facing portrait"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Camera</span>
+              </button>
+
+              {onSelectPreviewEmotion && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpressionPanelOpen((v) => !v)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-medium backdrop-blur-md transition cursor-pointer ${
+                    isExpressionPanelOpen || previewEmotion
+                      ? 'bg-violet-600/40 border-violet-300/60 text-white'
+                      : 'bg-slate-950/70 hover:bg-slate-900 border-white/15 text-slate-200'
+                  }`}
+                  title="Test 16 facial expressions & inspect GLB rig support"
+                >
+                  <Smile className="w-3 h-3" />
+                  <span>Expressions</span>
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {!isImmersive && state === 'speaking' && onInterrupt && (
+          <button
+            type="button"
+            onClick={onInterrupt}
+            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-rose-600/85 hover:bg-rose-500 text-white shadow-lg border border-rose-400/30 transition cursor-pointer"
+          >
+            <PauseCircle className="w-3.5 h-3.5" />
+            <span>Interrupt</span>
+          </button>
+        )}
+
+        {isExpressionPanelOpen && onSelectPreviewEmotion && (
+          <ExpressionPreviewDrawer
+            activeEmotion={emotion}
+            previewEmotion={previewEmotion}
+            supportedExpressions={inspection?.supportedExpressions}
+            hasGlbLoaded={assetStatus === 'ready' && Boolean(inspection)}
+            onSelect={onSelectPreviewEmotion}
+            onClose={() => setIsExpressionPanelOpen(false)}
+          />
         )}
       </div>
     </div>

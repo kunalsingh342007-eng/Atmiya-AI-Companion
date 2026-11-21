@@ -177,8 +177,11 @@ export const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
               alt="Ātmiya"
               className="w-full h-full object-cover object-[center_20%] select-none"
               onError={(e) => {
-                // If custom image path fails, fallback to local asset or hide
-                (e.target as HTMLImageElement).src = '/public/assets/aistudio/Friendly_3D_Avatar_Portrait_37d63c9f.png';
+                const img = e.target as HTMLImageElement;
+                if (!img.dataset.fallbackApplied) {
+                  img.dataset.fallbackApplied = '1';
+                  img.src = '/assets/aistudio/Friendly_3D_Avatar_Portrait_37d63c9f.png';
+                }
               }}
             />
           ) : (

@@ -60,7 +60,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Left section: Toggle & Brand */}
       <div className="flex items-center gap-3">
         <button
+          type="button"
           onClick={onToggleSidebar}
+          aria-label="Toggle history sidebar"
           className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-900 border border-transparent hover:border-slate-800 transition cursor-pointer"
           title="Toggle History Sidebar"
         >
@@ -95,6 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Language selector pill */}
         <div className="relative hidden md:block">
           <select
+            aria-label="Select companion language"
             value={settings.language}
             onChange={(e) =>
               onUpdateSettings({ ...settings, language: e.target.value as CompanionLanguage })
@@ -111,7 +114,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Live Two-Way Voice Call Action Button */}
         <button
+          type="button"
           onClick={onOpenVoiceMode}
+          aria-label="Start or stop voice conversation"
           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs shadow-md shadow-emerald-950/50 transition transform hover:scale-[1.02] active:scale-95 cursor-pointer"
           title="Start Live Voice Conversation"
         >
@@ -122,7 +127,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Memory Button */}
         <button
+          type="button"
           onClick={onOpenMemoryModal}
+          aria-label="Open personal memory manager"
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs transition cursor-pointer"
           title="Personal Memory Management"
         >
@@ -137,7 +144,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Avatar Customizer */}
         <button
+          type="button"
           onClick={onOpenAvatarCustomizer}
+          aria-label="Customize avatar and appearance"
           className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-violet-300 transition cursor-pointer"
           title="Customize Avatar & Persona"
         >
@@ -146,7 +155,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Settings Button */}
         <button
+          type="button"
           onClick={onOpenSettingsModal}
+          aria-label="Open settings and privacy"
           className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
           title="Settings & Privacy"
         >

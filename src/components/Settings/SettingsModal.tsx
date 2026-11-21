@@ -21,6 +21,7 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: CompanionSettings;
   onSaveSettings: (settings: CompanionSettings) => void;
+  onDataRestored?: () => void;
   isApiKeyConfigured: boolean;
 }
 
@@ -77,6 +78,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onSaveSettings,
+  onDataRestored,
   isApiKeyConfigured,
 }) => {
   const [activeTab, setActiveTab] = useState<'personality' | 'voice' | 'privacy' | 'storage'>('personality');
@@ -136,12 +138,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const content = event.target?.result as string;
       const success = storage.importData(content);
       if (success) {
-        setExportNotice('Import successful! Reloading settings...');
+        setExportNotice('Import successful! Data restored.');
         setLocalSettings(storage.getSettings());
-        onSaveSettings(storage.getSettings());
+        if (onDataRestored) {
+          onDataRestored();
+        } else {
+          onSaveSettings(storage.getSettings());
+        }
         setTimeout(() => setExportNotice(null), 3000);
       } else {
-        setExportNotice('Failed to import: Invalid JSON file.');
+        setExportNotice('Failed to import: Invalid backup JSON file.');
       }
     };
     reader.readAsText(file);
@@ -166,7 +172,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close settings modal"
             className="text-slate-400 hover:text-slate-200 text-sm px-2.5 py-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
           >
             ✕

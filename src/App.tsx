@@ -1,45 +1,54 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { 
-  CompanionSettings, 
-  ConversationSession, 
-  ChatMessage, 
-  UserMemory, 
-  AvatarState, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  ActiveNavTab,
+  AVATAR_EMOTIONS,
+  AvatarAppearanceConfig,
+  AvatarEmotion,
+  AvatarState,
+  ChatMessage,
+  CompanionSettings,
+  ConversationSession,
+  GameId,
+  GameProgress,
+  RoomConfig,
   SystemStatus,
-  CompanionLanguage,
-  CompanionPersonality
+  UserMemory,
 } from './types/companion';
-import { storage, DEFAULT_SETTINGS } from './services/storage';
+import { storage } from './services/storage';
 import { api } from './services/api';
 import { speechService } from './services/speech';
+import { playGameSound } from './services/gameAudio';
 
-// Components
-import { Navbar } from './components/Navbar';
-import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
-import { CompanionAvatar, CompanionEmotion } from './components/Avatar/CompanionAvatar';
+// Game Shell & 5 Main Screens
+import { GameShell } from './components/Game/GameShell';
+import { HomeScreen } from './components/Home/HomeScreen';
+import { GameHub } from './components/Play/GameHub';
+import { WardrobeScreen } from './components/Wardrobe/WardrobeScreen';
+import { MemoriesScreen } from './components/Memory/MemoriesScreen';
+import { SettingsScreen } from './components/Settings/SettingsScreen';
+
+// Companion Controllers & Drawers
+import {
+  AvatarControllerActions,
+  AvatarControllerState,
+  useMicrophonePermission,
+} from './components/Avatar/AvatarController';
 import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
-import { AvatarCustomizer } from './components/Avatar/AvatarCustomizer';
-
-const RealisticAvatar = lazy(() =>
-  import('./components/Avatar/RealisticAvatar').then((m) => ({ default: m.RealisticAvatar }))
-);
-import { ConversationSubtitle } from './components/Voice/ConversationSubtitle';
-import { VoiceControls } from './components/Voice/VoiceControls';
+import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
 import { ChatDrawer } from './components/Chat/ChatDrawer';
-import { MemoryModal } from './components/Memory/MemoryModal';
-import { SettingsModal } from './components/Settings/SettingsModal';
 
-import { 
-  Key, 
-  Sparkles, 
-  Check, 
-  AlertCircle,
-  PhoneCall,
-  Volume2
-} from 'lucide-react';
+import { Check } from 'lucide-react';
 
 export default function App() {
-  // Persistence state
+  // Navigation & Game Progression State
+  const [activeTab, setActiveTab] = useState<ActiveNavTab>('home');
+  const [progress, setProgress] = useState<GameProgress>(() => storage.getProgress());
+  const [showFirstTimeHint, setShowFirstTimeHint] = useState<boolean>(
+    () => !storage.isHomeHintDismissed()
+  );
+  const [speechBubbleText, setSpeechBubbleText] = useState<string | null>(null);
+
+  // Core Companion Persistence State
   const [settings, setSettings] = useState<CompanionSettings>(storage.getSettings());
   const [conversations, setConversations] = useState<ConversationSession[]>(storage.getConversations());
   const [activeConvId, setActiveConvId] = useState<string | null>(storage.getActiveConversationId());
@@ -52,31 +61,68 @@ export default function App() {
     supportedVoices: ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'],
   });
 
-  // UI Modals state
+  // Drawers
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
-  const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isAvatarCustomizerOpen, setIsAvatarCustomizerOpen] = useState(false);
 
-  // Video-Call Companion State
+  // Companion Avatar & Voice State
   const [avatarState, setAvatarState] = useState<AvatarState>('idle');
-  const [companionEmotion, setCompanionEmotion] = useState<CompanionEmotion>('neutral');
+  const [companionEmotion, setCompanionEmotion] = useState<AvatarEmotion>('neutral');
+  const [emotionIntensity, setEmotionIntensity] = useState<number>(0.7);
+  const [previewEmotion, setPreviewEmotion] = useState<AvatarEmotion | null>(null);
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [isMicMuted, setIsMicMuted] = useState<boolean>(false);
   const [userTranscript, setUserTranscript] = useState<string>('');
   const [aiSpokenText, setAiSpokenText] = useState<string>('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [suggestedMemory, setSuggestedMemory] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [glbInspection, setGlbInspection] = useState<GlbInspectionReport | null>(null);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
-  // Turn timer for automatic voice silence detection
-  const speechTimeoutRef = useRef<any>(null);
+  const [micPermission, refreshMicPermission] = useMicrophonePermission();
+
+  const speechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isProcessingRef = useRef<boolean>(false);
+  const avatarStateRef = useRef<AvatarState>(avatarState);
+  const turnEpochRef = useRef<number>(0);
+  const activeAbortRef = useRef<AbortController | null>(null);
 
-  // 1. Initial Load: Check status, load or create conversation session
+  const isSoundEnabled = settings.voiceEngine !== 'none' && settings.autoSpeakResponse;
+
+  useEffect(() => {
+    avatarStateRef.current = avatarState;
+  }, [avatarState]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setPrefersReducedMotion(mq.matches);
+      const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+      mq.addEventListener('change', listener);
+      return () => mq.removeEventListener('change', listener);
+    }
+  }, []);
+
+  const cancelActiveTurn = () => {
+    turnEpochRef.current += 1;
+    if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
+    if (activeAbortRef.current) {
+      activeAbortRef.current.abort();
+      activeAbortRef.current = null;
+    }
+    isProcessingRef.current = false;
+    setIsThinking(false);
+  };
+
+  // 1. Initial Load
   useEffect(() => {
     api.getStatus().then((status) => {
       setSystemStatus(status);
@@ -96,20 +142,36 @@ export default function App() {
       storage.setActiveConversationId(currentId);
       setActiveConvId(currentId);
     }
+
+    const activeSession = currentSessions.find((c) => c.id === currentId);
+    if (activeSession && activeSession.messages.length > 0) {
+      const lastModel = [...activeSession.messages].reverse().find((m) => m.role === 'model');
+      if (lastModel) {
+        setAiSpokenText(lastModel.content);
+      }
+    }
+
+    return () => {
+      cancelActiveTurn();
+      speechService.stopSpeaking();
+      speechService.stopRecognition();
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      if (bubbleTimeoutRef.current) clearTimeout(bubbleTimeoutRef.current);
+    };
   }, []);
 
-  // 2. Audio Level Sync for avatar mouth animation
+  // 2. Audio Level Sync for avatar mouth/aura animation
   useEffect(() => {
     speechService.setAudioLevelCallback((level) => {
       setAudioLevel(level);
       if (level > 0.05) {
         setIsSpeaking(true);
-        if (avatarState !== 'speaking') {
+        if (avatarStateRef.current !== 'speaking') {
           setAvatarState('speaking');
         }
       } else if (!speechService.getIsSpeaking()) {
         setIsSpeaking(false);
-        if (avatarState === 'speaking') {
+        if (avatarStateRef.current === 'speaking') {
           setAvatarState('idle');
         }
       }
@@ -118,48 +180,72 @@ export default function App() {
     return () => {
       speechService.setAudioLevelCallback(null);
     };
-  }, [avatarState]);
+  }, []);
 
-  // Current session messages
   const currentConversation = conversations.find((c) => c.id === activeConvId);
   const messages = currentConversation?.messages || [];
 
-  // Toast notification
   const showToast = (msg: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 3200);
   };
 
-  // Determine emotional expression based on message content (Talking Tom inspiration)
-  const analyzeEmotion = (text: string): CompanionEmotion => {
-    const lower = text.toLowerCase();
-    if (
-      lower.includes('thank') ||
-      lower.includes('shukriya') ||
-      lower.includes('dhanyawad') ||
-      lower.includes('happy') ||
-      lower.includes('khush') ||
-      lower.includes('great') ||
-      lower.includes('awesome') ||
-      lower.includes('haha') ||
-      lower.includes('mast') ||
-      lower.includes('love')
-    ) {
-      return 'happy';
+  const showSpeechBubble = (text: string, durationMs = 4500) => {
+    if (bubbleTimeoutRef.current) {
+      clearTimeout(bubbleTimeoutRef.current);
     }
-    if (
-      lower.includes('sad') ||
-      lower.includes('dukh') ||
-      lower.includes('depress') ||
-      lower.includes('anxious') ||
-      lower.includes('stress') ||
-      lower.includes('upset') ||
-      lower.includes('pareshan') ||
-      lower.includes('cry') ||
-      lower.includes('tough day') ||
-      lower.includes('lonely')
-    ) {
+    setSpeechBubbleText(text);
+    bubbleTimeoutRef.current = setTimeout(() => {
+      setSpeechBubbleText(null);
+      bubbleTimeoutRef.current = null;
+    }, durationMs);
+  };
+
+  const dismissHint = () => {
+    if (showFirstTimeHint) {
+      setShowFirstTimeHint(false);
+      storage.dismissHomeHint();
+    }
+  };
+
+  const handleSelectTab = (tab: ActiveNavTab) => {
+    if (tab !== 'home' && avatarState === 'listening') {
+      stopListeningTurn();
+    }
+    if (tab !== 'home') {
+      setIsChatDrawerOpen(false);
+      setIsSidebarOpen(false);
+    }
+    setActiveTab(tab);
+  };
+
+  const analyzeEmotion = (text: string): AvatarEmotion => {
+    const lower = text.toLowerCase();
+    if (lower.includes('haha') || lower.includes('lol')) return 'laughing';
+    if (lower.includes('excited') || lower.includes('thrilled') || lower.includes('amazing') || lower.includes('wah')) {
+      return 'excited';
+    }
+    if (lower.includes('sad') || lower.includes('dukh') || lower.includes('cry') || lower.includes('lonely')) {
+      return 'sad';
+    }
+    if (lower.includes('anxious') || lower.includes('stress') || lower.includes('worried') || lower.includes('pareshan')) {
+      return 'worried';
+    }
+    if (lower.includes('depress') || lower.includes('upset') || lower.includes('tough day') || lower.includes('sorry')) {
       return 'empathetic';
+    }
+    if (lower.includes('disappointed') || lower.includes('failed')) return 'disappointed';
+    if (lower.includes('confus') || lower.includes('samajh nahi') || lower.includes('unclear')) {
+      return 'confused';
+    }
+    if (lower.includes('curious') || lower.includes('interesting') || lower.includes('how does')) {
+      return 'curious';
     }
     if (
       lower.includes('what?!') ||
@@ -171,64 +257,89 @@ export default function App() {
     ) {
       return 'surprised';
     }
+    if (
+      lower.includes('thank') ||
+      lower.includes('shukriya') ||
+      lower.includes('dhanyawad') ||
+      lower.includes('happy') ||
+      lower.includes('khush') ||
+      lower.includes('great') ||
+      lower.includes('awesome') ||
+      lower.includes('mast') ||
+      lower.includes('love')
+    ) {
+      return 'happy';
+    }
     return 'neutral';
   };
 
-  // Start voice listening
   const startListeningTurn = () => {
     if (isMicMuted || isProcessingRef.current) return;
 
+    dismissHint();
+    const epochAtStart = turnEpochRef.current;
+    setPreviewEmotion(null);
+    setVoiceError(null);
     speechService.stopSpeaking();
     setAvatarState('listening');
+    setCompanionEmotion('neutral');
     setUserTranscript('');
 
-    let langLocale: any = 'en-IN';
-    if (settings.language === 'hi') {
-      langLocale = 'hi-IN';
-    } else if (settings.language === 'en') {
-      langLocale = 'en-IN';
-    } else {
-      langLocale = 'en-IN';
-    }
+    const langLocale: 'hi-IN' | 'en-IN' = settings.language === 'hi' ? 'hi-IN' : 'en-IN';
 
     const started = speechService.startRecognition(langLocale, {
       onStart: () => {
+        if (turnEpochRef.current !== epochAtStart) return;
+        setVoiceError(null);
+        refreshMicPermission();
         setAvatarState('listening');
       },
-      onResult: (transcript, isFinal) => {
+      onResult: (transcript, _isFinal) => {
+        if (turnEpochRef.current !== epochAtStart) return;
         setUserTranscript(transcript);
 
         if (speechTimeoutRef.current) {
           clearTimeout(speechTimeoutRef.current);
         }
 
-        // 1.3 seconds of silence signifies user finished speaking
         speechTimeoutRef.current = setTimeout(() => {
-          if (transcript.trim() && !isProcessingRef.current) {
+          if (turnEpochRef.current === epochAtStart && transcript.trim() && !isProcessingRef.current) {
             handleSendMessage(transcript.trim());
           }
         }, 1300);
       },
       onError: (err) => {
-        console.warn('Mic recognition error:', err);
+        if (turnEpochRef.current !== epochAtStart) return;
+        refreshMicPermission();
+        if (speechTimeoutRef.current) {
+          clearTimeout(speechTimeoutRef.current);
+          speechTimeoutRef.current = null;
+        }
+        setVoiceError(err);
         setAvatarState('error');
-        showToast('Microphone error: ' + err);
+        showToast(err);
       },
       onEnd: () => {
-        if (!isProcessingRef.current && !speechService.getIsSpeaking() && avatarState === 'listening') {
+        if (turnEpochRef.current !== epochAtStart) return;
+        if (!isProcessingRef.current && !speechService.getIsSpeaking() && avatarStateRef.current === 'listening') {
           setAvatarState('idle');
         }
       },
     });
 
     if (!started) {
-      showToast('Voice input unavailable in this browser. You can type in chat drawer.');
+      const msg = 'Speech recognition unavailable. You can type below.';
+      setVoiceError(msg);
       setAvatarState('error');
+      showToast(msg);
     }
   };
 
   const stopListeningTurn = () => {
-    if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
+    if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
     speechService.stopRecognition();
     setAvatarState('idle');
   };
@@ -245,9 +356,22 @@ export default function App() {
     }
   };
 
+  const handleRetryMic = () => {
+    setVoiceError(null);
+    setAvatarState('idle');
+    refreshMicPermission();
+    if (!isMicMuted) {
+      startListeningTurn();
+    } else {
+      setIsMicMuted(false);
+      setTimeout(() => startListeningTurn(), 50);
+    }
+  };
+
   const handleToggleMute = () => {
     if (isMicMuted) {
       setIsMicMuted(false);
+      setVoiceError(null);
       showToast('Microphone unmuted');
     } else {
       setIsMicMuted(true);
@@ -256,109 +380,189 @@ export default function App() {
     }
   };
 
-  // Immediate Interrupt function
-  const handleInterrupt = () => {
-    if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
-    speechService.stopSpeaking();
-    setIsSpeaking(false);
-    isProcessingRef.current = false;
-    setAvatarState('interrupted');
-    setCompanionEmotion('neutral');
-    showToast('Interrupted (रोक दिया गया)');
-
-    setTimeout(() => {
-      setAvatarState('idle');
-      if (!isMicMuted) {
-        startListeningTurn();
+  const handleToggleSound = () => {
+    if (isSoundEnabled) {
+      speechService.stopSpeaking();
+      setIsSpeaking(false);
+      if (avatarStateRef.current === 'speaking') {
+        setAvatarState('idle');
       }
-    }, 450);
-  };
-
-  // End Call / Reset Conversation
-  const handleEndCall = () => {
-    speechService.stopSpeaking();
-    speechService.stopRecognition();
-    setIsSpeaking(false);
-    setAvatarState('idle');
-    setCompanionEmotion('neutral');
-    setUserTranscript('');
-    setAiSpokenText('');
-    showToast('Call ended. Ātmiya is resting.');
-  };
-
-  // Playful tap reaction on Avatar
-  const handleTapAvatar = () => {
-    const greetings = [
-      'हाँजी! मैं सुन रही हूँ।',
-      'Haanji! I am here with you.',
-      'Aap bataiye, kaisa chal raha hai?',
-      'Always listening, my friend!',
-    ];
-    const picked = greetings[Math.floor(Math.random() * greetings.length)];
-    setAiSpokenText(picked);
-    setCompanionEmotion('happy');
-
-    if (settings.voiceEngine !== 'none') {
-      speechService.speakWithBrowserTTS(
-        picked,
-        settings.language === 'hi' ? 'hi-IN' : 'en-IN',
-        settings.speechRate
-      );
+      const updated = { ...settings, autoSpeakResponse: false };
+      handleSaveSettings(updated, 'Sound & voice replies muted');
+    } else {
+      const updated: CompanionSettings = {
+        ...settings,
+        voiceEngine: settings.voiceEngine === 'none' ? 'gemini-native' : settings.voiceEngine,
+        autoSpeakResponse: true,
+      };
+      handleSaveSettings(updated, 'Sound & voice replies enabled');
     }
   };
 
-  // Send message and get AI response
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim() || isProcessingRef.current || !activeConvId) return;
+  const handleInterrupt = () => {
+    cancelActiveTurn();
+    const interruptEpoch = turnEpochRef.current;
+    speechService.stopSpeaking();
+    speechService.stopRecognition();
+    setIsSpeaking(false);
+    setAvatarState('interrupted');
+    setCompanionEmotion('neutral');
+    showToast('Speech stopped');
 
-    if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
+    setTimeout(() => {
+      if (turnEpochRef.current !== interruptEpoch) return;
+      setAvatarState('idle');
+    }, 450);
+  };
+
+  const handleEndCall = () => {
+    cancelActiveTurn();
+    speechService.stopSpeaking();
+    speechService.stopRecognition();
+    setIsSpeaking(false);
+    setVoiceError(null);
+    setAvatarState('idle');
+    setCompanionEmotion('neutral');
+    setUserTranscript('');
+    showToast('Turn reset');
+  };
+
+  const triggerCompanionReaction = (
+    emotion: AvatarEmotion,
+    activityLabel: string,
+    line: string,
+    speakLine = false
+  ) => {
+    if (isProcessingRef.current || speechService.getIsSpeaking()) return;
+
+    dismissHint();
+    playGameSound('tap', isSoundEnabled);
+    setAiSpokenText(line);
+    showSpeechBubble(line);
+    setCompanionEmotion(emotion);
+    setEmotionIntensity(0.78);
+
+    const { progress: nextProg, newlyUnlockedRooms } = storage.recordInteraction(activityLabel, 5);
+    setProgress(nextProg);
+    if (newlyUnlockedRooms.length > 0) {
+      showToast('New room theme unlocked in Wardrobe!');
+    }
+
+    if (speakLine && isSoundEnabled) {
+      setAvatarState('speaking');
+      setIsSpeaking(true);
+      speechService.speakWithBrowserTTS(
+        line,
+        settings.language === 'hi' ? 'hi-IN' : 'en-IN',
+        settings.speechRate,
+        () => {
+          setAvatarState('idle');
+          setIsSpeaking(false);
+          setCompanionEmotion('neutral');
+        }
+      );
+    } else {
+      setTimeout(() => {
+        if (!isProcessingRef.current && avatarStateRef.current === 'idle') {
+          setCompanionEmotion('neutral');
+        }
+      }, 2400);
+    }
+  };
+
+  const handleTapAvatar = () => {
+    const greetings = [
+      'Namaste! Main yahin hoon — bataiye aaj kya chal raha hai?',
+      'Hey! Good to see you here. Want to talk or play a quick game?',
+      'Haanji! I am right here and listening whenever you are ready.',
+    ];
+    const picked = greetings[Math.floor(Math.random() * greetings.length)];
+    triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true);
+  };
+
+  const handleSendMessage = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || isProcessingRef.current || !activeConvId) return;
+
+    dismissHint();
+    cancelActiveTurn();
+    const myEpoch = turnEpochRef.current;
+    const abortController = new AbortController();
+    activeAbortRef.current = abortController;
+
+    setPreviewEmotion(null);
+    setVoiceError(null);
     speechService.stopRecognition();
     speechService.stopSpeaking();
 
     isProcessingRef.current = true;
     setIsThinking(true);
     setAvatarState('thinking');
-    setUserTranscript(text);
+    setUserTranscript(trimmed);
 
-    // Analyze emotional tone from user's words
-    const detectedEmotion = analyzeEmotion(text);
-    setCompanionEmotion(detectedEmotion);
+    const detectedEmotion = analyzeEmotion(trimmed);
+    setCompanionEmotion(detectedEmotion === 'neutral' ? 'thinking' : detectedEmotion);
+    setEmotionIntensity(0.65);
 
     const userMessage: ChatMessage = {
       id: 'msg_' + Date.now(),
       role: 'user',
-      content: text,
+      content: trimmed,
       timestamp: Date.now(),
     };
 
     const currentMsgs = [...messages, userMessage];
     storage.updateConversation(activeConvId, {
       messages: currentMsgs,
-      title: messages.length === 0 ? text.slice(0, 36) : (currentConversation?.title || 'Video Call'),
+      title: messages.length === 0 ? trimmed.slice(0, 36) : (currentConversation?.title || 'Companion Session'),
     });
     setConversations(storage.getConversations());
 
     try {
-      const response = await api.sendMessage({
-        message: text,
-        history: currentMsgs,
-        memories: settings.memoryEnabled ? memories : [],
-        personality: settings.personality,
-        language: settings.language,
-        userName: settings.userName,
-      });
+      const response = await api.sendMessage(
+        {
+          message: trimmed,
+          history: currentMsgs,
+          memories: settings.memoryEnabled ? memories : [],
+          personality: settings.personality,
+          language: settings.language,
+          userName: settings.userName,
+        },
+        abortController.signal
+      );
 
-      const replyText = response.reply;
+      if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) {
+        return;
+      }
+
+      const replyText = response.reply || '';
+      if (!replyText.trim()) {
+        throw new Error('Empty response received from assistant.');
+      }
       setAiSpokenText(replyText);
+      const shortPreview =
+        replyText.length <= 110 ? replyText : `${replyText.slice(0, 107).trim()}...`;
+      showSpeechBubble(shortPreview, 5000);
 
-      // Analyze emotional tone of reply as well
-      const replyEmotion = analyzeEmotion(replyText);
+      const backendEmotion =
+        response.emotion && (AVATAR_EMOTIONS as readonly string[]).includes(response.emotion)
+          ? response.emotion
+          : null;
+      const replyEmotion: AvatarEmotion = backendEmotion ?? analyzeEmotion(replyText);
+      const nextIntensity =
+        typeof response.intensity === 'number' && !Number.isNaN(response.intensity)
+          ? Math.max(0.2, Math.min(1, response.intensity))
+          : 0.7;
+
       setCompanionEmotion(replyEmotion !== 'neutral' ? replyEmotion : detectedEmotion);
+      setEmotionIntensity(nextIntensity);
 
       const aiMessage: ChatMessage = {
         id: 'msg_ai_' + Date.now(),
         role: 'model',
         content: replyText,
+        emotion: replyEmotion,
+        emotionIntensity: nextIntensity,
         timestamp: Date.now(),
       };
 
@@ -375,20 +579,20 @@ export default function App() {
       setIsThinking(false);
       isProcessingRef.current = false;
 
-      // Play Audio Response
-      if (settings.voiceEngine !== 'none') {
+      if (isSoundEnabled) {
         setAvatarState('speaking');
         setIsSpeaking(true);
 
         const onFinish = () => {
+          if (turnEpochRef.current !== myEpoch) return;
           setAvatarState('idle');
           setIsSpeaking(false);
           setCompanionEmotion('neutral');
+          setEmotionIntensity(0.7);
 
-          // Hands-free continuous loop if enabled
-          if (settings.handsFreeMode && !isMicMuted) {
+          if (settings.handsFreeMode && !isMicMuted && activeTab === 'home') {
             setTimeout(() => {
-              if (!isProcessingRef.current && !speechService.getIsSpeaking()) {
+              if (turnEpochRef.current === myEpoch && !isProcessingRef.current && !speechService.getIsSpeaking()) {
                 startListeningTurn();
               }
             }, 600);
@@ -397,24 +601,37 @@ export default function App() {
 
         if (settings.voiceEngine === 'gemini-native') {
           try {
-            const ttsRes = await api.generateTTS({
-              text: replyText,
-              voice: settings.selectedVoice || 'Kore',
-            });
+            const ttsRes = await api.generateTTS(
+              {
+                text: replyText,
+                voice: settings.selectedVoice || 'Kore',
+              },
+              abortController.signal
+            );
+
+            if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) {
+              return;
+            }
+
             if (ttsRes.audioBase64) {
               await speechService.playWavAudio(ttsRes.audioBase64, onFinish, () => {
+                if (turnEpochRef.current !== myEpoch) return;
                 speechService.speakWithBrowserTTS(replyText, settings.language, settings.speechRate, onFinish);
               });
               return;
             }
-          } catch (e) {
+          } catch (e: any) {
+            if (e?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
+              return;
+            }
             console.warn('TTS playback error, trying browser fallback:', e);
           }
         }
 
+        if (turnEpochRef.current !== myEpoch) return;
         speechService.speakWithBrowserTTS(
           replyText,
-          settings.language === 'hi' ? 'hi-IN' : 'en-IN',
+          settings.language,
           settings.speechRate,
           onFinish
         );
@@ -422,20 +639,66 @@ export default function App() {
         setAvatarState('idle');
       }
     } catch (err: any) {
+      if (err?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
+        return;
+      }
       console.error('Failed to send message:', err);
       setIsThinking(false);
       isProcessingRef.current = false;
       setAvatarState('error');
       setCompanionEmotion('neutral');
+      setVoiceError(err?.message || 'Connection failed');
       showToast('Error: ' + (err.message || 'Connection failed'));
+    } finally {
+      if (activeAbortRef.current === abortController) {
+        activeAbortRef.current = null;
+      }
     }
   };
 
-  // Handlers for memory
+  // Desktop keyboard shortcuts on Home
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isChatDrawerOpen) setIsChatDrawerOpen(false);
+        else if (isSidebarOpen) setIsSidebarOpen(false);
+        else if (isSpeaking) handleInterrupt();
+        return;
+      }
+
+      if (activeTab !== 'home') return;
+
+      const target = e.target as HTMLElement | null;
+      const isTypingField =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+      if (isTypingField || e.metaKey || e.ctrlKey || e.altKey || isSidebarOpen) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 't') {
+        e.preventDefault();
+        handleToggleListen();
+      } else if (key === 'c') {
+        e.preventDefault();
+        setIsChatDrawerOpen((prev) => !prev);
+      } else if (key === 'g') {
+        e.preventDefault();
+        handleTapAvatar();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
+  // Memory & Settings Handlers
   const handleAddMemory = (mem: Omit<UserMemory, 'id' | 'createdAt' | 'updatedAt'>) => {
     storage.addMemory(mem);
     setMemories(storage.getMemories());
-    showToast('Memory approved and saved');
+    showToast('Memory saved');
   };
 
   const handleUpdateMemory = (id: string, updates: Partial<UserMemory>) => {
@@ -455,6 +718,20 @@ export default function App() {
     showToast('All memories cleared');
   };
 
+  const handleClearAllConversations = () => {
+    cancelActiveTurn();
+    speechService.stopSpeaking();
+    speechService.stopRecognition();
+    storage.clearAllConversations();
+    const fresh = storage.createConversation(settings.personality, settings.language);
+    setConversations([fresh]);
+    setActiveConvId(fresh.id);
+    setAiSpokenText('');
+    setUserTranscript('');
+    setAvatarState('idle');
+    showToast('Conversation history cleared');
+  };
+
   const handleToggleMemoryEnabled = (enabled: boolean) => {
     const updated = { ...settings, memoryEnabled: enabled };
     setSettings(updated);
@@ -462,221 +739,265 @@ export default function App() {
     showToast(enabled ? 'Memory enabled' : 'Memory disabled');
   };
 
-  // Handlers for Settings
-  const handleSaveSettings = (newSettings: CompanionSettings) => {
+  const handleSaveSettings = (newSettings: CompanionSettings, toastText = 'Settings saved') => {
     setSettings(newSettings);
     storage.saveSettings(newSettings);
-    showToast('Settings saved');
+    showToast(toastText);
+  };
+
+  const handleApplyWardrobe = (newAvatar: AvatarAppearanceConfig, newRoom: RoomConfig) => {
+    const updated: CompanionSettings = {
+      ...settings,
+      avatarConfig: newAvatar,
+      roomConfig: newRoom,
+    };
+    setSettings(updated);
+    storage.saveSettings(updated);
+    showToast('Wardrobe & room look applied');
+  };
+
+  const handleCompleteGame = (params: {
+    gameId: GameId;
+    gameTitle: string;
+    score: number;
+    xpReward: number;
+  }) => {
+    const { progress: nextProg, newAchievements, newlyUnlockedRooms } =
+      storage.recordGameCompletion(params);
+    setProgress(nextProg);
+
+    if (newlyUnlockedRooms.length > 0) {
+      showToast(`+${params.xpReward} XP! New room theme unlocked in Wardrobe`);
+    } else if (newAchievements.length > 0) {
+      showToast(`+${params.xpReward} XP! Badge unlocked: ${newAchievements[0].title}`);
+    } else {
+      showToast(`${params.gameTitle} complete · +${params.xpReward} XP`);
+    }
+  };
+
+  const handleRestoreData = () => {
+    setSettings(storage.getSettings());
+    setMemories(storage.getMemories());
+    setProgress(storage.getProgress());
+    const reloadedConvs = storage.getConversations();
+    setConversations(reloadedConvs);
+    const activeId = storage.getActiveConversationId();
+    if (activeId && reloadedConvs.some((c) => c.id === activeId)) {
+      setActiveConvId(activeId);
+    } else if (reloadedConvs.length > 0) {
+      storage.setActiveConversationId(reloadedConvs[0].id);
+      setActiveConvId(reloadedConvs[0].id);
+    } else {
+      const fresh = storage.createConversation(settings.personality, settings.language);
+      setConversations([fresh]);
+      setActiveConvId(fresh.id);
+    }
+    showToast('Backup restored successfully');
+  };
+
+  const avatarControllerState: AvatarControllerState = {
+    avatarState,
+    emotion: companionEmotion,
+    emotionIntensity,
+    previewEmotion,
+    audioLevel,
+    micPermission,
+    voiceError,
+    glbInspection,
+  };
+
+  const avatarControllerActions: AvatarControllerActions = {
+    onTapAvatar: handleTapAvatar,
+    onInterrupt: handleInterrupt,
+    onSelectPreviewEmotion: setPreviewEmotion,
+    onInspectionComplete: setGlbInspection,
   };
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-slate-950 font-sans text-slate-100 select-none">
+    <GameShell
+      activeTab={activeTab}
+      onSelectTab={handleSelectTab}
+      memoriesCount={memories.length}
+    >
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-20 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold shadow-2xl animate-fadeIn">
-          <Check className="w-4 h-4" />
-          <span>{toastMessage}</span>
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-16 right-4 sm:right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-950/92 border border-indigo-300/30 text-white text-xs font-medium shadow-2xl backdrop-blur-md animate-fadeIn max-w-[90vw]"
+        >
+          <Check className="w-4 h-4 text-emerald-300 shrink-0" />
+          <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
-      {/* Sidebar Drawer */}
+      {/* Session History Sidebar Drawer (accessible from Home Header) */}
       <ConversationSidebar
         conversations={conversations}
         activeId={activeConvId}
         onSelect={(id) => {
+          cancelActiveTurn();
           setActiveConvId(id);
           storage.setActiveConversationId(id);
           speechService.stopSpeaking();
+          speechService.stopRecognition();
+          setIsSpeaking(false);
           setAvatarState('idle');
           setSuggestedMemory(null);
+          const selected = conversations.find((c) => c.id === id);
+          const lastModel = selected?.messages
+            ? [...selected.messages].reverse().find((m) => m.role === 'model')
+            : undefined;
+          setAiSpokenText(lastModel ? lastModel.content : '');
+          setUserTranscript('');
         }}
         onNewChat={() => {
           const newConv = storage.createConversation(settings.personality, settings.language);
           setConversations(storage.getConversations());
           setActiveConvId(newConv.id);
           handleEndCall();
+          setAiSpokenText('');
           showToast('New session started');
         }}
         onDeleteChat={(id) => {
           storage.deleteConversation(id);
-          setConversations(storage.getConversations());
-          setActiveConvId(storage.getActiveConversationId());
+          const remaining = storage.getConversations();
+          if (remaining.length === 0) {
+            const fresh = storage.createConversation(settings.personality, settings.language);
+            setConversations([fresh]);
+            setActiveConvId(fresh.id);
+            setAiSpokenText('');
+          } else {
+            setConversations(remaining);
+            const nextId = storage.getActiveConversationId();
+            setActiveConvId(nextId);
+            const nextConv = remaining.find((c) => c.id === nextId);
+            const lastModel = nextConv?.messages
+              ? [...nextConv.messages].reverse().find((m) => m.role === 'model')
+              : undefined;
+            setAiSpokenText(lastModel ? lastModel.content : '');
+          }
         }}
         onRenameChat={(id, title) => {
           storage.updateConversation(id, { title });
           setConversations(storage.getConversations());
         }}
-        onClearAll={() => {
-          storage.clearAllConversations();
-          const newConv = storage.createConversation(settings.personality, settings.language);
-          setConversations([newConv]);
-          setActiveConvId(newConv.id);
-        }}
+        onClearAll={handleClearAllConversations}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main Video Call Screen Area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 relative">
-        {/* Top Video Call Bar */}
-        <Navbar
-          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-          onOpenVoiceMode={() => {
-            // Already in voice video call mode! Toggle listen
-            handleToggleListen();
-          }}
-          onOpenMemoryModal={() => setIsMemoryModalOpen(true)}
-          onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-          onOpenAvatarCustomizer={() => setIsAvatarCustomizerOpen(true)}
+      {activeTab === 'home' && (
+        <HomeScreen
           settings={settings}
-          onUpdateSettings={handleSaveSettings}
-          memoriesCount={memories.length}
+          avatarControllerState={avatarControllerState}
+          avatarControllerActions={avatarControllerActions}
+          avatarState={avatarState}
+          companionEmotion={companionEmotion}
+          previewEmotion={previewEmotion}
+          micPermission={micPermission}
           isKeyConfigured={systemStatus.isKeyConfigured}
-        />
-
-        {/* Warning if API key is not configured */}
-        {!systemStatus.isKeyConfigured && (
-          <div className="bg-amber-950/80 border-b border-amber-800/80 px-4 py-2 text-xs text-amber-200 flex items-center justify-between z-20">
-            <div className="flex items-center gap-2">
-              <Key className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong>Gemini API Key:</strong> To connect Ātmiya's real-time voice & brain, ensure <code className="bg-black/30 px-1 py-0.5 rounded font-mono">GEMINI_API_KEY</code> is set in <strong>Settings &gt; Secrets</strong>.
-              </span>
-            </div>
-            <button
-              onClick={() => setIsSettingsModalOpen(true)}
-              className="text-amber-300 hover:text-white underline font-semibold ml-2 shrink-0 cursor-pointer"
-            >
-              Learn More
-            </button>
-          </div>
-        )}
-
-        {/* Center Character-First Video Stage */}
-        <div className="flex-1 flex flex-col items-center justify-center p-4 relative z-10 overflow-hidden">
-          {/* Large Realistic Human Avatar with 3D GLB + 2D Portrait Fallback */}
-          <div className="w-full flex items-center justify-center my-auto transition-transform duration-500">
-            {(settings.avatarConfig.avatarType ?? '3d-glb') === '3d-glb' ? (
-              <Suspense
-                fallback={
-                  <CompanionAvatar
-                    state={avatarState}
-                    emotion={companionEmotion}
-                    audioLevel={audioLevel}
-                    config={settings.avatarConfig}
-                    onInterrupt={handleInterrupt}
-                    onTapAvatar={handleTapAvatar}
-                  />
-                }
-              >
-                <RealisticAvatar
-                  state={avatarState}
-                  emotion={companionEmotion}
-                  audioLevel={audioLevel}
-                  config={settings.avatarConfig}
-                  onInterrupt={handleInterrupt}
-                  onTapAvatar={handleTapAvatar}
-                  onInspectionComplete={setGlbInspection}
-                />
-              </Suspense>
-            ) : (
-              <CompanionAvatar
-                state={avatarState}
-                emotion={companionEmotion}
-                audioLevel={audioLevel}
-                config={settings.avatarConfig}
-                onInterrupt={handleInterrupt}
-                onTapAvatar={handleTapAvatar}
-              />
-            )}
-          </div>
-
-          {/* Subtitle / Live Transcript Pill below avatar */}
-          <ConversationSubtitle
-            state={avatarState}
-            userTranscript={userTranscript}
-            aiSpokenText={aiSpokenText}
-            className="mb-2"
-          />
-        </div>
-
-        {/* Floating Bottom Video-Call Dock */}
-        <VoiceControls
-          state={avatarState}
+          xp={progress.xp}
+          prefersReducedMotion={prefersReducedMotion}
+          speechBubbleText={speechBubbleText}
+          showFirstTimeHint={showFirstTimeHint}
+          userTranscript={userTranscript}
+          aiSpokenText={aiSpokenText}
+          voiceError={voiceError}
           isMicMuted={isMicMuted}
-          onToggleMute={handleToggleMute}
-          onToggleListen={handleToggleListen}
-          onInterrupt={handleInterrupt}
-          onEndCall={handleEndCall}
-          onToggleChatDrawer={() => setIsChatDrawerOpen(!isChatDrawerOpen)}
-          isChatDrawerOpen={isChatDrawerOpen}
-          unreadCount={messages.length}
-          language={settings.language}
-          onChangeLanguage={(lang) => {
-            const updated = { ...settings, language: lang };
-            setSettings(updated);
-            storage.saveSettings(updated);
-          }}
-        />
-
-        {/* Slide-Over Text & Code History Drawer */}
-        <ChatDrawer
-          isOpen={isChatDrawerOpen}
-          onClose={() => setIsChatDrawerOpen(false)}
-          messages={messages}
           isThinking={isThinking}
           isSpeaking={isSpeaking}
-          onInterrupt={handleInterrupt}
-          settings={settings}
+          isChatDrawerOpen={isChatDrawerOpen}
+          unreadCount={messages.length}
+          onDismissBubble={() => setSpeechBubbleText(null)}
+          onDismissHint={dismissHint}
+          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          onToggleSound={handleToggleSound}
+          onChangeLanguage={(lang) => handleSaveSettings({ ...settings, language: lang })}
+          onOpenSettings={() => handleSelectTab('settings')}
+          onNavigatePlay={() => handleSelectTab('play')}
+          onNavigateWardrobe={() => handleSelectTab('wardrobe')}
           onSendMessage={handleSendMessage}
-          onSaveSuggestedMemory={(candidateText) => {
-            handleAddMemory({
-              content: candidateText,
-              category: 'preference',
-              approvedByUser: true,
-              sourceText: candidateText,
-            });
-            setSuggestedMemory(null);
-          }}
-          suggestedMemory={suggestedMemory}
-          onDismissMemorySuggestion={() => setSuggestedMemory(null)}
+          onToggleListen={handleToggleListen}
+          onToggleMute={handleToggleMute}
+          onInterrupt={handleInterrupt}
+          onEndCall={handleEndCall}
+          onRetryMic={handleRetryMic}
+          onToggleChatDrawer={() => setIsChatDrawerOpen((prev) => !prev)}
+          onQuickReaction={(emotion, label, line) =>
+            triggerCompanionReaction(emotion, label, line, false)
+          }
         />
-      </div>
+      )}
 
-      {/* Memory Manager Modal */}
-      <MemoryModal
-        isOpen={isMemoryModalOpen}
-        onClose={() => setIsMemoryModalOpen(false)}
-        memories={memories}
-        memoryEnabled={settings.memoryEnabled}
-        onToggleMemoryEnabled={handleToggleMemoryEnabled}
-        onAddMemory={handleAddMemory}
-        onUpdateMemory={handleUpdateMemory}
-        onDeleteMemory={handleDeleteMemory}
-        onClearAllMemories={handleClearAllMemories}
-      />
+      {activeTab === 'play' && (
+        <GameHub
+          progress={progress}
+          soundEnabled={isSoundEnabled}
+          prefersReducedMotion={prefersReducedMotion}
+          onCompleteGame={handleCompleteGame}
+          onReturnHome={() => handleSelectTab('home')}
+        />
+      )}
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
+      {activeTab === 'wardrobe' && (
+        <WardrobeScreen
+          config={settings.avatarConfig}
+          roomConfig={settings.roomConfig}
+          progress={progress}
+          glbInspection={glbInspection}
+          onApplyWardrobe={handleApplyWardrobe}
+          onNavigatePlay={() => handleSelectTab('play')}
+        />
+      )}
+
+      {activeTab === 'memories' && (
+        <MemoriesScreen
+          memories={memories}
+          memoryEnabled={settings.memoryEnabled}
+          conversationsCount={conversations.length}
+          onToggleMemoryEnabled={handleToggleMemoryEnabled}
+          onAddMemory={handleAddMemory}
+          onUpdateMemory={handleUpdateMemory}
+          onDeleteMemory={handleDeleteMemory}
+          onClearAllMemories={handleClearAllMemories}
+          onClearAllConversations={handleClearAllConversations}
+        />
+      )}
+
+      {activeTab === 'settings' && (
+        <SettingsScreen
+          settings={settings}
+          onSaveSettings={handleSaveSettings}
+          onDataRestored={handleRestoreData}
+          onClearAllConversations={handleClearAllConversations}
+          isApiKeyConfigured={systemStatus.isKeyConfigured}
+        />
+      )}
+
+      {/* Slide-Over Full Scrollable Chat & Code Notes Drawer (Home) */}
+      <ChatDrawer
+        isOpen={isChatDrawerOpen}
+        onClose={() => setIsChatDrawerOpen(false)}
+        messages={messages}
+        isThinking={isThinking}
+        isSpeaking={isSpeaking}
+        onInterrupt={handleInterrupt}
         settings={settings}
-        onSaveSettings={handleSaveSettings}
-        isApiKeyConfigured={systemStatus.isKeyConfigured}
-      />
-
-      {/* Avatar Customizer Modal */}
-      <AvatarCustomizer
-        isOpen={isAvatarCustomizerOpen}
-        onClose={() => setIsAvatarCustomizerOpen(false)}
-        config={settings.avatarConfig}
-        glbInspection={glbInspection}
-        onChange={(newConfig) => {
-          const updated = { ...settings, avatarConfig: newConfig };
-          setSettings(updated);
-          storage.saveSettings(updated);
+        onSendMessage={handleSendMessage}
+        onChangeLanguage={(lang) => handleSaveSettings({ ...settings, language: lang })}
+        onSaveSuggestedMemory={(candidateText) => {
+          handleAddMemory({
+            content: candidateText,
+            category: 'preference',
+            approvedByUser: true,
+            sourceText: candidateText,
+          });
+          setSuggestedMemory(null);
         }}
+        suggestedMemory={suggestedMemory}
+        onDismissMemorySuggestion={() => setSuggestedMemory(null)}
       />
-    </div>
+    </GameShell>
   );
 }

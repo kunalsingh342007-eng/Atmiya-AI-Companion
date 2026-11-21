@@ -1,9 +1,9 @@
 import React, { useRef, useEffect } from 'react';
-import { ChatMessage, CompanionSettings, UserMemory } from '../../types/companion';
+import { CompanionLanguage, ChatMessage, CompanionSettings } from '../../types/companion';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { QuickStarters } from './QuickStarters';
-import { X, MessageSquare, Terminal } from 'lucide-react';
+import { X, MessageSquare } from 'lucide-react';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -14,6 +14,7 @@ interface ChatDrawerProps {
   onInterrupt: () => void;
   settings: CompanionSettings;
   onSendMessage: (text: string) => void;
+  onChangeLanguage: (lang: CompanionLanguage) => void;
   onSaveSuggestedMemory?: (memoryText: string) => void;
   suggestedMemory?: string | null;
   onDismissMemorySuggestion?: () => void;
@@ -28,6 +29,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   onInterrupt,
   settings,
   onSendMessage,
+  onChangeLanguage,
   onSaveSuggestedMemory,
   suggestedMemory,
   onDismissMemorySuggestion,
@@ -72,7 +74,9 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close chat drawer"
             className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -108,9 +112,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             isSpeaking={isSpeaking}
             onInterrupt={onInterrupt}
             language={settings.language}
-            onChangeLanguage={(lang) => {
-              // language update
-            }}
+            onChangeLanguage={onChangeLanguage}
           />
         </div>
       </div>
