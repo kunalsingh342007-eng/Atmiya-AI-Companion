@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   AvatarState,
   CompanionLanguage,
@@ -7,6 +7,7 @@ import {
 import {
   AlertCircle,
   Globe,
+  Loader2,
   MessageSquare,
   Mic,
   MicOff,
@@ -15,6 +16,7 @@ import {
   RotateCcw,
   Send,
   Volume2,
+  X,
 } from 'lucide-react';
 
 interface DialoguePanelProps {
@@ -33,13 +35,16 @@ interface DialoguePanelProps {
   language: CompanionLanguage;
   onSendMessage: (text: string) => void;
   onRetryLastMessage?: () => void;
+  onDismissChatError?: () => void;
+  onDismissVoiceError?: () => void;
   onToggleListen: () => void;
-  onToggleMute: () => void;
   onInterrupt: () => void;
   onEndCall: () => void;
   onRetryMic: () => void;
   onToggleChatDrawer: () => void;
   onChangeLanguage: (lang: CompanionLanguage) => void;
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
 }
 
 const LANGUAGE_ORDER: CompanionLanguage[] = ['auto', 'hi', 'hinglish', 'en'];
@@ -66,18 +71,33 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
   language,
   onSendMessage,
   onRetryLastMessage,
+  onDismissChatError,
+  onDismissVoiceError,
   onToggleListen,
-  onToggleMute,
   onInterrupt,
   onEndCall,
   onRetryMic,
   onToggleChatDrawer,
   onChangeLanguage,
+  draftText: controlledDraft,
+  onDraftChange,
 }) => {
-  const [draftText, setDraftText] = useState('');
+  const [localDraft, setLocalDraft] = useState('');
+  const draftText = controlledDraft !== undefined ? controlledDraft : localDraft;
+  const setDraftText = (next: string) => {
+    if (onDraftChange) {
+      onDraftChange(next);
+    }
+    if (controlledDraft === undefined) {
+      setLocalDraft(next);
+    }
+  };
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const isListening = avatarState === 'listening';
   const displayName = personaName.trim() || 'Ātmiya';
+  const isMicUnsupported = micPermission === 'unsupported';
+  const isMicDenied = micPermission === 'denied';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +119,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
     isSpeaking ||
     Boolean(chatError) ||
     Boolean(voiceError) ||
-    micPermission === 'denied';
+    isMicDenied;
 
   return (
     <section
@@ -107,21 +127,36 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
       className="relative z-20 w-full shrink-0 bg-white/95 dark:bg-[#060d1b]/95 border-t border-slate-200 dark:border-slate-800/80 backdrop-blur-xl px-3 sm:px-5 py-2.5"
     >
       <div className="max-w-5xl mx-auto space-y-2">
-        {/* Compact Status / Error / Live Transcript Strip (only shown when active or recovering) */}
+        {/* Visible State & Recovery Strip */}
         {showStatusStrip && (
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-[#0b162d] border border-slate-200/80 dark:border-sky-400/15 text-xs">
+          <div
+            role="status"
+            aria-live="polite"
+            className={`flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-xl border text-xs ${
+              chatError
+                ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-500/35'
+                : voiceError || isMicDenied
+                ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-500/35'
+                : 'bg-slate-100/90 dark:bg-[#0b162d] border-slate-200/80 dark:border-sky-400/20'
+            }`}
+          >
             <div className="flex items-center gap-2 min-w-0">
               {isListening ? (
                 <>
                   <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300 shrink-0" />
                   <span className="text-sky-700 dark:text-sky-200 font-medium truncate">
-                    {userTranscript ? `“${userTranscript}”` : 'Listening in Hindi, Hinglish, or English...'}
+                    {userTranscript
+                      ? `Listening: “${userTranscript}”`
+                      : 'Listening — speak in Hindi, Hinglish, or English...'}
                   </span>
                 </>
               ) : isThinking ? (
-                <span className="text-amber-700 dark:text-amber-300 font-medium">
-                  {displayName} is thinking...
-                </span>
+                <>
+                  <Loader2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300 animate-spin shrink-0" />
+                  <span className="text-amber-700 dark:text-amber-200 font-medium truncate">
+                    {displayName} is thinking...
+                  </span>
+                </>
               ) : isSpeaking ? (
                 <>
                   <Volume2 className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300 shrink-0" />
@@ -139,15 +174,15 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
               ) : voiceError ? (
                 <>
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300 shrink-0" />
-                  <span className="text-slate-700 dark:text-slate-200 truncate">
+                  <span className="text-amber-800 dark:text-amber-200 font-medium truncate">
                     {voiceError}
                   </span>
                 </>
               ) : (
                 <>
                   <MicOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300 shrink-0" />
-                  <span className="text-amber-700 dark:text-amber-200 font-medium truncate">
-                    Microphone blocked — text chat works normally
+                  <span className="text-amber-800 dark:text-amber-200 font-medium truncate">
+                    Microphone permission denied — allow mic access or type below.
                   </span>
                 </>
               )}
@@ -165,14 +200,56 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
                 </button>
               )}
 
-              {(voiceError || micPermission === 'denied') && !chatError && (
+              {chatError && onDismissChatError && (
                 <button
                   type="button"
-                  onClick={onRetryMic}
-                  className="h-7 px-2.5 rounded-lg bg-amber-100 dark:bg-amber-900/60 hover:bg-amber-200 dark:hover:bg-amber-800/70 text-amber-900 dark:text-amber-100 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  onClick={onDismissChatError}
+                  aria-label="Dismiss chat error"
+                  className="h-7 w-7 rounded-lg hover:bg-rose-200/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-200 inline-flex items-center justify-center cursor-pointer"
                 >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Retry Mic</span>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {(voiceError || isMicDenied) && !chatError && (
+                <>
+                  {!isMicUnsupported && (
+                    <button
+                      type="button"
+                      onClick={onRetryMic}
+                      className="h-7 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Retry Mic</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => inputRef.current?.focus()}
+                    className="h-7 px-2 rounded-lg bg-white dark:bg-[#10203d] border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-100 text-[11px] font-medium cursor-pointer whitespace-nowrap"
+                  >
+                    Type Instead
+                  </button>
+                  {voiceError && onDismissVoiceError && (
+                    <button
+                      type="button"
+                      onClick={onDismissVoiceError}
+                      aria-label="Dismiss voice notice"
+                      className="h-7 w-7 rounded-lg hover:bg-amber-200/60 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 inline-flex items-center justify-center cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
+
+              {isListening && (
+                <button
+                  type="button"
+                  onClick={onEndCall}
+                  className="h-7 px-2.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-medium cursor-pointer whitespace-nowrap"
+                >
+                  Cancel
                 </button>
               )}
 
@@ -190,15 +267,15 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
           </div>
         )}
 
-        {/* Prominent Voice + Text Input Bar */}
+        {/* Prominent Unified Voice + Text Bar (Single Prominent Microphone Control) */}
         <div className="flex items-center gap-2 rounded-2xl bg-slate-100/90 dark:bg-[#0b162d] border border-slate-200 dark:border-sky-400/20 focus-within:border-blue-500 dark:focus-within:border-sky-400/50 p-1.5 shadow-sm transition-colors">
-          {/* Microphone Action */}
           {isSpeaking ? (
             <button
               type="button"
               onClick={onInterrupt}
               aria-label="Stop speaking"
-              className="h-10 px-3.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+              title="Stop response speech"
+              className="h-11 px-3.5 sm:px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
             >
               <PauseCircle className="w-4 h-4" />
               <span>Stop</span>
@@ -207,45 +284,62 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
             <button
               type="button"
               onClick={onToggleListen}
-              disabled={isThinking}
-              aria-label={isListening ? 'Send voice message' : 'Start voice input'}
-              title={isListening ? 'Send voice message' : 'Speak with microphone'}
-              className={`h-10 px-3 sm:px-3.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+              disabled={isThinking || isMicUnsupported}
+              aria-pressed={isListening}
+              aria-label={
+                isMicUnsupported
+                  ? 'Microphone voice recognition unsupported in this browser'
+                  : isListening
+                  ? 'Send or stop voice input'
+                  : isMicMuted
+                  ? 'Unmute and start voice input'
+                  : 'Start voice input'
+              }
+              title={
+                isMicUnsupported
+                  ? 'Voice input is not supported in this browser — please type instead'
+                  : isListening
+                  ? 'Tap to send captured speech'
+                  : isMicMuted
+                  ? 'Microphone muted — tap to unmute & speak'
+                  : 'Speak with microphone'
+              }
+              className={`h-11 px-3.5 sm:px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
                 isListening
-                  ? 'bg-sky-500 hover:bg-sky-400 text-white shadow-sm'
-                  : 'bg-white dark:bg-[#10203d] hover:bg-blue-50 dark:hover:bg-[#162b52] border border-slate-200 dark:border-sky-400/20 text-blue-700 dark:text-sky-200'
+                  ? 'bg-sky-500 hover:bg-sky-400 text-white shadow-sm ring-2 ring-sky-300/60'
+                  : isMicDenied || isMicMuted
+                  ? 'bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-300/80 dark:border-amber-500/40 text-amber-800 dark:text-amber-200'
+                  : 'bg-white dark:bg-[#10203d] hover:bg-blue-50 dark:hover:bg-[#162b52] border border-slate-200 dark:border-sky-400/25 text-blue-700 dark:text-sky-200 shadow-xs'
               }`}
             >
-              <Mic className="w-4 h-4" />
-              <span className="hidden sm:inline">{isListening ? 'Send' : 'Mic'}</span>
+              {isMicMuted || isMicDenied || isMicUnsupported ? (
+                <MicOff className="w-4 h-4" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+              <span className="hidden sm:inline">
+                {isListening
+                  ? 'Send Voice'
+                  : isMicDenied
+                  ? 'Mic Blocked'
+                  : isMicMuted
+                  ? 'Muted'
+                  : 'Speak'}
+              </span>
             </button>
           )}
-
-          {/* Mute Mic Toggle */}
-          <button
-            type="button"
-            onClick={onToggleMute}
-            aria-label={isMicMuted ? 'Unmute microphone' : 'Mute microphone'}
-            title={isMicMuted ? 'Unmute microphone' : 'Mute microphone'}
-            className={`hidden sm:flex h-10 w-10 rounded-xl border items-center justify-center transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
-              isMicMuted
-                ? 'bg-rose-50 dark:bg-rose-950/75 border-rose-200 dark:border-rose-500/40 text-rose-600 dark:text-rose-300'
-                : 'bg-white dark:bg-[#10203d] hover:bg-slate-50 dark:hover:bg-[#162b52] border-slate-200 dark:border-slate-700/70 text-slate-600 dark:text-slate-300'
-            }`}
-          >
-            {isMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </button>
 
           {/* Main Text Input + Send Button */}
           <form onSubmit={handleSubmit} className="flex-1 min-w-0 flex items-center gap-1.5">
             <input
+              ref={inputRef}
               type="text"
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
               placeholder={`Message ${displayName} in Hindi, Hinglish, or English...`}
               disabled={isThinking}
               aria-label={`Message ${displayName}`}
-              className="flex-1 min-w-0 h-10 px-3 bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400/80 focus:outline-none disabled:opacity-60"
+              className="flex-1 min-w-0 h-11 px-3 bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400/80 focus:outline-none disabled:opacity-60"
             />
 
             {/* Mobile Language Quick Switch (< md) */}
@@ -280,7 +374,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
               )}
             </button>
 
-            {/* Reset Turn Icon when active */}
+            {/* Clear / Reset Active Turn when active */}
             {(isListening || isSpeaking || isThinking || Boolean(aiSpokenText)) && (
               <button
                 type="button"
@@ -296,12 +390,21 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
             <button
               type="submit"
               disabled={!draftText.trim() || isThinking}
-              aria-label="Send message"
-              title="Send message"
-              className="h-10 px-3.5 sm:px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              aria-label={isThinking ? 'Sending message' : 'Send message'}
+              title={isThinking ? 'Waiting for reply' : 'Send message'}
+              className="h-11 px-3.5 sm:px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
             >
-              <span className="hidden sm:inline">Send</span>
-              <Send className="w-4 h-4" />
+              {isThinking ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="hidden sm:inline">Thinking</span>
+                </>
+              ) : (
+                <>
+                  <span className="hidden sm:inline">Send</span>
+                  <Send className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
         </div>

@@ -41,7 +41,7 @@ export const AvatarStage: React.FC<AvatarStageProps> = React.memo(({
   );
 
   return (
-    <main className="flex-1 min-h-0 w-full flex items-center justify-center px-4 pt-1 pb-2 overflow-hidden">
+    <main className="relative flex-1 min-h-0 w-full h-full flex items-center justify-center px-1.5 sm:px-3 overflow-hidden">
       {avatarType === 'three-ws' ? (
         <Suspense fallback={fallback2D}>
           <AtmiyaThreeAvatar
@@ -75,6 +75,11 @@ export const AvatarStage: React.FC<AvatarStageProps> = React.memo(({
             onTapAvatar={actions.onTapAvatar}
             onInspectionComplete={actions.onInspectionComplete}
             onOpenCustomize={onOpenCustomize}
+            cameraPreset={controller.cameraPreset}
+            onChangeCameraPreset={actions.onChangeCameraPreset}
+            resetCameraNonce={controller.resetCameraNonce}
+            isExpressionsOpen={controller.isExpressionsOpen}
+            onSetExpressionsOpen={actions.onSetExpressionsOpen}
           />
         </Suspense>
       ) : (

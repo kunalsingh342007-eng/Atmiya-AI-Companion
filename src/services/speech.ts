@@ -28,6 +28,8 @@ class SpeechService {
   private playbackToken = 0;
   private hasUserGesture = false;
   private gestureTrackerBound = false;
+  private lastRecognitionStartMs = 0;
+  private browserTtsSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.bindUserGestureTracker();
@@ -113,8 +115,14 @@ class SpeechService {
       return false;
     }
 
+    const now = Date.now();
+    if (this.isListening && now - this.lastRecognitionStartMs < 250) {
+      return true;
+    }
+
     try {
       this.stopRecognition();
+      this.lastRecognitionStartMs = now;
 
       const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRec();
@@ -341,10 +349,30 @@ class SpeechService {
       if (onEnd) onEnd();
     };
 
+    const estimatedMaxMs = Math.min(
+      45000,
+      Math.max(4000, Math.round((text.length * 75) / Math.max(0.7, rate)) + 2500)
+    );
+    this.browserTtsSafetyTimer = setTimeout(() => {
+      if (token !== this.playbackToken) return;
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          // ignore
+        }
+      }
+      finalize();
+    }, estimatedMaxMs);
+
     utterance.onend = finalize;
     utterance.onerror = finalize;
 
-    window.speechSynthesis.speak(utterance);
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      finalize();
+    }
   }
 
   /**
@@ -449,6 +477,22 @@ class SpeechService {
         }
       };
 
+      const estimatedMaxMs = Math.min(
+        45000,
+        Math.max(4000, Math.round((text.length * 75) / Math.max(0.7, rate)) + 2500)
+      );
+      this.browserTtsSafetyTimer = setTimeout(() => {
+        if (token !== this.playbackToken) return;
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          try {
+            window.speechSynthesis.cancel();
+          } catch {
+            // ignore
+          }
+        }
+        settle('played');
+      }, estimatedMaxMs);
+
       try {
         window.speechSynthesis.speak(utterance);
       } catch {
@@ -504,6 +548,10 @@ class SpeechService {
     if (this.browserTtsInterval) {
       clearInterval(this.browserTtsInterval);
       this.browserTtsInterval = null;
+    }
+    if (this.browserTtsSafetyTimer) {
+      clearTimeout(this.browserTtsSafetyTimer);
+      this.browserTtsSafetyTimer = null;
     }
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);

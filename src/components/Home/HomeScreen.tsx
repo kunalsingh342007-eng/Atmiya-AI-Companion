@@ -52,6 +52,8 @@ interface HomeScreenProps {
   onNavigateWardrobe: () => void;
   onSendMessage: (text: string) => void;
   onRetryLastMessage: () => void;
+  onDismissChatError?: () => void;
+  onDismissVoiceError?: () => void;
   onToggleListen: () => void;
   onToggleMute: () => void;
   onInterrupt: () => void;
@@ -66,6 +68,8 @@ interface HomeScreenProps {
     line: string,
     gesture?: AvatarGesture
   ) => void;
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -104,6 +108,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onNavigateWardrobe,
   onSendMessage,
   onRetryLastMessage,
+  onDismissChatError,
+  onDismissVoiceError,
   onToggleListen,
   onToggleMute,
   onInterrupt,
@@ -113,6 +119,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onSaveSuggestedMemory,
   onDismissMemorySuggestion,
   onQuickReaction,
+  draftText,
+  onDraftChange,
 }) => {
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
@@ -141,11 +149,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               onOpenSettings={onOpenSettings}
             />
 
-            {/* Central 3D Avatar Stage with Speech Bubble / First-Time Hint */}
-            <div className="relative flex-1 min-h-0 flex flex-col items-center justify-center">
+            {/* Central 3D Avatar Stage with Floating Caption / First-Time Hint */}
+            <div className="relative flex-1 min-h-0 w-full flex flex-col items-center justify-center overflow-hidden">
+              <AvatarStage
+                settings={settings}
+                controller={avatarControllerState}
+                actions={avatarControllerActions}
+                onOpenCustomize={onNavigateWardrobe}
+              />
+
               {speechBubbleText && (
-                <div className="relative z-20 mb-1 max-w-xs sm:max-w-sm px-3 animate-fadeIn">
-                  <div className="relative rounded-2xl bg-white/95 dark:bg-[#091428]/95 text-slate-900 dark:text-slate-100 px-3.5 py-2 text-xs sm:text-[13px] font-medium shadow-xl border border-slate-200 dark:border-sky-400/25 flex items-start gap-2 backdrop-blur-md">
+                <div className="pointer-events-none absolute bottom-2 inset-x-0 z-20 flex justify-center px-3 animate-fadeIn">
+                  <div className="pointer-events-auto max-w-sm sm:max-w-md rounded-2xl bg-white/95 dark:bg-[#091428]/95 text-slate-900 dark:text-slate-100 px-3.5 py-2 text-xs sm:text-[13px] font-medium shadow-xl border border-slate-200 dark:border-sky-400/25 flex items-start gap-2">
                     <span className="leading-snug flex-1">{speechBubbleText}</span>
                     <button
                       type="button"
@@ -160,8 +175,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               )}
 
               {showFirstTimeHint && !speechBubbleText && (
-                <div className="relative z-20 mb-1 px-3 animate-fadeIn">
-                  <div className="rounded-xl bg-white/92 dark:bg-[#091428]/90 border border-slate-200 dark:border-sky-400/25 backdrop-blur-md text-slate-800 dark:text-sky-100 px-3.5 py-1.5 text-[11px] font-medium shadow-md flex items-center gap-2">
+                <div className="pointer-events-none absolute bottom-2 inset-x-0 z-20 flex justify-center px-3 animate-fadeIn">
+                  <div className="pointer-events-auto rounded-xl bg-white/95 dark:bg-[#091428]/94 border border-slate-200 dark:border-sky-400/25 text-slate-800 dark:text-sky-100 px-3.5 py-1.5 text-[11px] font-medium shadow-md flex items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300 shrink-0" />
                     <span>Tap Ātmiya to greet, or talk &amp; message below</span>
                     <button
@@ -175,22 +190,29 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   </div>
                 </div>
               )}
-
-              <AvatarStage
-                settings={settings}
-                controller={avatarControllerState}
-                actions={avatarControllerActions}
-                onOpenCustomize={onNavigateWardrobe}
-              />
             </div>
 
             {/* Floating Avatar Quick Actions: Talk, Wave, Play, More */}
             <InteractionBar
               avatarState={avatarState}
+              isMicMuted={isMicMuted}
+              cameraPreset={avatarControllerState.cameraPreset}
+              isExpressionsOpen={avatarControllerState.isExpressionsOpen}
               onTalk={onToggleListen}
+              onToggleMute={onToggleMute}
               onOpenChat={onToggleChatDrawer}
               onNavigatePlay={onNavigatePlay}
               onNavigateWardrobe={onNavigateWardrobe}
+              onChangeCameraPreset={avatarControllerActions.onChangeCameraPreset}
+              onResetCamera={avatarControllerActions.onResetCamera}
+              onToggleExpressions={
+                avatarControllerActions.onSetExpressionsOpen
+                  ? () =>
+                      avatarControllerActions.onSetExpressionsOpen?.(
+                        !avatarControllerState.isExpressionsOpen
+                      )
+                  : undefined
+              }
               onQuickReaction={onQuickReaction}
             />
           </CompanionRoom>
@@ -207,6 +229,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           onNewChat={onNewChat}
           onSendMessage={onSendMessage}
           onRetryLastMessage={onRetryLastMessage}
+          onDismissChatError={onDismissChatError}
           onSaveSuggestedMemory={onSaveSuggestedMemory}
           onDismissMemorySuggestion={onDismissMemorySuggestion}
         />
@@ -229,13 +252,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         language={settings.language}
         onSendMessage={onSendMessage}
         onRetryLastMessage={onRetryLastMessage}
+        onDismissChatError={onDismissChatError}
+        onDismissVoiceError={onDismissVoiceError}
         onToggleListen={onToggleListen}
-        onToggleMute={onToggleMute}
         onInterrupt={onInterrupt}
         onEndCall={onEndCall}
         onRetryMic={onRetryMic}
         onToggleChatDrawer={onToggleChatDrawer}
         onChangeLanguage={onChangeLanguage}
+        draftText={draftText}
+        onDraftChange={onDraftChange}
       />
     </div>
   );

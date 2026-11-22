@@ -3,7 +3,7 @@ import { GameId, GameProgress } from '../../types/companion';
 import { MemoryMatchGame } from './MemoryMatchGame';
 import { QuickQuizGame } from './QuickQuizGame';
 import { PatternMatchGame } from './PatternMatchGame';
-import { Award, Brain, Gamepad2, HelpCircle, Play, Sparkles } from 'lucide-react';
+import { Award, Brain, Gamepad2, HelpCircle, Home, Play, Sparkles } from 'lucide-react';
 
 interface GameHubProps {
   progress: GameProgress;
@@ -140,7 +140,7 @@ export const GameHub: React.FC<GameHubProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
             <span className="font-semibold text-blue-700 dark:text-sky-300 tabular-nums">
               {progress.xp} XP
             </span>
@@ -151,6 +151,14 @@ export const GameHub: React.FC<GameHubProps> = ({
               <Award className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300" />
               {progress.achievements.length} badges
             </span>
+            <button
+              type="button"
+              onClick={onReturnHome}
+              className="h-9 px-3 rounded-xl bg-white dark:bg-[#0c1528] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>Companion</span>
+            </button>
           </div>
         </header>
 

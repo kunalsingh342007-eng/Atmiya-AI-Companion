@@ -10,6 +10,8 @@ interface ChatInputProps {
   onInterrupt: () => void;
   language: CompanionLanguage;
   onChangeLanguage: (lang: CompanionLanguage) => void;
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -19,8 +21,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onInterrupt,
   language,
   onChangeLanguage,
+  draftText: controlledDraft,
+  onDraftChange,
 }) => {
-  const [inputText, setInputText] = useState('');
+  const [localInputText, setLocalInputText] = useState('');
+  const inputText = controlledDraft !== undefined ? controlledDraft : localInputText;
+  const setInputText = (next: string) => {
+    if (onDraftChange) {
+      onDraftChange(next);
+    }
+    if (controlledDraft === undefined) {
+      setLocalInputText(next);
+    }
+  };
   const [isRecording, setIsRecording] = useState(false);
   const [recordingStatus, setRecordingStatus] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

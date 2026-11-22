@@ -15,7 +15,7 @@ import {
   UnifiedAnimationState,
   UserMemory,
 } from './types/companion';
-import { storage } from './services/storage';
+import { DEFAULT_ROOM_CONFIG, storage } from './services/storage';
 import { api } from './services/api';
 import { speechService } from './services/speech';
 import { playGameSound } from './services/gameAudio';
@@ -33,6 +33,7 @@ import {
   AvatarControllerActions,
   AvatarControllerState,
   AvatarGesture,
+  CameraPreset,
   useMicrophonePermission,
 } from './components/Avatar/AvatarController';
 import { UnifiedAnimationController } from './components/Avatar/UnifiedAnimationController';
@@ -41,7 +42,7 @@ import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
 import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
 import { ChatDrawer } from './components/Chat/ChatDrawer';
 
-import { Check } from 'lucide-react';
+import { AlertTriangle, Check } from 'lucide-react';
 
 export default function App() {
   // Navigation & Game Progression State
@@ -94,8 +95,24 @@ export default function App() {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [activeGesture, setActiveGesture] = useState<AvatarGesture>('none');
   const [gestureNonce, setGestureNonce] = useState<number>(0);
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset>(
+    () => settings.avatarConfig.defaultCameraPreset ?? 'close-up'
+  );
+  const [resetCameraNonce, setResetCameraNonce] = useState<number>(0);
+  const [isExpressionsOpen, setIsExpressionsOpen] = useState<boolean>(false);
 
-  const [micPermission, refreshMicPermission] = useMicrophonePermission();
+  // Phase 4: Preserved Drafts & Unsaved Changes Guard
+  const [draftsBySession, setDraftsBySession] = useState<Record<string, string>>({});
+  const [wardrobeDraftAvatar, setWardrobeDraftAvatar] = useState<AvatarAppearanceConfig>(
+    settings.avatarConfig
+  );
+  const [wardrobeDraftRoom, setWardrobeDraftRoom] = useState<RoomConfig>(
+    settings.roomConfig ?? DEFAULT_ROOM_CONFIG
+  );
+  const [hasUnsavedMemoryDraft, setHasUnsavedMemoryDraft] = useState(false);
+  const [pendingNavTab, setPendingNavTab] = useState<ActiveNavTab | null>(null);
+
+  const [micPermission, refreshMicPermission, markMicDenied] = useMicrophonePermission();
 
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,7 +137,7 @@ export default function App() {
     if (!ctrl) return;
     const unsub = ctrl.subscribe((snap) => {
       setUnifiedState(snap.unifiedState);
-      setAvatarState((prev) => (prev === 'interrupted' || prev === 'error' ? prev : snap.avatarState));
+      setAvatarState((prev) => (prev === 'interrupted' ? prev : snap.avatarState));
       setCompanionEmotion(snap.emotion);
       setEmotionIntensity(snap.emotionIntensity);
       setActiveGesture(snap.activeGesture);
@@ -270,25 +287,77 @@ export default function App() {
     }
   };
 
+  const savedRoomConfig = settings.roomConfig ?? DEFAULT_ROOM_CONFIG;
+  const hasUnsavedWardrobeChanges =
+    JSON.stringify(wardrobeDraftAvatar) !== JSON.stringify(settings.avatarConfig) ||
+    JSON.stringify(wardrobeDraftRoom) !== JSON.stringify(savedRoomConfig);
+
+  const currentComposerDraft = activeConvId ? draftsBySession[activeConvId] ?? '' : '';
+
+  const updateCurrentComposerDraft = useCallback(
+    (nextText: string) => {
+      if (!activeConvId) return;
+      setDraftsBySession((prev) => {
+        if (!nextText && !(activeConvId in prev)) return prev;
+        return { ...prev, [activeConvId]: nextText };
+      });
+    },
+    [activeConvId]
+  );
+
+  const executeSelectTab = useCallback(
+    (tab: ActiveNavTab) => {
+      if (tab !== 'home' && avatarStateRef.current === 'listening') {
+        if (speechTimeoutRef.current) {
+          clearTimeout(speechTimeoutRef.current);
+          speechTimeoutRef.current = null;
+        }
+        speechService.stopRecognition();
+        animControllerRef.current?.returnToIdle();
+        setAvatarState('idle');
+      }
+      if (tab !== 'home') {
+        setIsChatDrawerOpen(false);
+        setIsSidebarOpen(false);
+      }
+      setActiveTab(tab);
+    },
+    []
+  );
+
   const handleSelectTab = (tab: ActiveNavTab) => {
-    if (tab !== 'home' && avatarState === 'listening') {
-      stopListeningTurn();
+    if (tab === activeTab) return;
+    if (
+      (activeTab === 'wardrobe' && hasUnsavedWardrobeChanges) ||
+      (activeTab === 'memories' && hasUnsavedMemoryDraft)
+    ) {
+      setPendingNavTab(tab);
+      return;
     }
-    if (tab !== 'home') {
-      setIsChatDrawerOpen(false);
-      setIsSidebarOpen(false);
-    }
-    setActiveTab(tab);
+    executeSelectTab(tab);
   };
 
-  const startListeningTurn = () => {
-    if (isMicMuted || isProcessingRef.current) return;
+  const startListeningTurn = (allowAutoUnmute = false) => {
+    if (isProcessingRef.current) return;
+    if (isMicMuted) {
+      if (!allowAutoUnmute) return;
+      setIsMicMuted(false);
+    }
+
+    if (!speechService.isRecognitionSupported()) {
+      const msg = 'Voice input is not supported in this browser — type your message below.';
+      setVoiceError(msg);
+      setAvatarState('error');
+      showToast(msg);
+      return;
+    }
 
     dismissHint();
     cancelPendingGreetingAudio();
     const epochAtStart = turnEpochRef.current;
     setPreviewEmotion(null);
     setVoiceError(null);
+    setChatError(null);
     speechService.stopSpeaking();
     animControllerRef.current?.dispatch({
       animationState: 'listening',
@@ -331,7 +400,11 @@ export default function App() {
       },
       onError: (err) => {
         if (turnEpochRef.current !== epochAtStart) return;
-        refreshMicPermission();
+        if (/denied|not-allowed|allow microphone/i.test(err)) {
+          markMicDenied();
+        } else {
+          refreshMicPermission();
+        }
         if (speechTimeoutRef.current) {
           clearTimeout(speechTimeoutRef.current);
           speechTimeoutRef.current = null;
@@ -368,6 +441,11 @@ export default function App() {
   };
 
   const handleToggleListen = () => {
+    if (isProcessingRef.current) return;
+    if (avatarState === 'speaking') {
+      speechService.stopSpeaking();
+      setIsSpeaking(false);
+    }
     if (avatarState === 'listening') {
       if (userTranscript.trim()) {
         handleSendMessage(userTranscript.trim());
@@ -375,7 +453,7 @@ export default function App() {
         stopListeningTurn();
       }
     } else {
-      startListeningTurn();
+      startListeningTurn(true);
     }
   };
 
@@ -383,12 +461,7 @@ export default function App() {
     setVoiceError(null);
     setAvatarState('idle');
     refreshMicPermission();
-    if (!isMicMuted) {
-      startListeningTurn();
-    } else {
-      setIsMicMuted(false);
-      setTimeout(() => startListeningTurn(), 50);
-    }
+    startListeningTurn(true);
   };
 
   const handleToggleMute = () => {
@@ -710,7 +783,7 @@ export default function App() {
     triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true, 'nod', 'greeting');
   };
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, options: { isRetry?: boolean } = {}) => {
     const trimmed = text.trim();
     if (!trimmed || isProcessingRef.current || !activeConvId) return;
 
@@ -739,20 +812,36 @@ export default function App() {
     });
     setAvatarState('thinking');
     setUserTranscript(trimmed);
+    updateCurrentComposerDraft('');
 
-    const userMessage: ChatMessage = {
-      id: 'msg_' + Date.now(),
-      role: 'user',
-      content: trimmed,
-      timestamp: Date.now(),
-    };
+    const lastMsg = messages[messages.length - 1];
+    const shouldReusePendingUserMsg =
+      Boolean(options.isRetry) &&
+      lastMsg?.role === 'user' &&
+      lastMsg.content.trim() === trimmed;
 
-    const currentMsgs = [...messages, userMessage];
-    storage.updateConversation(activeConvId, {
-      messages: currentMsgs,
-      title: messages.length === 0 ? trimmed.slice(0, 36) : (currentConversation?.title || 'Companion Session'),
-    });
-    setConversations(storage.getConversations());
+    const currentMsgs = shouldReusePendingUserMsg
+      ? messages
+      : [
+          ...messages,
+          {
+            id: 'msg_' + Date.now(),
+            role: 'user' as const,
+            content: trimmed,
+            timestamp: Date.now(),
+          },
+        ];
+
+    if (!shouldReusePendingUserMsg) {
+      storage.updateConversation(activeConvId, {
+        messages: currentMsgs,
+        title:
+          messages.length === 0
+            ? trimmed.slice(0, 36)
+            : currentConversation?.title || 'Companion Session',
+      });
+      setConversations(storage.getConversations());
+    }
 
     try {
       const response = await api.sendMessage(
@@ -906,7 +995,6 @@ export default function App() {
       const errMsg = err?.message || 'Connection failed. Please check API configuration or retry.';
       lastFailedMessageRef.current = trimmed;
       setChatError(errMsg);
-      setVoiceError(errMsg);
       showToast('Error: ' + errMsg);
     } finally {
       if (activeAbortRef.current === abortController) {
@@ -918,14 +1006,29 @@ export default function App() {
   const handleRetryLastMessage = () => {
     const retryText = lastFailedMessageRef.current;
     if (!retryText || isProcessingRef.current) return;
-    handleSendMessage(retryText);
+    handleSendMessage(retryText, { isRetry: true });
+  };
+
+  const handleDismissChatError = () => {
+    setChatError(null);
+    if (!isProcessingRef.current && avatarStateRef.current === 'error') {
+      setAvatarState('idle');
+    }
+  };
+
+  const handleDismissVoiceError = () => {
+    setVoiceError(null);
+    if (!isProcessingRef.current && avatarStateRef.current === 'error') {
+      setAvatarState('idle');
+    }
   };
 
   // Desktop keyboard shortcuts on Home
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isChatDrawerOpen) setIsChatDrawerOpen(false);
+        if (pendingNavTab) setPendingNavTab(null);
+        else if (isChatDrawerOpen) setIsChatDrawerOpen(false);
         else if (isSidebarOpen) setIsSidebarOpen(false);
         else if (isSpeaking) handleInterrupt();
         return;
@@ -991,6 +1094,7 @@ export default function App() {
     const fresh = storage.createConversation(settings.personality, settings.language);
     setConversations([fresh]);
     setActiveConvId(fresh.id);
+    setDraftsBySession({});
     setAiSpokenText('');
     setUserTranscript('');
     setAvatarState('idle');
@@ -1011,6 +1115,8 @@ export default function App() {
     }
     setSettings(newSettings);
     storage.saveSettings(newSettings);
+    setWardrobeDraftAvatar(newSettings.avatarConfig);
+    setWardrobeDraftRoom(newSettings.roomConfig ?? DEFAULT_ROOM_CONFIG);
     showToast(toastText);
   };
 
@@ -1041,7 +1147,13 @@ export default function App() {
     };
     setSettings(updated);
     storage.saveSettings(updated);
-    showToast('Wardrobe & room look applied');
+    setWardrobeDraftAvatar(newAvatar);
+    setWardrobeDraftRoom(newRoom);
+    if (newAvatar.defaultCameraPreset) {
+      setCameraPreset(newAvatar.defaultCameraPreset);
+      setResetCameraNonce((n) => n + 1);
+    }
+    showToast('Customization applied');
   };
 
   const handleCompleteGame = (params: {
@@ -1055,7 +1167,7 @@ export default function App() {
     setProgress(nextProg);
 
     if (newlyUnlockedRooms.length > 0) {
-      showToast(`+${params.xpReward} XP! New room theme unlocked in Wardrobe`);
+      showToast(`+${params.xpReward} XP! New room theme unlocked in Customize`);
     } else if (newAchievements.length > 0) {
       showToast(`+${params.xpReward} XP! Badge unlocked: ${newAchievements[0].title}`);
     } else {
@@ -1064,7 +1176,14 @@ export default function App() {
   };
 
   const handleRestoreData = () => {
-    setSettings(storage.getSettings());
+    const restoredSettings = storage.getSettings();
+    setSettings(restoredSettings);
+    setWardrobeDraftAvatar(restoredSettings.avatarConfig);
+    setWardrobeDraftRoom(restoredSettings.roomConfig ?? DEFAULT_ROOM_CONFIG);
+    if (restoredSettings.avatarConfig.defaultCameraPreset) {
+      setCameraPreset(restoredSettings.avatarConfig.defaultCameraPreset);
+      setResetCameraNonce((n) => n + 1);
+    }
     setMemories(storage.getMemories());
     setProgress(storage.getProgress());
     const reloadedConvs = storage.getConversations();
@@ -1076,7 +1195,7 @@ export default function App() {
       storage.setActiveConversationId(reloadedConvs[0].id);
       setActiveConvId(reloadedConvs[0].id);
     } else {
-      const fresh = storage.createConversation(settings.personality, settings.language);
+      const fresh = storage.createConversation(restoredSettings.personality, restoredSettings.language);
       setConversations([fresh]);
       setActiveConvId(fresh.id);
     }
@@ -1089,6 +1208,16 @@ export default function App() {
   const stableOnTapAvatar = useCallback(() => {
     tapAvatarRef.current();
   }, []);
+
+  const handleChangeCameraPreset = useCallback((preset: CameraPreset) => {
+    setCameraPreset(preset);
+    setResetCameraNonce((n) => n + 1);
+  }, []);
+
+  const handleResetCamera = useCallback(() => {
+    setCameraPreset(settings.avatarConfig.defaultCameraPreset ?? 'close-up');
+    setResetCameraNonce((n) => n + 1);
+  }, [settings.avatarConfig.defaultCameraPreset]);
 
   const avatarControllerState: AvatarControllerState = useMemo(
     () => ({
@@ -1103,6 +1232,9 @@ export default function App() {
       micPermission,
       voiceError,
       glbInspection,
+      cameraPreset,
+      resetCameraNonce,
+      isExpressionsOpen,
     }),
     [
       avatarState,
@@ -1116,6 +1248,9 @@ export default function App() {
       micPermission,
       voiceError,
       glbInspection,
+      cameraPreset,
+      resetCameraNonce,
+      isExpressionsOpen,
     ]
   );
 
@@ -1127,8 +1262,18 @@ export default function App() {
       onTriggerGesture: triggerAvatarGesture,
       onResetPose: handleResetPose,
       onInspectionComplete: setGlbInspection,
+      onChangeCameraPreset: handleChangeCameraPreset,
+      onResetCamera: handleResetCamera,
+      onSetExpressionsOpen: setIsExpressionsOpen,
     }),
-    [stableOnTapAvatar, handleInterrupt, triggerAvatarGesture, handleResetPose]
+    [
+      stableOnTapAvatar,
+      handleInterrupt,
+      triggerAvatarGesture,
+      handleResetPose,
+      handleChangeCameraPreset,
+      handleResetCamera,
+    ]
   );
 
   // Preserve reference to requestCompanionBehavior for external/future hooks cleanly
@@ -1179,6 +1324,20 @@ export default function App() {
         }}
         onNewChat={handleNewChat}
         onDeleteChat={(id) => {
+          if (id === activeConvId) {
+            cancelActiveTurn();
+            speechService.stopSpeaking();
+            speechService.stopRecognition();
+            setIsSpeaking(false);
+            setAvatarState('idle');
+            setChatError(null);
+          }
+          setDraftsBySession((prev) => {
+            if (!(id in prev)) return prev;
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          });
           storage.deleteConversation(id);
           const remaining = storage.getConversations();
           if (remaining.length === 0) {
@@ -1196,10 +1355,12 @@ export default function App() {
               : undefined;
             setAiSpokenText(lastModel ? lastModel.content : '');
           }
+          showToast('Session deleted');
         }}
         onRenameChat={(id, title) => {
           storage.updateConversation(id, { title });
           setConversations(storage.getConversations());
+          showToast('Session renamed');
         }}
         onClearAll={handleClearAllConversations}
         isOpen={isSidebarOpen}
@@ -1243,6 +1404,8 @@ export default function App() {
           onNavigateWardrobe={() => handleSelectTab('wardrobe')}
           onSendMessage={handleSendMessage}
           onRetryLastMessage={handleRetryLastMessage}
+          onDismissChatError={handleDismissChatError}
+          onDismissVoiceError={handleDismissVoiceError}
           onToggleListen={handleToggleListen}
           onToggleMute={handleToggleMute}
           onInterrupt={handleInterrupt}
@@ -1260,8 +1423,17 @@ export default function App() {
           }}
           onDismissMemorySuggestion={() => setSuggestedMemory(null)}
           onQuickReaction={(emotion, label, line, gesture) =>
-            triggerCompanionReaction(emotion, label, line, false, gesture ?? 'none')
+            triggerCompanionReaction(
+              emotion,
+              label,
+              line,
+              false,
+              gesture ?? 'none',
+              gesture === 'wave' ? 'greeting' : undefined
+            )
           }
+          draftText={currentComposerDraft}
+          onDraftChange={updateCurrentComposerDraft}
         />
       )}
 
@@ -1279,8 +1451,25 @@ export default function App() {
         <WardrobeScreen
           config={settings.avatarConfig}
           roomConfig={settings.roomConfig}
+          draftAvatar={wardrobeDraftAvatar}
+          draftRoom={wardrobeDraftRoom}
+          onDraftChange={(nextAvatar, nextRoom) => {
+            setWardrobeDraftAvatar(nextAvatar);
+            setWardrobeDraftRoom(nextRoom);
+          }}
           progress={progress}
           glbInspection={glbInspection}
+          previewEmotion={previewEmotion}
+          activeCameraPreset={cameraPreset}
+          onSelectPreviewEmotion={setPreviewEmotion}
+          onChangeCameraPreset={handleChangeCameraPreset}
+          onResetCamera={handleResetCamera}
+          onPreviewOnStage={() => {
+            if (hasUnsavedWardrobeChanges) {
+              handleApplyWardrobe(wardrobeDraftAvatar, wardrobeDraftRoom);
+            }
+            executeSelectTab('home');
+          }}
           onApplyWardrobe={handleApplyWardrobe}
           onNavigatePlay={() => handleSelectTab('play')}
         />
@@ -1297,6 +1486,7 @@ export default function App() {
           onDeleteMemory={handleDeleteMemory}
           onClearAllMemories={handleClearAllMemories}
           onClearAllConversations={handleClearAllConversations}
+          onUnsavedChange={setHasUnsavedMemoryDraft}
         />
       )}
 
@@ -1310,6 +1500,81 @@ export default function App() {
         />
       )}
 
+      {/* Unsaved Changes Confirmation Dialog */}
+      {pendingNavTab && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unsaved-dialog-title"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-500/35 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h2
+                  id="unsaved-dialog-title"
+                  className="text-sm font-bold text-slate-900 dark:text-white"
+                >
+                  {activeTab === 'wardrobe'
+                    ? 'Unsaved customization changes'
+                    : 'Unsaved memory draft'}
+                </h2>
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {activeTab === 'wardrobe'
+                    ? 'You have unapplied changes in Customize. Would you like to apply them before leaving, or discard them?'
+                    : 'You have an unsubmitted memory draft open. Leaving now will discard the unsaved text.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPendingNavTab(null)}
+                className="h-9 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+              >
+                Stay Here
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = pendingNavTab;
+                  setPendingNavTab(null);
+                  if (activeTab === 'wardrobe') {
+                    setWardrobeDraftAvatar(settings.avatarConfig);
+                    setWardrobeDraftRoom(savedRoomConfig);
+                  }
+                  if (activeTab === 'memories') {
+                    setHasUnsavedMemoryDraft(false);
+                  }
+                  executeSelectTab(target);
+                }}
+                className="h-9 px-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/70 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-500/40 text-xs font-semibold text-rose-700 dark:text-rose-200 cursor-pointer"
+              >
+                Discard &amp; Leave
+              </button>
+              {activeTab === 'wardrobe' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = pendingNavTab;
+                    setPendingNavTab(null);
+                    handleApplyWardrobe(wardrobeDraftAvatar, wardrobeDraftRoom);
+                    executeSelectTab(target);
+                  }}
+                  className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white cursor-pointer"
+                >
+                  Apply &amp; Leave
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Slide-Over Full Scrollable Chat & Code Notes Drawer (Mobile/Tablet) */}
       <ChatDrawer
         isOpen={isChatDrawerOpen}
@@ -1319,6 +1584,7 @@ export default function App() {
         isSpeaking={isSpeaking}
         chatError={chatError}
         onRetryLastMessage={handleRetryLastMessage}
+        onDismissChatError={handleDismissChatError}
         onInterrupt={handleInterrupt}
         settings={settings}
         onSendMessage={handleSendMessage}
@@ -1334,6 +1600,8 @@ export default function App() {
         }}
         suggestedMemory={suggestedMemory}
         onDismissMemorySuggestion={() => setSuggestedMemory(null)}
+        draftText={currentComposerDraft}
+        onDraftChange={updateCurrentComposerDraft}
       />
     </GameShell>
   );

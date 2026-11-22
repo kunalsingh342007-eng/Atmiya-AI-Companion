@@ -23,6 +23,7 @@ export const DEFAULT_AVATAR_CONFIG: CompanionSettings['avatarConfig'] = {
   outfitColor: '#1e3a5f',
   outfitStyleLabel: 'Navy Classic',
   accessory: 'none',
+  defaultCameraPreset: 'close-up',
   avatarType: '3d-glb',
   customImagePath: '/avatars/atmiya.png',
   glbModelPath: '/models/atmiya-avatar.glb',

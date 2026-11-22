@@ -50,8 +50,8 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
           }
           referrerPolicy="no-referrer"
           onError={() => setImgFailed((prev) => ({ ...prev, [envId]: true }))}
-          className={`absolute inset-0 w-full h-full object-cover object-center transition-transform duration-700 ${
-            prefersReducedMotion ? '' : 'scale-[1.02]'
+          className={`absolute inset-0 w-full h-full object-cover object-center blur-[2px] brightness-[0.88] dark:brightness-[0.46] dark:saturate-[0.8] transition-all duration-700 ${
+            prefersReducedMotion ? 'scale-[1.02]' : 'scale-[1.03]'
           }`}
         />
       ) : isIndigoLoft ? (
@@ -61,14 +61,14 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
           className="absolute inset-0"
           style={{
             background:
-              'radial-gradient(circle at 24% 26%, rgba(125, 211, 252, 0.24), transparent 44%), radial-gradient(circle at 78% 28%, rgba(167, 139, 250, 0.26), transparent 46%), radial-gradient(circle at 50% 82%, rgba(251, 113, 133, 0.14), transparent 52%), linear-gradient(165deg, #1e1b4b 0%, #312e81 42%, #1e293b 100%)',
+              'radial-gradient(circle at 24% 26%, rgba(125, 211, 252, 0.2), transparent 44%), radial-gradient(circle at 78% 28%, rgba(167, 139, 250, 0.2), transparent 46%), radial-gradient(circle at 50% 82%, rgba(251, 113, 133, 0.1), transparent 52%), linear-gradient(165deg, #1e1b4b 0%, #312e81 42%, #0b1428 100%)',
           }}
         >
           {/* Architectural Skylight Window Frame */}
           <svg
             viewBox="0 0 1200 720"
             preserveAspectRatio="xMidYMid slice"
-            className="w-full h-full opacity-45"
+            className="w-full h-full opacity-30 blur-[1px]"
           >
             <rect x="85" y="70" width="310" height="390" rx="22" fill="#0f172a" fillOpacity="0.45" stroke="#a5b4fc" strokeOpacity="0.35" strokeWidth="3" />
             <line x1="240" y1="70" x2="240" y2="460" stroke="#a5b4fc" strokeOpacity="0.28" strokeWidth="2.5" />
@@ -96,7 +96,7 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
           <svg
             viewBox="0 0 1200 720"
             preserveAspectRatio="xMidYMid slice"
-            className="w-full h-full opacity-55"
+            className="w-full h-full opacity-35 blur-[1px]"
           >
             <path d="M90 480 L90 210 A160 160 0 0 1 410 210 L410 480 Z" fill="#fffaf0" fillOpacity="0.55" stroke="#b49a7e" strokeOpacity="0.45" strokeWidth="3" />
             <line x1="250" y1="50" x2="250" y2="480" stroke="#b49a7e" strokeOpacity="0.35" strokeWidth="2.5" />

@@ -26,6 +26,9 @@ export interface AvatarControllerState {
   micPermission: MicPermissionStatus;
   voiceError: string | null;
   glbInspection: GlbInspectionReport | null;
+  cameraPreset?: CameraPreset;
+  resetCameraNonce?: number;
+  isExpressionsOpen?: boolean;
 }
 
 export interface AvatarControllerActions {
@@ -35,6 +38,9 @@ export interface AvatarControllerActions {
   onTriggerGesture: (gesture: AvatarGesture) => void;
   onResetPose: () => void;
   onInspectionComplete: (report: GlbInspectionReport) => void;
+  onChangeCameraPreset?: (preset: CameraPreset) => void;
+  onResetCamera?: () => void;
+  onSetExpressionsOpen?: (open: boolean) => void;
 }
 
 export interface AvatarRenderTargetProps {
@@ -72,6 +78,7 @@ export function getCompanionMoodLabel(
 
 export function useMicrophonePermission(): [
   MicPermissionStatus,
+  () => void,
   () => void
 ] {
   const [status, setStatus] = useState<MicPermissionStatus>(() => {
@@ -103,9 +110,13 @@ export function useMicrophonePermission(): [
     }
   };
 
+  const markDenied = () => {
+    setStatus('denied');
+  };
+
   useEffect(() => {
     refreshPermission();
   }, []);
 
-  return [status, refreshPermission];
+  return [status, refreshPermission, markDenied];
 }

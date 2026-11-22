@@ -88,7 +88,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   );
   const [localSettings, setLocalSettings] = useState<CompanionSettings>(settings);
   const [micPermissionState, setMicPermissionState] = useState<string>('checking');
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [showClearChatsConfirm, setShowClearChatsConfirm] = useState(false);
 
   useEffect(() => {
@@ -128,29 +131,44 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     a.download = `atmiya_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setExportNotice('Export complete! Your data was saved to a local JSON file.');
-    setTimeout(() => setExportNotice(null), 3000);
+    setExportNotice({
+      type: 'success',
+      text: 'Export complete! Your data was saved to a local JSON file.',
+    });
+    setTimeout(() => setExportNotice(null), 3500);
   };
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
       const success = storage.importData(content);
+      input.value = '';
       if (success) {
-        setExportNotice('Import successful! Data restored.');
+        setExportNotice({ type: 'success', text: 'Import successful! Data restored.' });
         setLocalSettings(storage.getSettings());
         if (onDataRestored) {
           onDataRestored();
         } else {
           onSaveSettings(storage.getSettings());
         }
-        setTimeout(() => setExportNotice(null), 3000);
+        setTimeout(() => setExportNotice(null), 3500);
       } else {
-        setExportNotice('Failed to import: Invalid backup JSON file.');
+        setExportNotice({
+          type: 'error',
+          text: 'Failed to import: Invalid backup JSON file.',
+        });
       }
+    };
+    reader.onerror = () => {
+      input.value = '';
+      setExportNotice({
+        type: 'error',
+        text: 'Could not read the selected file. Please try again.',
+      });
     };
     reader.readAsText(file);
   };
@@ -408,6 +426,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </div>
               )}
 
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                  Speaking Pace ({localSettings.speechRate.toFixed(2)}x)
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[0.8, 0.9, 1.0, 1.15, 1.3].map((rate) => (
+                    <button
+                      key={rate}
+                      type="button"
+                      onClick={() => handleUpdate({ speechRate: rate })}
+                      className={`h-9 rounded-xl border text-xs font-semibold cursor-pointer transition tabular-nums ${
+                        Math.abs((localSettings.speechRate || 1.0) - rate) < 0.03
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-white'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      {rate}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-3 pt-2">
                 <label className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 cursor-pointer gap-3">
                   <div>
@@ -450,12 +490,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     <Mic className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
                     Microphone Permission Status
                   </span>
-                  <span className="font-semibold uppercase text-[11px] text-blue-700 dark:text-sky-300">
+                  <span
+                    className={`font-semibold uppercase text-[11px] ${
+                      micPermissionState === 'denied'
+                        ? 'text-rose-600 dark:text-rose-300'
+                        : 'text-blue-700 dark:text-sky-300'
+                    }`}
+                  >
                     {micPermissionState}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Voice input only activates when you press Speak/Mic. Audio streams are not saved permanently by the application.
+                  {micPermissionState === 'denied'
+                    ? 'Microphone access is blocked in your browser site settings. Allow microphone access in the address bar and reload or tap Retry Mic on Companion Home.'
+                    : 'Voice input only activates when you press Speak/Talk. Audio streams are not saved permanently by the application.'}
                 </p>
               </div>
             </div>
@@ -511,8 +559,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </p>
 
                 {exportNotice && (
-                  <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-700 text-xs text-emerald-800 dark:text-emerald-200">
-                    {exportNotice}
+                  <div
+                    role="status"
+                    className={`p-2.5 rounded-xl border text-xs ${
+                      exportNotice.type === 'error'
+                        ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-700 text-rose-800 dark:text-rose-200'
+                        : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
+                    }`}
+                  >
+                    {exportNotice.text}
                   </div>
                 )}
 

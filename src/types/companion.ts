@@ -180,6 +180,8 @@ export interface GameProgress {
   interactionHistory: InteractionHistoryEntry[];
 }
 
+export type CameraFramingPreset = 'close-up' | 'upper-body' | 'full-body';
+
 export interface AvatarAppearanceConfig {
   genderVibe: 'female' | 'male' | 'androgynous';
   personaName: string;
@@ -188,6 +190,7 @@ export interface AvatarAppearanceConfig {
   outfitColor?: string;
   outfitStyleLabel?: string;
   accessory?: PortraitAccessoryId;
+  defaultCameraPreset?: CameraFramingPreset;
   avatarType?: 'three-ws' | '3d-glb' | 'custom-image' | 'vector';
   customImagePath?: string;
   glbModelPath?: string;

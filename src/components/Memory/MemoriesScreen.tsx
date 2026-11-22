@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UserMemory, MemoryCategory } from '../../types/companion';
 import {
   Brain,
@@ -11,6 +11,8 @@ import {
   Calendar,
   Tag,
   MessageSquareOff,
+  Search,
+  X,
 } from 'lucide-react';
 
 interface MemoriesScreenProps {
@@ -23,6 +25,7 @@ interface MemoriesScreenProps {
   onDeleteMemory: (id: string) => void;
   onClearAllMemories: () => void;
   onClearAllConversations: () => void;
+  onUnsavedChange?: (hasUnsaved: boolean) => void;
 }
 
 const CATEGORIES: { label: string; value: MemoryCategory; desc: string }[] = [
@@ -44,6 +47,7 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
   onDeleteMemory,
   onClearAllMemories,
   onClearAllConversations,
+  onUnsavedChange,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
@@ -53,10 +57,24 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
   const [newContent, setNewContent] = useState('');
   const [newCategory, setNewCategory] = useState<MemoryCategory>('preference');
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<MemoryCategory | 'all'>('all');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showClearChatsConfirm, setShowClearChatsConfirm] = useState(false);
 
+  const hasUnsavedDraft =
+    (isAdding && newContent.trim().length > 0) ||
+    (editingId !== null && editContent.trim().length > 0);
+
+  useEffect(() => {
+    onUnsavedChange?.(hasUnsavedDraft);
+    return () => onUnsavedChange?.(false);
+  }, [hasUnsavedDraft, onUnsavedChange]);
+
   const handleStartEdit = (m: UserMemory) => {
+    setConfirmDeleteId(null);
     setEditingId(m.id);
     setEditContent(m.content);
     setEditCategory(m.category);
@@ -81,6 +99,18 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
     setNewContent('');
     setIsAdding(false);
   };
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredMemories = memories.filter((m) => {
+    const matchesCat = categoryFilter === 'all' || m.category === categoryFilter;
+    const matchesText =
+      !normalizedQuery ||
+      m.content.toLowerCase().includes(normalizedQuery) ||
+      m.category.toLowerCase().includes(normalizedQuery);
+    return matchesCat && matchesText;
+  });
+
+  const hasActiveFilter = Boolean(normalizedQuery) || categoryFilter !== 'all';
 
   return (
     <div className="h-full w-full overflow-y-auto bg-slate-50 dark:bg-gradient-to-b dark:from-[#070d1a] dark:via-[#0b162d] dark:to-[#070d1a] px-4 sm:px-6 py-6">
@@ -147,7 +177,9 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wider uppercase flex items-center gap-1.5">
             <Tag className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
-            <span className="tabular-nums">Saved Memories ({memories.length})</span>
+            <span className="tabular-nums">
+              Saved Memories ({hasActiveFilter ? `${filteredMemories.length}/${memories.length}` : memories.length})
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {!isAdding && (
@@ -182,6 +214,48 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
             )}
           </div>
         </div>
+
+        {/* Filter & Search Row */}
+        {memories.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+            <div className="sm:col-span-7 relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 absolute left-3 top-3" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search saved memories..."
+                aria-label="Search saved memories"
+                className="w-full h-10 bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-8 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear memory search"
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <div className="sm:col-span-5">
+              <select
+                aria-label="Filter memories by category"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value as MemoryCategory | 'all')}
+                className="w-full h-10 bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 rounded-xl px-3 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value="all">All categories</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Confirmations */}
         {showClearConfirm && (
@@ -247,6 +321,7 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
               <span>Add User-Approved Memory</span>
               <button
                 type="button"
+                aria-label="Close add memory form"
                 onClick={() => setIsAdding(false)}
                 className="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
               >
@@ -283,7 +358,10 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setIsAdding(false)}
+                onClick={() => {
+                  setIsAdding(false);
+                  setNewContent('');
+                }}
                 className="h-9 px-3.5 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Cancel
@@ -292,7 +370,7 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                 type="button"
                 onClick={handleSaveNew}
                 disabled={!newContent.trim()}
-                className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white disabled:opacity-50 cursor-pointer"
+                className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 Save Memory
               </button>
@@ -312,9 +390,26 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                 When you share preferences in conversation, Ātmiya asks your approval before saving them here.
               </p>
             </div>
+          ) : filteredMemories.length === 0 ? (
+            <div className="text-center py-10 px-4 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 text-slate-500 dark:text-slate-400 space-y-2">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                No memories match your current search or category filter.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setCategoryFilter('all');
+                }}
+                className="text-xs font-semibold text-blue-600 dark:text-sky-300 hover:underline cursor-pointer"
+              >
+                Reset filters
+              </button>
+            </div>
           ) : (
-            memories.map((m) => {
+            filteredMemories.map((m) => {
               const isEditing = editingId === m.id;
+              const isConfirmingDelete = confirmDeleteId === m.id;
               return (
                 <div
                   key={m.id}
@@ -338,6 +433,11 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                         onChange={(e) => setEditContent(e.target.value)}
                         className="w-full bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500 h-16"
                       />
+                      {!editContent.trim() && (
+                        <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                          Memory text cannot be empty.
+                        </p>
+                      )}
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
@@ -348,8 +448,9 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                         </button>
                         <button
                           type="button"
+                          disabled={!editContent.trim()}
                           onClick={() => handleSaveEdit(m.id)}
-                          className="h-8 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white cursor-pointer"
+                          className="h-8 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold text-white cursor-pointer"
                         >
                           Update
                         </button>
@@ -380,7 +481,9 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => onDeleteMemory(m.id)}
+                            onClick={() =>
+                              setConfirmDeleteId((prev) => (prev === m.id ? null : m.id))
+                            }
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-slate-100 dark:hover:bg-white/5 transition cursor-pointer"
                             title="Delete memory"
                             aria-label="Delete memory"
@@ -392,6 +495,33 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                       <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-100 leading-relaxed">
                         {m.content}
                       </p>
+
+                      {isConfirmingDelete && (
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
+                          <span className="text-rose-700 dark:text-rose-300 font-medium">
+                            Remove this memory permanently?
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDeleteMemory(m.id);
+                                setConfirmDeleteId(null);
+                              }}
+                              className="h-7 px-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="h-7 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>

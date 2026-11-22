@@ -111,23 +111,31 @@ interface RealisticAvatarProps {
   onTapAvatar?: () => void;
   onInspectionComplete?: (report: GlbInspectionReport) => void;
   onOpenCustomize?: () => void;
+  cameraPreset?: CameraPreset;
+  onChangeCameraPreset?: (preset: CameraPreset) => void;
+  resetCameraNonce?: number;
+  isExpressionsOpen?: boolean;
+  onSetExpressionsOpen?: (open: boolean) => void;
   className?: string;
 }
 
-// Software WebGL detector so rendering cost adapts gracefully on CPU renderers
-const detectSoftwareWebGL = (): boolean => {
-  if (typeof document === 'undefined') return false;
+// WebGL availability & software WebGL detector so rendering degrades and paces cleanly
+const probeWebGLCapabilities = (): { supported: boolean; isSoftware: boolean } => {
+  if (typeof document === 'undefined') return { supported: true, isSoftware: false };
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    if (!gl) return true;
+    if (!gl) return { supported: false, isSoftware: true };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
     const gpu = String(gl.getParameter(param) || '');
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+    return {
+      supported: true,
+      isSoftware: /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu),
+    };
   } catch {
-    return false;
+    return { supported: false, isSoftware: true };
   }
 };
 
@@ -193,20 +201,20 @@ export type CameraPresetBoundsMap = Record<CameraPreset, CameraFramingBounds>;
 
 const DEFAULT_CAMERA_PRESETS: CameraPresetBoundsMap = {
   'close-up': {
-    targetY: 0.763,
-    cameraYOffset: 0.01,
-    halfW: 0.24,
-    halfH: 0.298,
+    targetY: 0.725,
+    cameraYOffset: 0.015,
+    halfW: 0.28,
+    halfH: 0.34,
     halfD: 0.18,
-    fov: 32,
+    fov: 30,
   },
   'upper-body': {
-    targetY: 0.62,
+    targetY: 0.56,
     cameraYOffset: 0.02,
     halfW: 0.45,
-    halfH: 0.45,
+    halfH: 0.48,
     halfD: 0.22,
-    fov: 33,
+    fov: 32,
   },
   'full-body': {
     targetY: 0,
@@ -299,7 +307,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
           if (mat) {
             materialsSet.add(mat.name || mat.type);
             if ('envMapIntensity' in mat) {
-              (mat as THREE.MeshStandardMaterial).envMapIntensity = 0.68;
+              (mat as THREE.MeshStandardMaterial).envMapIntensity = 0.56;
             }
           }
         });
@@ -353,18 +361,18 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       shoulderHalfW = (lPos.distanceTo(rPos) * normScale) / 2 * 1.65;
     }
 
-    const portraitTopY = Math.max(hairTopY, headTopBoneY ?? hairTopY) + 0.06;
+    const portraitTopY = Math.max(hairTopY, headTopBoneY ?? hairTopY) + 0.055;
     const closeBottomY =
       spine2Y !== null
-        ? spine2Y - 0.06
+        ? spine2Y - 0.11
         : neckBoneY !== null
-        ? neckBoneY - 0.19
+        ? neckBoneY - 0.24
         : headBoneY !== null
-        ? headBoneY - 0.3
-        : normHeight * 0.23;
+        ? headBoneY - 0.35
+        : normHeight * 0.18;
 
-    const upperTopY = Math.max(hairTopY, headTopBoneY ?? hairTopY) + 0.07;
-    const upperBottomY = hipsY !== null ? hipsY - 0.04 : normHeight * 0.07;
+    const upperTopY = Math.max(hairTopY, headTopBoneY ?? hairTopY) + 0.065;
+    const upperBottomY = hipsY !== null ? hipsY - 0.06 : normHeight * 0.05;
 
     const fullHalfH = normHeight / 2;
     const relaxedFullHalfW =
@@ -375,19 +383,19 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
     const presets: CameraPresetBoundsMap = {
       'close-up': {
         targetY: (portraitTopY + closeBottomY) / 2,
-        cameraYOffset: 0.01,
-        halfW: shoulderHalfW !== null ? Math.max(shoulderHalfW, 0.235) : 0.24,
-        halfH: Math.max((portraitTopY - closeBottomY) / 2, 0.22),
+        cameraYOffset: 0.015,
+        halfW: shoulderHalfW !== null ? Math.max(shoulderHalfW * 1.15, 0.29) : 0.29,
+        halfH: Math.max((portraitTopY - closeBottomY) / 2, 0.27),
         halfD: 0.18,
-        fov: 32,
+        fov: 30,
       },
       'upper-body': {
         targetY: (upperTopY + upperBottomY) / 2,
         cameraYOffset: 0.02,
         halfW: shoulderHalfW !== null ? Math.max(shoulderHalfW * 1.9, 0.44) : 0.45,
-        halfH: Math.max((upperTopY - upperBottomY) / 2, 0.35),
+        halfH: Math.max((upperTopY - upperBottomY) / 2, 0.38),
         halfD: 0.22,
-        fov: 33,
+        fov: 32,
       },
       'full-body': {
         targetY: 0,
@@ -699,17 +707,22 @@ const WebGLContextLifecycle: React.FC<{
 
 const CameraRig: React.FC<{
   bounds: CameraFramingBounds;
+  presetKey: CameraPreset;
   resetTrigger: number;
   enableDamping: boolean;
-}> = React.memo(({ bounds, resetTrigger, enableDamping }) => {
-  const { camera, size } = useThree();
+}> = React.memo(({ bounds, presetKey, resetTrigger, enableDamping }) => {
+  const { camera, size, invalidate } = useThree();
   const controlsRef = useRef<any>(null);
+  const isTransitioningRef = useRef(false);
+  const hasMountedRef = useRef(false);
+  const lastPresetRef = useRef<CameraPreset>(presetKey);
+  const lastResetRef = useRef<number>(resetTrigger);
 
   const framing = useMemo(() => {
     const aspect = size.width / Math.max(size.height, 1);
     const tanHalfV = Math.tan(THREE.MathUtils.degToRad(bounds.fov / 2));
-    const tanHalfH = tanHalfV * Math.max(aspect, 0.2);
-    const padding = 1.08;
+    const tanHalfH = tanHalfV * Math.max(aspect, 0.25);
+    const padding = 1.06;
 
     const distV = (bounds.halfH * padding) / Math.max(tanHalfV, 0.001);
     const distH = (bounds.halfW * padding) / Math.max(tanHalfH, 0.001);
@@ -725,26 +738,107 @@ const CameraRig: React.FC<{
 
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
-    if (persp.fov !== framing.fov) {
-      persp.fov = framing.fov;
+    const isIntentionalPresetChange =
+      hasMountedRef.current &&
+      (lastPresetRef.current !== presetKey || lastResetRef.current !== resetTrigger);
+
+    lastPresetRef.current = presetKey;
+    lastResetRef.current = resetTrigger;
+
+    if (!isIntentionalPresetChange || !enableDamping) {
+      hasMountedRef.current = true;
+      isTransitioningRef.current = false;
+      if (Math.abs(persp.fov - framing.fov) > 0.01) {
+        persp.fov = framing.fov;
+        persp.updateProjectionMatrix();
+      }
+      camera.position.set(0, framing.cameraY, framing.cameraZ);
+      camera.lookAt(0, framing.targetY, 0);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(0, framing.targetY, 0);
+        controlsRef.current.update();
+      }
+      invalidate();
+      return;
     }
-    camera.position.set(0, framing.cameraY, framing.cameraZ);
-    camera.lookAt(0, framing.targetY, 0);
-    camera.updateProjectionMatrix();
+
+    isTransitioningRef.current = true;
+    invalidate();
+  }, [
+    camera,
+    framing.targetY,
+    framing.cameraY,
+    framing.cameraZ,
+    framing.fov,
+    presetKey,
+    resetTrigger,
+    enableDamping,
+    invalidate,
+  ]);
+
+  useFrame((_, rawDelta) => {
+    if (!isTransitioningRef.current) return;
+    const delta = Math.min(rawDelta, 0.1);
+    const persp = camera as THREE.PerspectiveCamera;
+    const lambda = 9;
+
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, 0, lambda, delta);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, framing.cameraY, lambda, delta);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, framing.cameraZ, lambda, delta);
+
+    if (Math.abs(persp.fov - framing.fov) > 0.02) {
+      persp.fov = THREE.MathUtils.damp(persp.fov, framing.fov, lambda, delta);
+      persp.updateProjectionMatrix();
+    }
+
     if (controlsRef.current) {
-      controlsRef.current.target.set(0, framing.targetY, 0);
+      controlsRef.current.target.x = THREE.MathUtils.damp(controlsRef.current.target.x, 0, lambda, delta);
+      controlsRef.current.target.y = THREE.MathUtils.damp(
+        controlsRef.current.target.y,
+        framing.targetY,
+        lambda,
+        delta
+      );
+      controlsRef.current.target.z = THREE.MathUtils.damp(controlsRef.current.target.z, 0, lambda, delta);
       controlsRef.current.update();
     }
-  }, [camera, framing.targetY, framing.cameraY, framing.cameraZ, framing.fov, resetTrigger]);
+
+    const posErr =
+      Math.abs(camera.position.x) +
+      Math.abs(camera.position.y - framing.cameraY) +
+      Math.abs(camera.position.z - framing.cameraZ);
+    const targetErr = controlsRef.current
+      ? Math.abs(controlsRef.current.target.y - framing.targetY)
+      : 0;
+
+    if (posErr < 0.003 && targetErr < 0.003) {
+      camera.position.set(0, framing.cameraY, framing.cameraZ);
+      if (Math.abs(persp.fov - framing.fov) > 0.001) {
+        persp.fov = framing.fov;
+        persp.updateProjectionMatrix();
+      }
+      if (controlsRef.current) {
+        controlsRef.current.target.set(0, framing.targetY, 0);
+        controlsRef.current.update();
+      }
+      isTransitioningRef.current = false;
+    } else {
+      invalidate();
+    }
+  });
 
   return (
     <OrbitControls
       ref={controlsRef}
       target={[0, framing.targetY, 0]}
       enableDamping={enableDamping}
+      dampingFactor={0.07}
       enablePan={false}
       enableZoom={true}
-      minDistance={Math.max(0.48, framing.cameraZ * 0.4)}
+      onStart={() => {
+        isTransitioningRef.current = false;
+      }}
+      minDistance={Math.max(0.46, framing.cameraZ * 0.42)}
       maxDistance={Math.max(5.5, framing.cameraZ * 2.4)}
       minPolarAngle={Math.PI * 0.28}
       maxPolarAngle={Math.PI * 0.68}
@@ -755,6 +849,23 @@ const CameraRig: React.FC<{
 });
 
 CameraRig.displayName = 'CameraRig';
+
+const StageLoadingPlaceholder: React.FC<{ label: string; sublabel?: string }> = ({
+  label,
+  sublabel,
+}) => (
+  <div className="w-full h-full flex flex-col items-center justify-center px-4">
+    <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-[#091428]/70 border border-sky-400/20 flex flex-col items-center justify-center gap-2.5 shadow-xl">
+      <Loader2 className="w-7 h-7 text-sky-300 animate-spin" />
+      <div className="text-center px-3">
+        <span className="block text-xs font-semibold text-slate-100">{label}</span>
+        {sublabel && (
+          <span className="block text-[11px] text-slate-400 mt-0.5">{sublabel}</span>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 interface ExpressionPreviewDrawerProps {
   activeEmotion: AvatarEmotion;
@@ -807,7 +918,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
   onSelect,
   onClose,
 }) => (
-  <div className="mt-3 w-full max-w-md max-h-[58vh] overflow-y-auto rounded-2xl bg-white/95 dark:bg-[#0b1528]/95 border border-slate-200 dark:border-slate-700/80 p-3 shadow-2xl backdrop-blur-md text-left">
+  <div className="mt-3 w-full max-w-md max-h-[58vh] overflow-y-auto rounded-2xl bg-white/95 dark:bg-[#0b1528]/96 border border-slate-200 dark:border-slate-700/80 p-3 shadow-2xl text-left">
     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
       <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-sky-300">
         <Smile className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
@@ -1225,21 +1336,27 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
   onTapAvatar,
   onInspectionComplete,
   onOpenCustomize,
+  cameraPreset: controlledCameraPreset,
+  onChangeCameraPreset,
+  resetCameraNonce: controlledResetCameraNonce,
+  isExpressionsOpen: controlledExpressionsOpen,
+  onSetExpressionsOpen,
   className = '',
 }) => {
   const modelUrl = config?.glbModelPath || '/models/atmiya-avatar.glb';
   const isImmersive = stageVariant === 'immersive';
+  const hasExternalStageControls = Boolean(onChangeCameraPreset || onSetExpressionsOpen);
 
   const [assetStatus, setAssetStatus] = useState<'checking' | 'ready' | 'missing' | 'error'>('checking');
   const [errorReason, setErrorReason] = useState<string>('');
   const [inspection, setInspection] = useState<GlbInspectionReport | null>(null);
-  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('close-up');
+  const [internalCameraPreset, setInternalCameraPreset] = useState<CameraPreset>('close-up');
   const [cameraPresetsMap, setCameraPresetsMap] = useState<CameraPresetBoundsMap>(DEFAULT_CAMERA_PRESETS);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [isTabHidden, setIsTabHidden] = useState(false);
   const [retryCounter, setRetryCounter] = useState(0);
-  const [resetCameraTrigger, setResetCameraTrigger] = useState(0);
-  const [isExpressionPanelOpen, setIsExpressionPanelOpen] = useState(false);
+  const [internalResetCameraTrigger, setInternalResetCameraTrigger] = useState(0);
+  const [internalExpressionPanelOpen, setInternalExpressionPanelOpen] = useState(false);
   const [isStageControlsOpen, setIsStageControlsOpen] = useState(false);
   const [idleMovementEnabled, setIdleMovementEnabled] = useState(true);
   const [idleIntensity, setIdleIntensity] = useState<IdleMovementIntensity>('medium');
@@ -1248,6 +1365,32 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
   const [activeHandPose, setActiveHandPose] = useState<HandPoseTarget>('relaxed');
   const [headActionNonce, setHeadActionNonce] = useState(0);
   const [contextLost, setContextLost] = useState(false);
+
+  const cameraPreset = controlledCameraPreset ?? internalCameraPreset;
+  const resetCameraTrigger = controlledResetCameraNonce ?? internalResetCameraTrigger;
+  const isExpressionPanelOpen = controlledExpressionsOpen ?? internalExpressionPanelOpen;
+
+  const setCameraPreset = useCallback(
+    (next: CameraPreset) => {
+      setInternalCameraPreset(next);
+      onChangeCameraPreset?.(next);
+    },
+    [onChangeCameraPreset]
+  );
+
+  const triggerResetCamera = useCallback(() => {
+    setInternalResetCameraTrigger((n) => n + 1);
+  }, []);
+
+  const setIsExpressionPanelOpen = useCallback(
+    (updater: boolean | ((prev: boolean) => boolean)) => {
+      const nextVal =
+        typeof updater === 'function' ? updater(isExpressionPanelOpen) : updater;
+      setInternalExpressionPanelOpen(nextVal);
+      onSetExpressionsOpen?.(nextVal);
+    },
+    [isExpressionPanelOpen, onSetExpressionsOpen]
+  );
   const rigRuntimeRef = useRef<RigAnimationRuntime>(createRigRuntime());
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const onInspectionCompleteRef = useRef(onInspectionComplete);
@@ -1356,7 +1499,8 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
     });
   }, []);
 
-  const isSoftwareGl = useMemo(() => detectSoftwareWebGL(), []);
+  const webglProbe = useMemo(() => probeWebGLCapabilities(), []);
+  const isSoftwareGl = webglProbe.isSoftware;
   const effectiveEmotion = previewEmotion ?? emotion;
 
   useEffect(() => {
@@ -1377,9 +1521,26 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 
-  // Preflight check so missing /models/atmiya-avatar.glb (or SPA HTML fallback) fails cleanly & immediately
+  useEffect(() => {
+    if (!isStageControlsOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsStageControlsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isStageControlsOpen]);
+
+  // Preflight check so missing GLB or unavailable WebGL degrades cleanly to 2D portrait fallback
   useEffect(() => {
     let cancelled = false;
+    if (!webglProbe.supported) {
+      setAssetStatus('error');
+      setErrorReason('WebGL 3D acceleration is unavailable in this browser.');
+      return;
+    }
+
     setAssetStatus('checking');
     setErrorReason('');
 
@@ -1414,7 +1575,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
     return () => {
       cancelled = true;
     };
-  }, [modelUrl, retryCounter]);
+  }, [modelUrl, retryCounter, webglProbe.supported]);
 
   const handleRetry = () => {
     useGLTF.clear(modelUrl);
@@ -1454,16 +1615,20 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         />
 
         {isImmersive ? (
-          <div className="mt-1.5 px-3 py-1 rounded-xl bg-slate-950/60 border border-white/10 backdrop-blur-md text-[11px] text-slate-200/90 flex items-center gap-2">
-            <span>2D Portrait Fallback (No GLB)</span>
-            <span className="text-slate-500" aria-hidden="true">·</span>
+          <div className="mt-2 px-3 py-1.5 rounded-xl bg-[#081226]/85 border border-sky-400/20 text-[11px] text-slate-200 flex items-center gap-2 shadow-lg">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span className="truncate max-w-[200px] sm:max-w-xs">
+              {contextLost
+                ? '3D display paused (using 2D portrait)'
+                : errorReason || 'Using 2D portrait fallback'}
+            </span>
             <button
               type="button"
               onClick={handleRetry}
-              className="text-amber-200 hover:text-white underline cursor-pointer whitespace-nowrap"
+              className="text-sky-300 hover:text-white font-medium underline cursor-pointer whitespace-nowrap"
               title={errorReason}
             >
-              Retry GLB
+              Retry 3D
             </button>
             {onOpenCustomize && (
               <>
@@ -1471,9 +1636,9 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 <button
                   type="button"
                   onClick={onOpenCustomize}
-                  className="text-violet-200 hover:text-white underline cursor-pointer whitespace-nowrap"
+                  className="text-slate-300 hover:text-white underline cursor-pointer whitespace-nowrap"
                 >
-                  Details
+                  Customize
                 </button>
               </>
             )}
@@ -1545,13 +1710,17 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
       activeArmGesture === 'none');
 
   const stageContainerClasses = isImmersive
-    ? 'relative w-64 h-72 sm:w-80 sm:h-96 md:w-[24rem] md:h-[24rem] lg:w-[27rem] lg:h-[27rem] xl:w-[30rem] xl:h-[30rem] max-h-full'
+    ? 'relative w-full h-full min-h-[200px]'
     : 'relative w-56 h-56 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-full overflow-hidden border border-white/15 bg-gradient-to-b from-slate-900 via-slate-950 to-indigo-950 shadow-2xl transition-shadow duration-300';
 
   return (
-    <div className={`relative h-full max-h-full flex flex-col items-center justify-center select-none ${className}`}>
-      {/* Discreet Top-Right Stage Controls Toggle in Immersive Mode */}
-      {isImmersive && assetStatus === 'ready' && (
+    <div
+      className={`relative flex flex-col items-center justify-center select-none ${
+        isImmersive ? 'w-full h-full min-h-0' : ''
+      } ${className}`}
+    >
+      {/* Discreet Top-Right Stage Controls Toggle only when external More controls aren't mounted */}
+      {isImmersive && !hasExternalStageControls && assetStatus === 'ready' && (
         <div className="absolute top-1 right-1 z-30 flex flex-col items-end">
           <button
             type="button"
@@ -1559,10 +1728,10 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
             aria-expanded={isStageControlsOpen}
             aria-label="Toggle 3D camera and expression controls"
             title="Camera & Expressions"
-            className={`h-8 px-2.5 rounded-xl border text-[11px] font-medium backdrop-blur-md inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
+            className={`h-8 px-2.5 rounded-xl border text-[11px] font-medium inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
               isStageControlsOpen || isExpressionPanelOpen || previewEmotion
-                ? 'bg-blue-600/90 border-sky-400/50 text-white'
-                : 'bg-white/80 dark:bg-[#081226]/70 hover:bg-white dark:hover:bg-[#0e1c38] border-slate-200/80 dark:border-sky-400/15 text-slate-700 dark:text-slate-200'
+                ? 'bg-blue-600/95 border-sky-400/50 text-white'
+                : 'bg-white/90 dark:bg-[#081226]/90 hover:bg-white dark:hover:bg-[#0e1c38] border-slate-200/80 dark:border-sky-400/20 text-slate-700 dark:text-slate-200'
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -1570,7 +1739,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           </button>
 
           {isStageControlsOpen && (
-            <div className="mt-1.5 p-2 rounded-2xl bg-white/95 dark:bg-[#081226]/95 border border-slate-200 dark:border-sky-400/20 backdrop-blur-xl shadow-2xl flex flex-col gap-1.5 min-w-[190px] animate-fadeIn">
+            <div className="mt-1.5 p-2 rounded-2xl bg-white/95 dark:bg-[#081226]/96 border border-slate-200 dark:border-sky-400/25 shadow-2xl flex flex-col gap-1.5 min-w-[190px] animate-fadeIn">
               <div
                 role="group"
                 aria-label="Camera framing presets"
@@ -1588,7 +1757,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                     type="button"
                     onClick={() => {
                       setCameraPreset(preset.id);
-                      setResetCameraTrigger((n) => n + 1);
+                      triggerResetCamera();
                     }}
                     className={`px-2 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
                       cameraPreset === preset.id
@@ -1606,7 +1775,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   type="button"
                   onClick={() => {
                     setCameraPreset('close-up');
-                    setResetCameraTrigger((n) => n + 1);
+                    triggerResetCamera();
                   }}
                   className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-left text-[11px] font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-2 transition cursor-pointer"
                 >
@@ -1677,12 +1846,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         }
       >
         {assetStatus === 'checking' ? (
-          <div className="w-full h-full flex flex-col items-center justify-center text-slate-100 gap-2">
-            <Loader2 className="w-7 h-7 text-amber-200 animate-spin" />
-            <span className="text-xs px-3 py-1 rounded-lg bg-slate-950/60 backdrop-blur-sm">
-              Loading 3D Companion...
-            </span>
-          </div>
+          <StageLoadingPlaceholder label="Loading 3D Companion..." sublabel="Checking avatar model" />
         ) : (
           <AvatarErrorBoundary
             onError={(msg) => {
@@ -1692,42 +1856,47 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           >
             <Suspense
               fallback={
-                <div className="w-full h-full flex flex-col items-center justify-center text-slate-100 gap-2">
-                  <Loader2 className="w-7 h-7 text-amber-200 animate-spin" />
-                  <span className="text-xs px-3 py-1 rounded-lg bg-slate-950/60 backdrop-blur-sm">
-                    Preparing 3D Scene...
-                  </span>
-                </div>
+                <StageLoadingPlaceholder label="Preparing 3D Scene..." sublabel="Setting up lighting & rig" />
               }
             >
               <Canvas
                 frameloop={pauseContinuousLoop ? 'demand' : 'always'}
                 dpr={isSoftwareGl ? 1 : [1, 2]}
                 shadows={!isSoftwareGl}
-                camera={{ fov: 32, near: 0.1, far: 50, position: [0, 0.773, 1.3] }}
+                camera={{ fov: 30, near: 0.08, far: 40, position: [0, 0.725, 1.4] }}
                 gl={{
                   alpha: isImmersive,
                   antialias: !isSoftwareGl,
                   powerPreference: 'high-performance',
                   toneMapping: THREE.ACESFilmicToneMapping,
-                  toneMappingExposure: 1.0,
+                  toneMappingExposure: 0.98,
                 }}
-                className="w-full h-full"
+                className="w-full h-full block"
               >
                 <WebGLContextLifecycle
                   onContextLost={() => setContextLost(true)}
                   onContextRestored={() => setContextLost(false)}
                 />
                 <StudioEnvironment />
-                <hemisphereLight args={['#fef3c7', '#1e1b4b', 0.6]} />
+                <hemisphereLight args={['#e2ecff', '#162038', 0.55]} />
                 <directionalLight
-                  position={[2.5, 3.5, 3]}
-                  intensity={1.45}
-                  color="#fff5eb"
+                  position={[2.2, 2.8, 3.2]}
+                  intensity={1.25}
+                  color="#fff3e4"
                   castShadow={!isSoftwareGl}
+                  shadow-mapSize-width={1024}
+                  shadow-mapSize-height={1024}
+                  shadow-camera-near={0.5}
+                  shadow-camera-far={12}
+                  shadow-camera-left={-1.4}
+                  shadow-camera-right={1.4}
+                  shadow-camera-top={1.6}
+                  shadow-camera-bottom={-1.6}
+                  shadow-bias={-0.0004}
+                  shadow-normalBias={0.02}
                 />
-                <directionalLight position={[-2.5, 2, 2]} intensity={0.65} color="#bfdbfe" />
-                <directionalLight position={[0, 2.5, -2.5]} intensity={1.0} color={rimLightColor} />
+                <directionalLight position={[-2.4, 1.6, 2.2]} intensity={0.48} color="#c7dfff" />
+                <directionalLight position={[0, 2.2, -2.6]} intensity={0.85} color={rimLightColor} />
 
                 <GlbModelScene
                   modelUrl={modelUrl}
@@ -1748,6 +1917,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 />
                 <CameraRig
                   bounds={cameraPresetsMap[cameraPreset]}
+                  presetKey={cameraPreset}
                   resetTrigger={resetCameraTrigger}
                   enableDamping={!isSoftwareGl}
                 />
@@ -1756,14 +1926,6 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           </AvatarErrorBoundary>
         )}
       </div>
-
-      {/* Ground shadow in immersive mode */}
-      {isImmersive && (
-        <div
-          aria-hidden="true"
-          className="w-40 sm:w-52 h-3.5 rounded-full bg-slate-950/45 blur-md pointer-events-none"
-        />
-      )}
 
       {/* Viewer Controls below 3D Avatar (non-immersive / wardrobe preview mode) */}
       <div className={isImmersive ? 'relative' : 'mt-2 flex flex-col items-center gap-2'}>
@@ -1826,7 +1988,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                       type="button"
                       onClick={() => {
                         setCameraPreset(preset.id);
-                        setResetCameraTrigger((n) => n + 1);
+                        triggerResetCamera();
                       }}
                       className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition cursor-pointer ${
                         cameraPreset === preset.id
@@ -1844,7 +2006,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   type="button"
                   onClick={() => {
                     setCameraPreset('close-up');
-                    setResetCameraTrigger((n) => n + 1);
+                    triggerResetCamera();
                   }}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs"
                   title="Reset 3D camera to close-up portrait framing"
@@ -1908,7 +2070,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           <div
             className={
               isImmersive
-                ? 'fixed top-16 right-4 lg:right-[360px] xl:right-[392px] z-40 w-[min(23rem,calc(100vw-2rem))]'
+                ? 'fixed top-16 right-4 lg:right-[332px] xl:right-[376px] z-40 w-[min(23rem,calc(100vw-2rem))]'
                 : 'w-full flex justify-center'
             }
           >
