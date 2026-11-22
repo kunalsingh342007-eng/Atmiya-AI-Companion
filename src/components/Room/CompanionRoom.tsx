@@ -117,18 +117,28 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
         />
       )}
 
-      {/* Subtle Natural Window Lighting & Ambient Depth Overlays */}
+      {/* Subtle Natural Window Lighting & Deep Navy Studio Atmosphere */}
       <div
         aria-hidden="true"
         className="absolute inset-0 pointer-events-none"
         style={{
           background: isEvening
-            ? 'radial-gradient(circle at 18% 55%, rgba(245, 158, 11, 0.14), transparent 45%), radial-gradient(circle at 50% 42%, transparent 35%, rgba(15, 23, 42, 0.48) 100%)'
+            ? 'radial-gradient(circle at 18% 55%, rgba(245, 158, 11, 0.12), transparent 45%), radial-gradient(circle at 50% 42%, transparent 32%, rgba(5, 10, 20, 0.56) 100%)'
             : isIndigoLoft
-            ? 'radial-gradient(circle at 50% 42%, transparent 35%, rgba(15, 23, 42, 0.44) 100%)'
+            ? 'radial-gradient(circle at 50% 42%, transparent 34%, rgba(5, 10, 20, 0.52) 100%)'
             : isCreamSolarium
             ? 'radial-gradient(circle at 22% 25%, rgba(255, 251, 235, 0.28), transparent 48%), radial-gradient(circle at 50% 42%, transparent 38%, rgba(30, 27, 75, 0.25) 100%)'
             : 'radial-gradient(circle at 20% 25%, rgba(255, 249, 232, 0.24), transparent 48%), radial-gradient(circle at 50% 42%, transparent 38%, rgba(20, 26, 24, 0.34) 100%)',
+        }}
+      />
+
+      {/* Deep Navy Ambient Halo (dark mode) for clean 3D silhouette separation */}
+      <div
+        aria-hidden="true"
+        className="hidden dark:block absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at 50% 44%, rgba(56, 189, 248, 0.13) 0%, rgba(37, 99, 235, 0.08) 28%, rgba(5, 10, 20, 0.68) 76%)',
         }}
       />
 
@@ -139,23 +149,23 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
         style={{
           background:
             avatarState === 'listening'
-              ? 'radial-gradient(circle at 50% 48%, rgba(56, 189, 248, 0.18), transparent 60%)'
+              ? 'radial-gradient(circle at 50% 46%, rgba(56, 189, 248, 0.2), transparent 58%)'
               : avatarState === 'speaking'
-              ? 'radial-gradient(circle at 50% 48%, rgba(59, 130, 246, 0.18), transparent 60%)'
+              ? 'radial-gradient(circle at 50% 46%, rgba(59, 130, 246, 0.2), transparent 58%)'
               : avatarState === 'thinking'
-              ? 'radial-gradient(circle at 50% 48%, rgba(251, 146, 60, 0.15), transparent 60%)'
+              ? 'radial-gradient(circle at 50% 46%, rgba(251, 146, 60, 0.14), transparent 58%)'
               : 'none',
         }}
       />
 
-      {/* Top & Bottom Contrast Scrims for HUD and Dialogue Legibility across Light & Dark Themes */}
+      {/* Top & Bottom Contrast Scrims for HUD and Bottom Bar Legibility */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/55 via-white/15 dark:from-[#070d1a]/75 dark:via-[#070d1a]/30 to-transparent pointer-events-none"
+        className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/55 via-white/15 dark:from-[#050a14]/82 dark:via-[#050a14]/35 to-transparent pointer-events-none"
       />
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-slate-100/80 via-slate-100/35 dark:from-[#070d1a]/88 dark:via-[#070d1a]/48 to-transparent pointer-events-none"
+        className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-t from-slate-100/80 via-slate-100/35 dark:from-[#050a14]/92 dark:via-[#050a14]/52 to-transparent pointer-events-none"
       />
 
       {/* Room Foreground Content Layer */}

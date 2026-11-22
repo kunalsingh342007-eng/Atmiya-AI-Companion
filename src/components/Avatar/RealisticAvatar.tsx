@@ -58,6 +58,7 @@ import {
   PauseCircle,
   RefreshCw,
   RotateCcw,
+  SlidersHorizontal,
   Smile,
   Sparkles,
   UserCheck,
@@ -1239,6 +1240,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
   const [retryCounter, setRetryCounter] = useState(0);
   const [resetCameraTrigger, setResetCameraTrigger] = useState(0);
   const [isExpressionPanelOpen, setIsExpressionPanelOpen] = useState(false);
+  const [isStageControlsOpen, setIsStageControlsOpen] = useState(false);
   const [idleMovementEnabled, setIdleMovementEnabled] = useState(true);
   const [idleIntensity, setIdleIntensity] = useState<IdleMovementIntensity>('medium');
   const [activeHeadPose, setActiveHeadPose] = useState<HeadPoseTarget>('neutral');
@@ -1543,11 +1545,107 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
       activeArmGesture === 'none');
 
   const stageContainerClasses = isImmersive
-    ? 'relative w-60 h-64 sm:w-80 sm:h-96 md:w-[26rem] md:h-[26rem]'
+    ? 'relative w-64 h-72 sm:w-80 sm:h-96 md:w-[24rem] md:h-[24rem] lg:w-[27rem] lg:h-[27rem] xl:w-[30rem] xl:h-[30rem] max-h-full'
     : 'relative w-56 h-56 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-full overflow-hidden border border-white/15 bg-gradient-to-b from-slate-900 via-slate-950 to-indigo-950 shadow-2xl transition-shadow duration-300';
 
   return (
-    <div className={`relative flex flex-col items-center justify-center select-none ${className}`}>
+    <div className={`relative h-full max-h-full flex flex-col items-center justify-center select-none ${className}`}>
+      {/* Discreet Top-Right Stage Controls Toggle in Immersive Mode */}
+      {isImmersive && assetStatus === 'ready' && (
+        <div className="absolute top-1 right-1 z-30 flex flex-col items-end">
+          <button
+            type="button"
+            onClick={() => setIsStageControlsOpen((v) => !v)}
+            aria-expanded={isStageControlsOpen}
+            aria-label="Toggle 3D camera and expression controls"
+            title="Camera & Expressions"
+            className={`h-8 px-2.5 rounded-xl border text-[11px] font-medium backdrop-blur-md inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
+              isStageControlsOpen || isExpressionPanelOpen || previewEmotion
+                ? 'bg-blue-600/90 border-sky-400/50 text-white'
+                : 'bg-white/80 dark:bg-[#081226]/70 hover:bg-white dark:hover:bg-[#0e1c38] border-slate-200/80 dark:border-sky-400/15 text-slate-700 dark:text-slate-200'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">View</span>
+          </button>
+
+          {isStageControlsOpen && (
+            <div className="mt-1.5 p-2 rounded-2xl bg-white/95 dark:bg-[#081226]/95 border border-slate-200 dark:border-sky-400/20 backdrop-blur-xl shadow-2xl flex flex-col gap-1.5 min-w-[190px] animate-fadeIn">
+              <div
+                role="group"
+                aria-label="Camera framing presets"
+                className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 dark:bg-[#0d1930] p-0.5"
+              >
+                {(
+                  [
+                    { id: 'close-up', label: 'Close-Up' },
+                    { id: 'upper-body', label: 'Upper' },
+                    { id: 'full-body', label: 'Full' },
+                  ] as const
+                ).map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      setCameraPreset(preset.id);
+                      setResetCameraTrigger((n) => n + 1);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                      cameraPreset === preset.id
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCameraPreset('close-up');
+                    setResetCameraTrigger((n) => n + 1);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-left text-[11px] font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-2 transition cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-sky-500 dark:text-sky-300" />
+                  <span>Reset Camera</span>
+                </button>
+
+                {onSelectPreviewEmotion && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExpressionPanelOpen((v) => !v);
+                      setIsStageControlsOpen(false);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-left text-[11px] font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <Smile className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
+                    <span>Expressions &amp; Rig</span>
+                  </button>
+                )}
+
+                {(onResetPose || onTriggerGesture) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetFullPose();
+                      setIsStageControlsOpen(false);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-left text-[11px] font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300" />
+                    <span>Neutral Pose</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {/* 3D Stage Container */}
       <div
         className={`${stageContainerClasses} ${onTapAvatar ? 'cursor-pointer' : ''}`}
@@ -1667,11 +1765,11 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         />
       )}
 
-      {/* Viewer Controls below 3D Avatar */}
-      <div className="mt-2 flex flex-col items-center gap-2">
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {!isImmersive && (
-            state === 'listening' ? (
+      {/* Viewer Controls below 3D Avatar (non-immersive / wardrobe preview mode) */}
+      <div className={isImmersive ? 'relative' : 'mt-2 flex flex-col items-center gap-2'}>
+        {!isImmersive && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {state === 'listening' ? (
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-950/85 border border-cyan-500/50 text-cyan-200 text-xs font-medium shadow-lg">
                 <Mic className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Listening to you...</span>
@@ -1707,93 +1805,93 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                     : '3D Avatar Ready'}
                 </span>
               </div>
-            )
-          )}
+            )}
 
-          {assetStatus === 'ready' && (
-            <>
-              <div
-                role="group"
-                aria-label="Camera framing presets"
-                className="inline-flex items-center rounded-xl bg-white/90 dark:bg-[#0b1528]/80 border border-slate-200/90 dark:border-slate-700/60 p-0.5 backdrop-blur-md shadow-xs"
-              >
-                {(
-                  [
-                    { id: 'close-up', label: 'Close-Up' },
-                    { id: 'upper-body', label: 'Upper' },
-                    { id: 'full-body', label: 'Full' },
-                  ] as const
-                ).map((preset) => (
+            {assetStatus === 'ready' && (
+              <>
+                <div
+                  role="group"
+                  aria-label="Camera framing presets"
+                  className="inline-flex items-center rounded-xl bg-white/90 dark:bg-[#0b1528]/80 border border-slate-200/90 dark:border-slate-700/60 p-0.5 backdrop-blur-md shadow-xs"
+                >
+                  {(
+                    [
+                      { id: 'close-up', label: 'Close-Up' },
+                      { id: 'upper-body', label: 'Upper' },
+                      { id: 'full-body', label: 'Full' },
+                    ] as const
+                  ).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setCameraPreset(preset.id);
+                        setResetCameraTrigger((n) => n + 1);
+                      }}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                        cameraPreset === preset.id
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title={`Switch to ${preset.label} camera view`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCameraPreset('close-up');
+                    setResetCameraTrigger((n) => n + 1);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs"
+                  title="Reset 3D camera to close-up portrait framing"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset Camera</span>
+                </button>
+
+                {onSelectPreviewEmotion && (
                   <button
-                    key={preset.id}
                     type="button"
-                    onClick={() => {
-                      setCameraPreset(preset.id);
-                      setResetCameraTrigger((n) => n + 1);
-                    }}
-                    className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition cursor-pointer ${
-                      cameraPreset === preset.id
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    onClick={() => setIsExpressionPanelOpen((v) => !v)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs ${
+                      isExpressionPanelOpen || previewEmotion
+                        ? 'bg-blue-600 border-blue-500 text-white'
+                        : 'bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200'
                     }`}
-                    title={`Switch to ${preset.label} camera view`}
+                    title="Test 16 facial expressions & inspect GLB rig support"
                   >
-                    {preset.label}
+                    <Smile className="w-3 h-3" />
+                    <span>Expressions</span>
                   </button>
-                ))}
-              </div>
+                )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setCameraPreset('close-up');
-                  setResetCameraTrigger((n) => n + 1);
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs"
-                title="Reset 3D camera to close-up portrait framing"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset Camera</span>
-              </button>
-
-              {onSelectPreviewEmotion && (
-                <button
-                  type="button"
-                  onClick={() => setIsExpressionPanelOpen((v) => !v)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs ${
-                    isExpressionPanelOpen || previewEmotion
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200'
-                  }`}
-                  title="Test 16 facial expressions & inspect GLB rig support"
-                >
-                  <Smile className="w-3 h-3" />
-                  <span>Expressions</span>
-                </button>
-              )}
-
-              {(onResetPose || onTriggerGesture) && (
-                <button
-                  type="button"
-                  onClick={handleResetFullPose}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs ${
-                    activeGesture !== 'none' ||
-                    previewEmotion ||
-                    activeHeadPose !== 'neutral' ||
-                    activeArmGesture !== 'none' ||
-                    activeHandPose !== 'relaxed'
-                      ? 'bg-amber-500/90 hover:bg-amber-500 border-amber-400 text-white'
-                      : 'bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200'
-                  }`}
-                  title="Return expression, head, arm, and body smoothly to neutral pose"
-                >
-                  <UserCheck className="w-3 h-3" />
-                  <span>Neutral Pose</span>
-                </button>
-              )}
-            </>
-          )}
-        </div>
+                {(onResetPose || onTriggerGesture) && (
+                  <button
+                    type="button"
+                    onClick={handleResetFullPose}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs ${
+                      activeGesture !== 'none' ||
+                      previewEmotion ||
+                      activeHeadPose !== 'neutral' ||
+                      activeArmGesture !== 'none' ||
+                      activeHandPose !== 'relaxed'
+                        ? 'bg-amber-500/90 hover:bg-amber-500 border-amber-400 text-white'
+                        : 'bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200'
+                    }`}
+                    title="Return expression, head, arm, and body smoothly to neutral pose"
+                  >
+                    <UserCheck className="w-3 h-3" />
+                    <span>Neutral Pose</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {!isImmersive && state === 'speaking' && onInterrupt && (
           <button
@@ -1807,31 +1905,39 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         )}
 
         {isExpressionPanelOpen && onSelectPreviewEmotion && (
-          <ExpressionPreviewDrawer
-            activeEmotion={emotion}
-            previewEmotion={previewEmotion}
-            supportedExpressions={inspection?.supportedExpressions}
-            hasGlbLoaded={assetStatus === 'ready' && Boolean(inspection)}
-            verifiedSkeleton={inspection?.verifiedSkeleton}
-            verifiedArmHand={inspection?.verifiedArmHand}
-            verifiedFullBody={inspection?.verifiedFullBody}
-            skeletonLimitations={inspection?.skeletonLimitations}
-            idleMovementEnabled={idleMovementEnabled}
-            idleIntensity={idleIntensity}
-            activeHeadPose={activeHeadPose}
-            activeArmGesture={activeArmGesture}
-            activeHandPose={activeHandPose}
-            onToggleIdleMovement={handleToggleIdleMovement}
-            onChangeIdleIntensity={handleChangeIdleIntensity}
-            onTestHeadNod={handleTestHeadNod}
-            onTestHeadPose={handleTestHeadPose}
-            onTriggerArmGesture={handleTriggerArmGesture}
-            onResetArmPose={handleResetArmPose}
-            onResetFullPose={handleResetFullPose}
-            onSelectHandPose={handleSelectHandPose}
-            onSelect={onSelectPreviewEmotion}
-            onClose={() => setIsExpressionPanelOpen(false)}
-          />
+          <div
+            className={
+              isImmersive
+                ? 'fixed top-16 right-4 lg:right-[360px] xl:right-[392px] z-40 w-[min(23rem,calc(100vw-2rem))]'
+                : 'w-full flex justify-center'
+            }
+          >
+            <ExpressionPreviewDrawer
+              activeEmotion={emotion}
+              previewEmotion={previewEmotion}
+              supportedExpressions={inspection?.supportedExpressions}
+              hasGlbLoaded={assetStatus === 'ready' && Boolean(inspection)}
+              verifiedSkeleton={inspection?.verifiedSkeleton}
+              verifiedArmHand={inspection?.verifiedArmHand}
+              verifiedFullBody={inspection?.verifiedFullBody}
+              skeletonLimitations={inspection?.skeletonLimitations}
+              idleMovementEnabled={idleMovementEnabled}
+              idleIntensity={idleIntensity}
+              activeHeadPose={activeHeadPose}
+              activeArmGesture={activeArmGesture}
+              activeHandPose={activeHandPose}
+              onToggleIdleMovement={handleToggleIdleMovement}
+              onChangeIdleIntensity={handleChangeIdleIntensity}
+              onTestHeadNod={handleTestHeadNod}
+              onTestHeadPose={handleTestHeadPose}
+              onTriggerArmGesture={handleTriggerArmGesture}
+              onResetArmPose={handleResetArmPose}
+              onResetFullPose={handleResetFullPose}
+              onSelectHandPose={handleSelectHandPose}
+              onSelect={onSelectPreviewEmotion}
+              onClose={() => setIsExpressionPanelOpen(false)}
+            />
+          </div>
         )}
       </div>
     </div>

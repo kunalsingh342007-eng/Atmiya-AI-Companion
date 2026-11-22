@@ -1140,6 +1140,8 @@ export default function App() {
       onSelectTab={handleSelectTab}
       memoriesCount={memories.length}
       theme={settings.theme}
+      userName={settings.userName}
+      xp={progress.xp}
       onToggleTheme={handleToggleTheme}
     >
       {/* Toast Notification */}

@@ -14,14 +14,14 @@
 }
 
 .dark {
-  --bg-canvas: #070d1a;
-  --bg-surface: #0c1528;
-  --bg-elevated: #132038;
-  --border-hairline: rgba(148, 163, 184, 0.16);
+  --bg-canvas: #050a14;
+  --bg-surface: #081020;
+  --bg-elevated: #0d182e;
+  --border-hairline: rgba(56, 189, 248, 0.16);
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
-  --accent-primary: #3b82f6;
-  --accent-soft: rgba(59, 130, 246, 0.16);
+  --accent-primary: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.14);
   color-scheme: dark;
 }
 
