@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ActiveNavTab,
-  AVATAR_EMOTIONS,
+  AvatarAnimationRequest,
   AvatarAppearanceConfig,
   AvatarEmotion,
   AvatarState,
@@ -12,6 +12,7 @@ import {
   GameProgress,
   RoomConfig,
   SystemStatus,
+  UnifiedAnimationState,
   UserMemory,
 } from './types/companion';
 import { storage } from './services/storage';
@@ -34,6 +35,8 @@ import {
   AvatarGesture,
   useMicrophonePermission,
 } from './components/Avatar/AvatarController';
+import { UnifiedAnimationController } from './components/Avatar/UnifiedAnimationController';
+import { normalizeAvatarEmotion } from './components/Avatar/expressionRig';
 import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
 import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
 import { ChatDrawer } from './components/Chat/ChatDrawer';
@@ -66,7 +69,12 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
 
-  // Companion Avatar & Voice State
+  // Companion Avatar & Voice State (synchronized via UnifiedAnimationController)
+  const animControllerRef = useRef<UnifiedAnimationController | null>(null);
+  if (!animControllerRef.current) {
+    animControllerRef.current = new UnifiedAnimationController();
+  }
+  const [unifiedState, setUnifiedState] = useState<UnifiedAnimationState>('idle');
   const [avatarState, setAvatarState] = useState<AvatarState>('idle');
   const [companionEmotion, setCompanionEmotion] = useState<AvatarEmotion>('neutral');
   const [emotionIntensity, setEmotionIntensity] = useState<number>(0.7);
@@ -82,6 +90,7 @@ export default function App() {
   const [suggestedMemory, setSuggestedMemory] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [glbInspection, setGlbInspection] = useState<GlbInspectionReport | null>(null);
+  const [isAppReady, setIsAppReady] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [activeGesture, setActiveGesture] = useState<AvatarGesture>('none');
   const [gestureNonce, setGestureNonce] = useState<number>(0);
@@ -91,7 +100,7 @@ export default function App() {
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const gestureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingGreetingAudioCleanupRef = useRef<(() => void) | null>(null);
   const isProcessingRef = useRef<boolean>(false);
   const avatarStateRef = useRef<AvatarState>(avatarState);
   const turnEpochRef = useRef<number>(0);
@@ -104,6 +113,21 @@ export default function App() {
   useEffect(() => {
     avatarStateRef.current = avatarState;
   }, [avatarState]);
+
+  // Keep React view state synchronized with the UnifiedAnimationController
+  useEffect(() => {
+    const ctrl = animControllerRef.current;
+    if (!ctrl) return;
+    const unsub = ctrl.subscribe((snap) => {
+      setUnifiedState(snap.unifiedState);
+      setAvatarState((prev) => (prev === 'interrupted' || prev === 'error' ? prev : snap.avatarState));
+      setCompanionEmotion(snap.emotion);
+      setEmotionIntensity(snap.emotionIntensity);
+      setActiveGesture(snap.activeGesture);
+      setGestureNonce(snap.gestureNonce);
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const isLight = settings.theme === 'light';
@@ -121,8 +145,17 @@ export default function App() {
     }
   }, []);
 
-  const cancelActiveTurn = () => {
+  const cancelPendingGreetingAudio = useCallback(() => {
+    if (pendingGreetingAudioCleanupRef.current) {
+      pendingGreetingAudioCleanupRef.current();
+      pendingGreetingAudioCleanupRef.current = null;
+    }
+  }, []);
+
+  const cancelActiveTurn = useCallback(() => {
     turnEpochRef.current += 1;
+    cancelPendingGreetingAudio();
+    animControllerRef.current?.cancelPendingRequests();
     if (speechTimeoutRef.current) {
       clearTimeout(speechTimeoutRef.current);
       speechTimeoutRef.current = null;
@@ -133,7 +166,7 @@ export default function App() {
     }
     isProcessingRef.current = false;
     setIsThinking(false);
-  };
+  }, [cancelPendingGreetingAudio]);
 
   // 1. Initial Load
   useEffect(() => {
@@ -164,28 +197,37 @@ export default function App() {
       }
     }
 
+    setIsAppReady(true);
+
     return () => {
       cancelActiveTurn();
       speechService.stopSpeaking();
       speechService.stopRecognition();
+      animControllerRef.current?.dispose();
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       if (bubbleTimeoutRef.current) clearTimeout(bubbleTimeoutRef.current);
-      if (gestureTimeoutRef.current) clearTimeout(gestureTimeoutRef.current);
     };
   }, []);
 
-  // 2. Audio Level Sync for avatar mouth/aura animation
+  // 2. Audio Level Sync for avatar mouth/aura animation (without clobbering concurrent emotion)
   useEffect(() => {
     speechService.setAudioLevelCallback((level) => {
       setAudioLevel(level);
+      const currentUnified = animControllerRef.current?.getSnapshot().unifiedState;
       if (level > 0.05) {
         setIsSpeaking(true);
-        if (avatarStateRef.current !== 'speaking') {
+        if (avatarStateRef.current !== 'speaking' && currentUnified !== 'speaking') {
+          animControllerRef.current?.dispatch({
+            animationState: 'speaking',
+            keepActiveSpeech: true,
+            source: 'voice',
+          });
           setAvatarState('speaking');
         }
       } else if (!speechService.getIsSpeaking()) {
         setIsSpeaking(false);
-        if (avatarStateRef.current === 'speaking') {
+        if (avatarStateRef.current === 'speaking' || currentUnified === 'speaking') {
+          animControllerRef.current?.returnToIdle();
           setAvatarState('idle');
         }
       }
@@ -239,64 +281,23 @@ export default function App() {
     setActiveTab(tab);
   };
 
-  const analyzeEmotion = (text: string): AvatarEmotion => {
-    const lower = text.toLowerCase();
-    if (lower.includes('haha') || lower.includes('lol')) return 'laughing';
-    if (lower.includes('excited') || lower.includes('thrilled') || lower.includes('amazing') || lower.includes('wah')) {
-      return 'excited';
-    }
-    if (lower.includes('sad') || lower.includes('dukh') || lower.includes('cry') || lower.includes('lonely')) {
-      return 'sad';
-    }
-    if (lower.includes('anxious') || lower.includes('stress') || lower.includes('worried') || lower.includes('pareshan')) {
-      return 'worried';
-    }
-    if (lower.includes('depress') || lower.includes('upset') || lower.includes('tough day') || lower.includes('sorry')) {
-      return 'empathetic';
-    }
-    if (lower.includes('disappointed') || lower.includes('failed')) return 'disappointed';
-    if (lower.includes('confus') || lower.includes('samajh nahi') || lower.includes('unclear')) {
-      return 'confused';
-    }
-    if (lower.includes('curious') || lower.includes('interesting') || lower.includes('how does')) {
-      return 'curious';
-    }
-    if (
-      lower.includes('what?!') ||
-      lower.includes('really?') ||
-      lower.includes('shock') ||
-      lower.includes('sach mein?') ||
-      lower.includes('kya sach?') ||
-      lower.includes('unbelievable')
-    ) {
-      return 'surprised';
-    }
-    if (
-      lower.includes('thank') ||
-      lower.includes('shukriya') ||
-      lower.includes('dhanyawad') ||
-      lower.includes('happy') ||
-      lower.includes('khush') ||
-      lower.includes('great') ||
-      lower.includes('awesome') ||
-      lower.includes('mast') ||
-      lower.includes('love')
-    ) {
-      return 'happy';
-    }
-    return 'neutral';
-  };
-
   const startListeningTurn = () => {
     if (isMicMuted || isProcessingRef.current) return;
 
     dismissHint();
+    cancelPendingGreetingAudio();
     const epochAtStart = turnEpochRef.current;
     setPreviewEmotion(null);
     setVoiceError(null);
     speechService.stopSpeaking();
+    animControllerRef.current?.dispatch({
+      animationState: 'listening',
+      emotion: 'neutral',
+      gesture: 'none',
+      force: true,
+      source: 'voice',
+    });
     setAvatarState('listening');
-    setCompanionEmotion('neutral');
     setUserTranscript('');
 
     const langLocale: 'hi-IN' | 'en-IN' = settings.language === 'hi' ? 'hi-IN' : 'en-IN';
@@ -306,6 +307,12 @@ export default function App() {
         if (turnEpochRef.current !== epochAtStart) return;
         setVoiceError(null);
         refreshMicPermission();
+        animControllerRef.current?.dispatch({
+          animationState: 'listening',
+          emotion: 'neutral',
+          force: true,
+          source: 'voice',
+        });
         setAvatarState('listening');
       },
       onResult: (transcript, _isFinal) => {
@@ -336,6 +343,7 @@ export default function App() {
       onEnd: () => {
         if (turnEpochRef.current !== epochAtStart) return;
         if (!isProcessingRef.current && !speechService.getIsSpeaking() && avatarStateRef.current === 'listening') {
+          animControllerRef.current?.returnToIdle();
           setAvatarState('idle');
         }
       },
@@ -355,6 +363,7 @@ export default function App() {
       speechTimeoutRef.current = null;
     }
     speechService.stopRecognition();
+    animControllerRef.current?.returnToIdle();
     setAvatarState('idle');
   };
 
@@ -418,6 +427,7 @@ export default function App() {
     const interruptEpoch = turnEpochRef.current;
     speechService.stopSpeaking();
     speechService.stopRecognition();
+    animControllerRef.current?.returnToIdle();
     setIsSpeaking(false);
     setAvatarState('interrupted');
     setCompanionEmotion('neutral');
@@ -427,12 +437,13 @@ export default function App() {
       if (turnEpochRef.current !== interruptEpoch) return;
       setAvatarState('idle');
     }, 450);
-  }, []);
+  }, [cancelActiveTurn]);
 
   const handleEndCall = () => {
     cancelActiveTurn();
     speechService.stopSpeaking();
     speechService.stopRecognition();
+    animControllerRef.current?.returnToIdle();
     setIsSpeaking(false);
     setVoiceError(null);
     setChatError(null);
@@ -443,51 +454,207 @@ export default function App() {
   };
 
   const triggerAvatarGesture = useCallback((gesture: AvatarGesture, durationMs?: number) => {
-    if (gestureTimeoutRef.current) {
-      clearTimeout(gestureTimeoutRef.current);
-      gestureTimeoutRef.current = null;
-    }
-    setActiveGesture(gesture);
-    setGestureNonce((n) => n + 1);
-    if (gesture !== 'none') {
-      const autoReturnMs = durationMs ?? (gesture === 'wave' ? 2800 : 1500);
-      gestureTimeoutRef.current = setTimeout(() => {
-        setActiveGesture('none');
-        gestureTimeoutRef.current = null;
-      }, autoReturnMs);
-    }
+    animControllerRef.current?.dispatch({
+      gesture,
+      durationMs,
+      keepActiveSpeech: true,
+      source: 'user-action',
+    });
   }, []);
 
   const handleResetPose = useCallback(() => {
-    if (gestureTimeoutRef.current) {
-      clearTimeout(gestureTimeoutRef.current);
-      gestureTimeoutRef.current = null;
-    }
-    setActiveGesture('none');
     setPreviewEmotion(null);
     if (!isProcessingRef.current && avatarStateRef.current === 'idle') {
-      setCompanionEmotion('neutral');
+      animControllerRef.current?.returnToIdle();
     }
   }, []);
+
+  /**
+   * Typed request entrypoint for coordinating emotion, animation state/gesture, and optional speech.
+   */
+  const requestCompanionBehavior = useCallback(
+    (req: AvatarAnimationRequest & { durationMs?: number }) => {
+      const ctrl = animControllerRef.current;
+      if (!ctrl) return;
+      const res = ctrl.dispatch({
+        ...req,
+        force: true,
+        source: 'user-action',
+      });
+      if (!res.accepted) return;
+
+      if (req.speechText) {
+        setAiSpokenText(req.speechText);
+        showSpeechBubble(req.speechText, req.durationMs ?? 4500);
+
+        if (isSoundEnabled) {
+          const reqId = res.requestId;
+          const reqEpoch = turnEpochRef.current;
+          ctrl.dispatch({
+            animationState: 'speaking',
+            emotion: req.emotion,
+            gesture: req.gesture,
+            intensity: req.intensity,
+            force: true,
+            source: 'voice',
+          });
+          setAvatarState('speaking');
+          setIsSpeaking(true);
+          speechService.speakWithBrowserTTS(
+            req.speechText,
+            settings.language === 'hi' ? 'hi-IN' : 'en-IN',
+            settings.speechRate,
+            () => {
+              if (turnEpochRef.current !== reqEpoch) return;
+              setIsSpeaking(false);
+              ctrl.returnToIdle(reqId + 1);
+              setAvatarState('idle');
+            }
+          );
+        }
+      }
+    },
+    [isSoundEnabled, settings.language, settings.speechRate]
+  );
+
+  // Phase 5: Session-once App-Open Greeting when app is ready & 3D avatar finishes loading
+  const avatarType = settings.avatarConfig.avatarType ?? '3d-glb';
+  const isAvatarReady = avatarType === '3d-glb' ? Boolean(glbInspection) : true;
+
+  useEffect(() => {
+    if (!isAppReady || !isAvatarReady || activeTab !== 'home') return;
+    if (isProcessingRef.current || speechService.getIsSpeaking()) return;
+
+    const ctrl = animControllerRef.current;
+    if (!ctrl) return;
+
+    const greetingLine = 'Hi! Welcome back!';
+    const greetingSpeechRate = settings.speechRate;
+    const greetingLang = settings.language === 'hi' ? 'hi-IN' : 'en-IN';
+    const soundAllowed = settings.voiceEngine !== 'none' && settings.autoSpeakResponse;
+
+    const cancelPendingSchedule = ctrl.scheduleOpeningGreetingOnce({
+      delayMs: 80,
+      durationMs: 3200,
+      canStart: () =>
+        !isProcessingRef.current &&
+        !speechService.getIsSpeaking() &&
+        avatarStateRef.current === 'idle',
+      onTrigger: (greetReqId) => {
+        showSpeechBubble(greetingLine, 4600);
+        if (!soundAllowed) return;
+
+        const playGreetingVoice = async () => {
+          if (isProcessingRef.current || speechService.getIsSpeaking()) return;
+          const epochAtVoice = turnEpochRef.current;
+
+          const outcome = await speechService.speakWithAutoplaySupport(
+            greetingLine,
+            greetingLang,
+            greetingSpeechRate,
+            {
+              onStart: () => {
+                if (turnEpochRef.current !== epochAtVoice) return;
+                ctrl.dispatch({
+                  animationState: 'speaking',
+                  emotion: 'happy',
+                  intensity: 0.85,
+                  force: true,
+                  source: 'app-open',
+                });
+                setAvatarState('speaking');
+                setIsSpeaking(true);
+              },
+              onEnd: () => {
+                if (turnEpochRef.current !== epochAtVoice) return;
+                setIsSpeaking(false);
+                ctrl.returnToIdle();
+                setAvatarState('idle');
+              },
+              onBlocked: () => {
+                // Respect browser autoplay security: keep visual greeting + queue speech for first user gesture
+                cancelPendingGreetingAudio();
+                pendingGreetingAudioCleanupRef.current = speechService.onFirstUserInteraction(() => {
+                  pendingGreetingAudioCleanupRef.current = null;
+                  if (
+                    isProcessingRef.current ||
+                    speechService.getIsSpeaking() ||
+                    avatarStateRef.current === 'listening' ||
+                    settings.voiceEngine === 'none' ||
+                    !settings.autoSpeakResponse
+                  ) {
+                    return;
+                  }
+                  const deferredEpoch = turnEpochRef.current;
+                  void speechService.speakWithAutoplaySupport(
+                    greetingLine,
+                    greetingLang,
+                    greetingSpeechRate,
+                    {
+                      onStart: () => {
+                        if (turnEpochRef.current !== deferredEpoch) return;
+                        ctrl.dispatch({
+                          animationState: 'speaking',
+                          emotion: 'happy',
+                          intensity: 0.85,
+                          force: true,
+                          source: 'app-open',
+                        });
+                        setAvatarState('speaking');
+                        setIsSpeaking(true);
+                      },
+                      onEnd: () => {
+                        if (turnEpochRef.current !== deferredEpoch) return;
+                        setIsSpeaking(false);
+                        ctrl.returnToIdle();
+                        setAvatarState('idle');
+                      },
+                    }
+                  );
+                });
+              },
+            }
+          );
+
+          // If autoplay was blocked cleanly, ensure visual greeting still holds & settles back to idle
+          if (outcome === 'autoplay-blocked' && ctrl.getSnapshot().requestId === greetReqId) {
+            setIsSpeaking(false);
+          }
+        };
+
+        void playGreetingVoice();
+      },
+    });
+
+    return () => {
+      cancelPendingSchedule();
+    };
+  }, [
+    isAppReady,
+    isAvatarReady,
+    activeTab,
+    settings.voiceEngine,
+    settings.autoSpeakResponse,
+    settings.language,
+    settings.speechRate,
+    cancelPendingGreetingAudio,
+  ]);
 
   const triggerCompanionReaction = (
     emotion: AvatarEmotion,
     activityLabel: string,
     line: string,
     speakLine = false,
-    gesture: AvatarGesture = 'none'
+    gesture: AvatarGesture = 'none',
+    explicitState?: UnifiedAnimationState
   ) => {
     if (isProcessingRef.current || speechService.getIsSpeaking()) return;
 
     dismissHint();
+    cancelPendingGreetingAudio();
     playGameSound('tap', isSoundEnabled);
     setAiSpokenText(line);
     showSpeechBubble(line);
-    setCompanionEmotion(emotion);
-    setEmotionIntensity(0.78);
-    if (gesture !== 'none') {
-      triggerAvatarGesture(gesture);
-    }
 
     const { progress: nextProg, newlyUnlockedRooms } = storage.recordInteraction(activityLabel, 5);
     setProgress(nextProg);
@@ -495,7 +662,18 @@ export default function App() {
       showToast('New room theme unlocked in Wardrobe!');
     }
 
+    const ctrl = animControllerRef.current;
+    const reactionEpoch = turnEpochRef.current;
+
     if (speakLine && isSoundEnabled) {
+      const dispatchRes = ctrl?.dispatch({
+        animationState: explicitState ?? 'speaking',
+        emotion,
+        gesture,
+        intensity: 0.78,
+        force: true,
+        source: 'user-action',
+      });
       setAvatarState('speaking');
       setIsSpeaking(true);
       speechService.speakWithBrowserTTS(
@@ -503,17 +681,22 @@ export default function App() {
         settings.language === 'hi' ? 'hi-IN' : 'en-IN',
         settings.speechRate,
         () => {
-          setAvatarState('idle');
+          if (turnEpochRef.current !== reactionEpoch) return;
           setIsSpeaking(false);
-          setCompanionEmotion('neutral');
+          ctrl?.returnToIdle(dispatchRes?.requestId);
+          setAvatarState('idle');
         }
       );
     } else {
-      setTimeout(() => {
-        if (!isProcessingRef.current && avatarStateRef.current === 'idle') {
-          setCompanionEmotion('neutral');
-        }
-      }, 2400);
+      ctrl?.dispatch({
+        animationState: explicitState,
+        emotion,
+        gesture,
+        intensity: 0.78,
+        durationMs: 2600,
+        force: true,
+        source: 'user-action',
+      });
     }
   };
 
@@ -524,7 +707,7 @@ export default function App() {
       'Haanji! I am right here and listening whenever you are ready.',
     ];
     const picked = greetings[Math.floor(Math.random() * greetings.length)];
-    triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true, 'nod');
+    triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true, 'nod', 'greeting');
   };
 
   const handleSendMessage = async (text: string) => {
@@ -546,12 +729,16 @@ export default function App() {
 
     isProcessingRef.current = true;
     setIsThinking(true);
+    animControllerRef.current?.dispatch({
+      animationState: 'thinking',
+      emotion: 'thinking',
+      gesture: 'none',
+      intensity: 0.7,
+      force: true,
+      source: 'conversation',
+    });
     setAvatarState('thinking');
     setUserTranscript(trimmed);
-
-    const detectedEmotion = analyzeEmotion(trimmed);
-    setCompanionEmotion(detectedEmotion === 'neutral' ? 'thinking' : detectedEmotion);
-    setEmotionIntensity(0.65);
 
     const userMessage: ChatMessage = {
       id: 'msg_' + Date.now(),
@@ -593,18 +780,12 @@ export default function App() {
         replyText.length <= 110 ? replyText : `${replyText.slice(0, 107).trim()}...`;
       showSpeechBubble(shortPreview, 5000);
 
-      const backendEmotion =
-        response.emotion && (AVATAR_EMOTIONS as readonly string[]).includes(response.emotion)
-          ? response.emotion
-          : null;
-      const replyEmotion: AvatarEmotion = backendEmotion ?? analyzeEmotion(replyText);
+      // Strictly use explicit backend emotion metadata (controlled mapping, neutral fallback — no keyword regex)
+      const replyEmotion: AvatarEmotion = normalizeAvatarEmotion(response.emotion);
       const nextIntensity =
         typeof response.intensity === 'number' && !Number.isNaN(response.intensity)
           ? Math.max(0.2, Math.min(1, response.intensity))
           : 0.7;
-
-      setCompanionEmotion(replyEmotion !== 'neutral' ? replyEmotion : detectedEmotion);
-      setEmotionIntensity(nextIntensity);
 
       const aiMessage: ChatMessage = {
         id: 'msg_ai_' + Date.now(),
@@ -629,15 +810,21 @@ export default function App() {
       isProcessingRef.current = false;
 
       if (isSoundEnabled) {
+        const speechDispatch = animControllerRef.current?.dispatch({
+          animationState: 'speaking',
+          emotion: replyEmotion,
+          intensity: nextIntensity,
+          force: true,
+          source: 'conversation',
+        });
         setAvatarState('speaking');
         setIsSpeaking(true);
 
         const onFinish = () => {
           if (turnEpochRef.current !== myEpoch) return;
-          setAvatarState('idle');
           setIsSpeaking(false);
-          setCompanionEmotion('neutral');
-          setEmotionIntensity(0.7);
+          animControllerRef.current?.returnToIdle(speechDispatch?.requestId);
+          setAvatarState('idle');
 
           if (settings.handsFreeMode && !isMicMuted && activeTab === 'home') {
             setTimeout(() => {
@@ -697,6 +884,14 @@ export default function App() {
           onFinish
         );
       } else {
+        // Sound off: display resolved emotion pose briefly, then return cleanly to idle/neutral
+        animControllerRef.current?.dispatch({
+          emotion: replyEmotion,
+          intensity: nextIntensity,
+          durationMs: 2800,
+          force: true,
+          source: 'conversation',
+        });
         setAvatarState('idle');
       }
     } catch (err: any) {
@@ -706,8 +901,8 @@ export default function App() {
       console.error('Failed to send message:', err);
       setIsThinking(false);
       isProcessingRef.current = false;
+      animControllerRef.current?.returnToIdle();
       setAvatarState('error');
-      setCompanionEmotion('neutral');
       const errMsg = err?.message || 'Connection failed. Please check API configuration or retry.';
       lastFailedMessageRef.current = trimmed;
       setChatError(errMsg);
@@ -898,6 +1093,7 @@ export default function App() {
   const avatarControllerState: AvatarControllerState = useMemo(
     () => ({
       avatarState,
+      unifiedState,
       emotion: companionEmotion,
       emotionIntensity,
       previewEmotion,
@@ -910,6 +1106,7 @@ export default function App() {
     }),
     [
       avatarState,
+      unifiedState,
       companionEmotion,
       emotionIntensity,
       previewEmotion,
@@ -933,6 +1130,9 @@ export default function App() {
     }),
     [stableOnTapAvatar, handleInterrupt, triggerAvatarGesture, handleResetPose]
   );
+
+  // Preserve reference to requestCompanionBehavior for external/future hooks cleanly
+  void requestCompanionBehavior;
 
   return (
     <GameShell

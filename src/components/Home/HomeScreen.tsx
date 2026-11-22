@@ -127,6 +127,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <CompanionHUD
             settings={settings}
             avatarState={avatarState}
+            unifiedState={avatarControllerState.unifiedState}
             emotion={previewEmotion ?? companionEmotion}
             micPermission={micPermission}
             isKeyConfigured={isKeyConfigured}

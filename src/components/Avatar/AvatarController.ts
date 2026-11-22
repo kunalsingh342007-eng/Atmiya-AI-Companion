@@ -5,6 +5,7 @@ import {
   AvatarEmotion,
   AvatarState,
   MicPermissionStatus,
+  UnifiedAnimationState,
 } from '../../types/companion';
 import type { GlbInspectionReport } from './RealisticAvatar';
 import type { AvatarGesture } from './expressionRig';
@@ -15,6 +16,7 @@ export type CameraPreset = 'close-up' | 'upper-body' | 'full-body';
 
 export interface AvatarControllerState {
   avatarState: AvatarState;
+  unifiedState: UnifiedAnimationState;
   emotion: AvatarEmotion;
   emotionIntensity: number;
   previewEmotion: AvatarEmotion | null;
@@ -43,8 +45,11 @@ export interface AvatarRenderTargetProps {
 
 export function getCompanionMoodLabel(
   state: AvatarState,
-  emotion: AvatarEmotion
+  emotion: AvatarEmotion,
+  unifiedState?: UnifiedAnimationState
 ): string {
+  if (unifiedState === 'greeting') return 'Greeting';
+  if (unifiedState === 'goodbye') return 'Saying Goodbye';
   switch (state) {
     case 'listening':
       return 'Listening';
@@ -59,6 +64,8 @@ export function getCompanionMoodLabel(
     case 'error':
       return 'Needs Attention';
     default:
+      if (unifiedState === 'concerned' && emotion === 'neutral') return 'Concerned';
+      if (unifiedState === 'happy' && emotion === 'neutral') return 'Happy';
       return emotion === 'neutral' ? 'Calm & Present' : AVATAR_EMOTION_LABELS[emotion];
   }
 }

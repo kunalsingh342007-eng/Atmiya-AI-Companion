@@ -5,6 +5,7 @@ import {
   CompanionLanguage,
   CompanionSettings,
   MicPermissionStatus,
+  UnifiedAnimationState,
 } from '../../types/companion';
 import { getCompanionMoodLabel } from '../Avatar/AvatarController';
 import { Globe, History, KeyRound, Moon, Settings, Sun, Volume2, VolumeX } from 'lucide-react';
@@ -12,6 +13,7 @@ import { Globe, History, KeyRound, Moon, Settings, Sun, Volume2, VolumeX } from 
 interface CompanionHUDProps {
   settings: CompanionSettings;
   avatarState: AvatarState;
+  unifiedState?: UnifiedAnimationState;
   emotion: AvatarEmotion;
   micPermission: MicPermissionStatus;
   isKeyConfigured: boolean;
@@ -26,6 +28,7 @@ interface CompanionHUDProps {
 export const CompanionHUD: React.FC<CompanionHUDProps> = ({
   settings,
   avatarState,
+  unifiedState,
   emotion,
   micPermission,
   isKeyConfigured,
@@ -38,7 +41,7 @@ export const CompanionHUD: React.FC<CompanionHUDProps> = ({
 }) => {
   const isSoundEnabled = settings.voiceEngine !== 'none' && settings.autoSpeakResponse;
   const isDark = settings.theme !== 'light';
-  const moodText = getCompanionMoodLabel(avatarState, emotion);
+  const moodText = getCompanionMoodLabel(avatarState, emotion, unifiedState);
   const companionName = settings.avatarConfig.personaName?.trim() || 'Ātmiya';
 
   return (

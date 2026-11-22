@@ -27,6 +27,7 @@ export const AVATAR_EMOTIONS = [
   'surprised',
   'curious',
   'worried',
+  'concerned',
   'empathetic',
   'excited',
   'calm',
@@ -36,6 +37,37 @@ export const AVATAR_EMOTIONS = [
 ] as const;
 
 export type AvatarEmotion = (typeof AVATAR_EMOTIONS)[number];
+
+export const CORE_COMPANION_EMOTIONS = [
+  'neutral',
+  'happy',
+  'thinking',
+  'concerned',
+] as const;
+
+export type CoreCompanionEmotion = (typeof CORE_COMPANION_EMOTIONS)[number];
+
+export const UNIFIED_ANIMATION_STATES = [
+  'idle',
+  'greeting',
+  'listening',
+  'thinking',
+  'speaking',
+  'happy',
+  'concerned',
+  'goodbye',
+] as const;
+
+export type UnifiedAnimationState = (typeof UNIFIED_ANIMATION_STATES)[number];
+
+export interface AvatarAnimationRequest {
+  animationState?: UnifiedAnimationState;
+  emotion?: AvatarEmotion;
+  gesture?: 'none' | 'wave' | 'nod';
+  speechText?: string;
+  intensity?: number;
+  durationMs?: number;
+}
 
 export const AVATAR_EMOTION_LABELS: Record<AvatarEmotion, string> = {
   neutral: 'Neutral / Listening',
@@ -48,6 +80,7 @@ export const AVATAR_EMOTION_LABELS: Record<AvatarEmotion, string> = {
   surprised: 'Surprised',
   curious: 'Curious',
   worried: 'Worried',
+  concerned: 'Concerned',
   empathetic: 'Empathetic',
   excited: 'Excited',
   calm: 'Calm',

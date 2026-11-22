@@ -9,6 +9,7 @@ import {
   AvatarAppearanceConfig,
   AvatarEmotion,
   AvatarState,
+  UnifiedAnimationState,
 } from '../../types/companion';
 import { CompanionAvatar } from './CompanionAvatar';
 import {
@@ -19,10 +20,12 @@ import {
   cancelArmGesture,
   clearAllRigMorphs,
   createRigRuntime,
+  findAnimationClipsByRole,
   HandPoseTarget,
   HeadPoseTarget,
   IdleMovementIntensity,
   inspectGlbRig,
+  resetAllAvatarPoses,
   resetArmPose,
   resetBodyPose,
   resetHeadPose,
@@ -77,6 +80,9 @@ export interface GlbInspectionReport {
   verifiedFullBody: VerifiedFullBodySummary;
   skeletonLimitations: string[];
   activeIdleClip: string | null;
+  hasGreetingClip: boolean;
+  hasGoodbyeClip: boolean;
+  usingProceduralWaveFallback: boolean;
   activeSpeechMorphs: string[];
   activeVisemeMorphs: string[];
   activeBlinkMorphs: string[];
@@ -89,6 +95,7 @@ export interface GlbInspectionReport {
 interface RealisticAvatarProps {
   stageVariant?: 'circle' | 'immersive';
   state: AvatarState;
+  unifiedState?: UnifiedAnimationState;
   emotion?: AvatarEmotion;
   emotionIntensity?: number;
   previewEmotion?: AvatarEmotion | null;
@@ -213,6 +220,7 @@ const DEFAULT_CAMERA_PRESETS: CameraPresetBoundsMap = {
 interface GlbModelSceneProps {
   modelUrl: string;
   state: AvatarState;
+  unifiedState?: UnifiedAnimationState;
   emotion: AvatarEmotion;
   emotionIntensity: number;
   audioLevel: number;
@@ -230,6 +238,7 @@ interface GlbModelSceneProps {
 const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   modelUrl,
   state,
+  unifiedState,
   emotion,
   emotionIntensity,
   audioLevel,
@@ -246,6 +255,11 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   const gltf = useGLTF(modelUrl, true, true);
   const { invalidate } = useThree();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const clipActionsRef = useRef<{
+    idle: THREE.AnimationAction | null;
+    greeting: THREE.AnimationAction | null;
+    goodbye: THREE.AnimationAction | null;
+  }>({ idle: null, greeting: null, goodbye: null });
   const prevStateRef = useRef<AvatarState>(state);
   const lastHandledGestureNonceRef = useRef<number>(gestureNonce);
   const prevActiveGesturePropRef = useRef<AvatarGesture>(activeGesture);
@@ -385,9 +399,8 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
     };
 
     const clips = gltf.animations || [];
-    const idleClip =
-      clips.find((c) => /idle|breath|stand/i.test(c.name)) ||
-      (clips.length > 0 ? clips[0] : null);
+    const clipRoles = findAnimationClipsByRole(clips);
+    const idleClip = clipRoles.idle;
 
     const report: GlbInspectionReport = {
       modelUrl,
@@ -402,6 +415,9 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       verifiedFullBody: rig.verifiedFullBody,
       skeletonLimitations: rig.skeletonLimitations,
       activeIdleClip: idleClip ? idleClip.name || 'Clip[0]' : null,
+      hasGreetingClip: Boolean(clipRoles.greeting),
+      hasGoodbyeClip: Boolean(clipRoles.goodbye),
+      usingProceduralWaveFallback: !clipRoles.greeting && rig.capabilities.hasArmBones,
       activeSpeechMorphs: rig.activeSpeechMorphs,
       activeVisemeMorphs: rig.activeVisemeMorphs,
       activeBlinkMorphs: rig.activeBlinkMorphs,
@@ -420,6 +436,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       offset: [offsetX, offsetY, offsetZ] as [number, number, number],
       presets,
       rig,
+      clipRoles,
       idleClip,
       report,
     };
@@ -430,9 +447,10 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
     if (import.meta.env.DEV) {
       console.debug('[Ātmiya Rig Inspection]', {
         modelUrl: modelMetrics.report.modelUrl,
+        clipsCount: modelMetrics.report.animations.length,
+        hasGreetingClip: modelMetrics.report.hasGreetingClip,
+        usingProceduralWaveFallback: modelMetrics.report.usingProceduralWaveFallback,
         torso: modelMetrics.rig.verifiedFullBody.torsoChain,
-        leftLeg: modelMetrics.rig.verifiedFullBody.leftLegChain,
-        rightLeg: modelMetrics.rig.verifiedFullBody.rightLegChain,
         limitations: modelMetrics.rig.verifiedFullBody.limitations,
       });
     }
@@ -443,26 +461,50 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   // Setup AnimationMixer ONLY if actual clips exist in the GLB
   useEffect(() => {
     const sceneRoot = gltf.scene;
-    if (!modelMetrics.idleClip) {
+    const { idle, greeting, goodbye } = modelMetrics.clipRoles;
+    if (!idle && !greeting && !goodbye) {
       mixerRef.current = null;
+      clipActionsRef.current = { idle: null, greeting: null, goodbye: null };
       return;
     }
 
     const mixer = new THREE.AnimationMixer(sceneRoot);
-    const action = mixer.clipAction(modelMetrics.idleClip);
-    action.setEffectiveTimeScale(0.85);
-    action.play();
+    const idleAction = idle ? mixer.clipAction(idle) : null;
+    const greetingAction = greeting ? mixer.clipAction(greeting) : null;
+    const goodbyeAction = goodbye ? mixer.clipAction(goodbye) : null;
+
+    if (idleAction) {
+      idleAction.setEffectiveTimeScale(0.85);
+      idleAction.play();
+    }
+    if (greetingAction) {
+      greetingAction.setLoop(THREE.LoopOnce, 1);
+      greetingAction.clampWhenFinished = false;
+    }
+    if (goodbyeAction) {
+      goodbyeAction.setLoop(THREE.LoopOnce, 1);
+      goodbyeAction.clampWhenFinished = false;
+    }
+
     mixerRef.current = mixer;
+    clipActionsRef.current = {
+      idle: idleAction,
+      greeting: greetingAction,
+      goodbye: goodbyeAction,
+    };
 
     return () => {
-      action.stop();
+      idleAction?.stop();
+      greetingAction?.stop();
+      goodbyeAction?.stop();
       mixer.stopAllAction();
       mixer.uncacheRoot(sceneRoot);
       mixerRef.current = null;
+      clipActionsRef.current = { idle: null, greeting: null, goodbye: null };
     };
-  }, [gltf.scene, modelMetrics.idleClip]);
+  }, [gltf.scene, modelMetrics.clipRoles]);
 
-  // Trigger Phase 2 head nod or Phase 3 friendly wave from app interactions (tap/wave/check-in)
+  // Trigger GLB wave clip (if present) or Phase 2/3 procedural nod/wave seamlessly
   useEffect(() => {
     const prevProp = prevActiveGesturePropRef.current;
     prevActiveGesturePropRef.current = activeGesture;
@@ -480,16 +522,30 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       triggerHeadNod(rigRuntimeRef.current, { intensity: 0.72, duration: 0.78 });
       invalidate();
     } else if (activeGesture === 'wave') {
-      const preferredSide =
-        modelMetrics.rig.verifiedArmHand.preferredWaveSide === 'left' ? 'left' : 'right';
-      startArmGesture(rigRuntimeRef.current, 'wave', { side: preferredSide });
-      lastReportedArmGestureRef.current = 'wave';
-      onArmGestureStateChange?.('wave');
-      invalidate();
+      const clipToPlay =
+        unifiedState === 'goodbye'
+          ? clipActionsRef.current.goodbye
+          : clipActionsRef.current.greeting;
+
+      if (clipToPlay && mixerRef.current) {
+        clipToPlay.reset().fadeIn(0.25).play();
+        if (clipActionsRef.current.idle) {
+          clipActionsRef.current.idle.crossFadeTo(clipToPlay, 0.25, false);
+        }
+        invalidate();
+      } else {
+        const preferredSide =
+          modelMetrics.rig.verifiedArmHand.preferredWaveSide === 'left' ? 'left' : 'right';
+        startArmGesture(rigRuntimeRef.current, 'wave', { side: preferredSide });
+        lastReportedArmGestureRef.current = 'wave';
+        onArmGestureStateChange?.('wave');
+        invalidate();
+      }
     }
   }, [
     activeGesture,
     gestureNonce,
+    unifiedState,
     modelMetrics.rig.verifiedArmHand.preferredWaveSide,
     rigRuntimeRef,
     invalidate,
@@ -533,6 +589,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       rig: modelMetrics.rig,
       runtime: rigRuntimeRef.current,
       state,
+      unifiedState,
       emotion,
       emotionIntensity,
       audioLevel,
@@ -545,6 +602,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       rig: modelMetrics.rig,
       runtime: rigRuntimeRef.current,
       state,
+      unifiedState,
       prefersReducedMotion,
       elapsed,
       delta,
@@ -561,6 +619,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       rig: modelMetrics.rig,
       runtime: rigRuntimeRef.current,
       state,
+      unifiedState,
       presentationMode,
       prefersReducedMotion,
       elapsed,
@@ -581,6 +640,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   useEffect(() => {
     const runtime = rigRuntimeRef.current;
     return () => {
+      resetAllAvatarPoses(runtime);
       runtime.armDeltaQuats.clear();
       runtime.bodyDeltaQuats.clear();
       runtime.hipsOffset.set(0, 0, 0);
@@ -1149,6 +1209,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
 export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
   stageVariant = 'circle',
   state,
+  unifiedState,
   emotion = 'neutral',
   emotionIntensity = 0.7,
   previewEmotion = null,
@@ -1476,6 +1537,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
     isTabHidden ||
     (prefersReducedMotion &&
       state === 'idle' &&
+      (!unifiedState || unifiedState === 'idle') &&
       !previewEmotion &&
       activeHeadPose === 'neutral' &&
       activeArmGesture === 'none');
@@ -1572,6 +1634,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 <GlbModelScene
                   modelUrl={modelUrl}
                   state={state}
+                  unifiedState={unifiedState}
                   emotion={effectiveEmotion}
                   emotionIntensity={emotionIntensity}
                   audioLevel={audioLevel}

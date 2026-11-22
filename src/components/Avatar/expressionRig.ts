@@ -1,5 +1,11 @@
 import * as THREE from 'three';
-import { AVATAR_EMOTIONS, AvatarEmotion, AvatarState } from '../../types/companion';
+import {
+  AVATAR_EMOTIONS,
+  AvatarEmotion,
+  AvatarState,
+  CoreCompanionEmotion,
+  UnifiedAnimationState,
+} from '../../types/companion';
 
 export type AvatarGesture = 'none' | 'wave' | 'nod';
 
@@ -374,6 +380,19 @@ export const EXPRESSION_PRESETS: Record<AvatarEmotion, ExpressionPreset> = {
       mouthStretchRight: 0.22,
     },
   },
+  concerned: {
+    morphs: {
+      browInnerUp: 0.56,
+      browDownLeft: 0.22,
+      browDownRight: 0.22,
+      frownLeft: 0.42,
+      frownRight: 0.42,
+      mouthPressLeft: 0.16,
+      mouthPressRight: 0.16,
+      eyeSquintLeft: 0.14,
+      eyeSquintRight: 0.14,
+    },
+  },
   empathetic: {
     morphs: {
       browInnerUp: 0.48,
@@ -485,6 +504,78 @@ function getMorphDampSpeed(morphName: string): number {
   if (lower.includes('blink')) return 28;
   if (lower.includes('jaw') || lower.startsWith('viseme_')) return 20;
   return 9;
+}
+
+/**
+ * Controlled deterministic normalization of explicit emotion metadata.
+ * Never performs arbitrary text keyword matching; defaults safely to 'neutral'.
+ */
+export function normalizeAvatarEmotion(value: unknown): AvatarEmotion {
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase();
+    if ((AVATAR_EMOTIONS as readonly string[]).includes(trimmed)) {
+      return trimmed as AvatarEmotion;
+    }
+  }
+  return 'neutral';
+}
+
+/**
+ * Maps any supported AvatarEmotion to the 4 canonical Phase 5 core emotions.
+ */
+export function mapToCoreEmotion(emotion?: AvatarEmotion | string | null): CoreCompanionEmotion {
+  const normalized = normalizeAvatarEmotion(emotion);
+  switch (normalized) {
+    case 'happy':
+    case 'smile':
+    case 'laughing':
+    case 'excited':
+    case 'winking':
+      return 'happy';
+    case 'thinking':
+    case 'curious':
+    case 'confused':
+      return 'thinking';
+    case 'concerned':
+    case 'sad':
+    case 'worried':
+    case 'empathetic':
+    case 'disappointed':
+      return 'concerned';
+    default:
+      return 'neutral';
+  }
+}
+
+export interface InspectedAnimationClipRoles {
+  idle: THREE.AnimationClip | null;
+  greeting: THREE.AnimationClip | null;
+  goodbye: THREE.AnimationClip | null;
+  listening: THREE.AnimationClip | null;
+  thinking: THREE.AnimationClip | null;
+  speaking: THREE.AnimationClip | null;
+  happy: THREE.AnimationClip | null;
+  concerned: THREE.AnimationClip | null;
+}
+
+/**
+ * Inspects actual GLB animation clips for semantic state roles without inventing fake clips.
+ */
+export function findAnimationClipsByRole(
+  clips: readonly THREE.AnimationClip[]
+): InspectedAnimationClipRoles {
+  const match = (re: RegExp) => clips.find((c) => c && re.test(c.name || '')) ?? null;
+  const waveOrGreet = match(/greet|wave|welcome|hello|hi/i);
+  return {
+    idle: match(/idle|breath|stand/i) || (clips.length > 0 ? clips[0] : null),
+    greeting: waveOrGreet,
+    goodbye: match(/goodbye|farewell|bye/i) || waveOrGreet,
+    listening: match(/listen|attentive/i),
+    thinking: match(/think|ponder/i),
+    speaking: match(/speak|talk/i),
+    happy: match(/happy|cheer|joy/i),
+    concerned: match(/concern|empath|sad|worry/i),
+  };
 }
 
 export function inspectGlbRig(sceneRoot: THREE.Object3D): InspectedRigData {
@@ -1308,6 +1399,7 @@ export function updateExpressionRig(params: {
   rig: InspectedRigData;
   runtime: RigAnimationRuntime;
   state: AvatarState;
+  unifiedState?: UnifiedAnimationState;
   emotion: AvatarEmotion;
   emotionIntensity: number;
   audioLevel: number;
@@ -1319,6 +1411,7 @@ export function updateExpressionRig(params: {
     rig,
     runtime,
     state,
+    unifiedState,
     emotion,
     emotionIntensity,
     audioLevel,
@@ -1328,14 +1421,22 @@ export function updateExpressionRig(params: {
   } = params;
 
   const clampedIntensity = Math.max(0.15, Math.min(1, emotionIntensity));
+  const safeEmotion = rig.supportedExpressions[emotion] ? emotion : 'neutral';
+  const isSpeakingActive = state === 'speaking' || unifiedState === 'speaking';
 
-  // Effective expression: blend talking/thinking states cleanly with explicit emotion
-  const activeEmotion: AvatarEmotion =
-    state === 'speaking' && emotion === 'neutral'
-      ? 'talking'
-      : state === 'thinking' && emotion === 'neutral'
-      ? 'thinking'
-      : emotion;
+  // Effective expression: coordinate unifiedState with explicit emotion without overwriting speech
+  let activeEmotion: AvatarEmotion = safeEmotion;
+  if (safeEmotion === 'neutral') {
+    if (unifiedState === 'greeting' || unifiedState === 'happy' || unifiedState === 'goodbye') {
+      activeEmotion = rig.supportedExpressions.happy ? 'happy' : 'neutral';
+    } else if (unifiedState === 'concerned') {
+      activeEmotion = rig.supportedExpressions.concerned ? 'concerned' : 'neutral';
+    } else if (state === 'thinking' || unifiedState === 'thinking') {
+      activeEmotion = rig.supportedExpressions.thinking ? 'thinking' : 'neutral';
+    } else if (isSpeakingActive) {
+      activeEmotion = rig.supportedExpressions.talking ? 'talking' : 'neutral';
+    }
+  }
 
   const preset = EXPRESSION_PRESETS[activeEmotion] || EXPRESSION_PRESETS.neutral;
 
@@ -1432,7 +1533,7 @@ export function updateExpressionRig(params: {
   let speechFunnelWeight = 0;
   let speechStretchWeight = 0;
 
-  if (state === 'speaking') {
+  if (isSpeakingActive) {
     const effectiveAudio = Math.max(0, Math.min(1, audioLevel));
     if (effectiveAudio > 0.02) {
       runtime.talkPhase += delta * 13.0;
@@ -1506,7 +1607,7 @@ export function updateExpressionRig(params: {
   }
 
   // Conflict prevention: suppress lip press/close during jaw opening, and frown during smile
-  if ((_desiredChannels.jawOpen ?? 0) > 0.02 || state === 'speaking') {
+  if ((_desiredChannels.jawOpen ?? 0) > 0.02 || isSpeakingActive) {
     _desiredChannels.mouthClose = 0;
     _desiredChannels.mouthPressLeft = 0;
     _desiredChannels.mouthPressRight = 0;
@@ -1576,11 +1677,12 @@ export function updateHeadNeckRig(params: {
   rig: InspectedRigData;
   runtime: RigAnimationRuntime;
   state: AvatarState;
+  unifiedState?: UnifiedAnimationState;
   prefersReducedMotion: boolean;
   elapsed: number;
   delta: number;
 }): { isAnimating: boolean } {
-  const { rig, runtime, state, prefersReducedMotion, elapsed, delta } = params;
+  const { rig, runtime, state, unifiedState, prefersReducedMotion, elapsed, delta } = params;
   const { head, neck } = rig.bones;
 
   if (!head && !neck) {
@@ -1631,10 +1733,12 @@ export function updateHeadNeckRig(params: {
     !runtime.nodActive &&
     runtime.headPose === 'neutral'
   ) {
-    if (state === 'listening') {
+    if (state === 'listening' || unifiedState === 'listening') {
       targetIdleBlend = 0.4; // Attentive, calm stillness
-    } else if (state === 'speaking') {
+    } else if (state === 'speaking' || unifiedState === 'speaking') {
       targetIdleBlend = 0.45; // Subtle presence without nodding while speaking
+    } else if (unifiedState === 'greeting' || unifiedState === 'goodbye') {
+      targetIdleBlend = 0.35; // Poised posture during wave/greeting
     } else {
       targetIdleBlend = 1.0;
     }
@@ -2065,12 +2169,13 @@ export function updateFullBodyAndLowerRig(params: {
   rig: InspectedRigData;
   runtime: RigAnimationRuntime;
   state: AvatarState;
+  unifiedState?: UnifiedAnimationState;
   presentationMode: BodyPresentationMode;
   prefersReducedMotion: boolean;
   elapsed: number;
   delta: number;
 }): { isAnimating: boolean } {
-  const { rig, runtime, state, presentationMode, prefersReducedMotion, elapsed, delta } = params;
+  const { rig, runtime, state, unifiedState, presentationMode, prefersReducedMotion, elapsed, delta } = params;
   const { bones } = rig;
 
   if (!bones.hips && !bones.spine && !bones.spine1 && !bones.spine2 && !bones.leftUpLeg && !bones.rightUpLeg) {
@@ -2078,9 +2183,13 @@ export function updateFullBodyAndLowerRig(params: {
   }
 
   // 1. Priority-based blend levels (idle breathing vs active gesture/speech override)
-  const hasActiveGesture = runtime.armGesture !== 'none' || runtime.nodActive;
-  const isSpeaking = state === 'speaking';
-  const isListening = state === 'listening';
+  const hasActiveGesture =
+    runtime.armGesture !== 'none' ||
+    runtime.nodActive ||
+    unifiedState === 'greeting' ||
+    unifiedState === 'goodbye';
+  const isSpeaking = state === 'speaking' || unifiedState === 'speaking';
+  const isListening = state === 'listening' || unifiedState === 'listening';
 
   let targetBodyBlend = 0;
   if (!prefersReducedMotion && runtime.idleEnabled) {

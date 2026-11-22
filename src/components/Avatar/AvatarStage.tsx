@@ -60,6 +60,7 @@ export const AvatarStage: React.FC<AvatarStageProps> = React.memo(({
           <RealisticAvatar
             stageVariant="immersive"
             state={controller.avatarState}
+            unifiedState={controller.unifiedState}
             emotion={controller.emotion}
             emotionIntensity={controller.emotionIntensity}
             previewEmotion={controller.previewEmotion}

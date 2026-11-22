@@ -1,5 +1,12 @@
 // Speech and Audio synthesis, recognition, and lip-sync analyser service
 
+export type SpeechPlaybackOutcome =
+  | 'played'
+  | 'autoplay-blocked'
+  | 'unsupported'
+  | 'cancelled'
+  | 'error';
+
 export interface SpeechRecognitionHandlers {
   onResult: (transcript: string, isFinal: boolean) => void;
   onError: (error: string) => void;
@@ -19,9 +26,58 @@ class SpeechService {
   private onAudioLevelCallback: ((level: number) => void) | null = null;
   private isSpeaking = false;
   private playbackToken = 0;
+  private hasUserGesture = false;
+  private gestureTrackerBound = false;
 
   constructor() {
-    // Lazy AudioContext initialization on user interaction
+    this.bindUserGestureTracker();
+  }
+
+  private bindUserGestureTracker(): void {
+    if (typeof window === 'undefined' || this.gestureTrackerBound) return;
+    this.gestureTrackerBound = true;
+    const markGesture = () => {
+      this.hasUserGesture = true;
+      window.removeEventListener('pointerdown', markGesture, true);
+      window.removeEventListener('keydown', markGesture, true);
+      window.removeEventListener('touchstart', markGesture, true);
+    };
+    window.addEventListener('pointerdown', markGesture, true);
+    window.addEventListener('keydown', markGesture, true);
+    window.addEventListener('touchstart', markGesture, true);
+  }
+
+  public canAutoPlaySpeech(): boolean {
+    if (typeof window === 'undefined') return false;
+    if (this.hasUserGesture) return true;
+    const nav = navigator as Navigator & {
+      userActivation?: { hasBeenActive?: boolean; isActive?: boolean };
+    };
+    if (nav?.userActivation) {
+      return Boolean(nav.userActivation.hasBeenActive || nav.userActivation.isActive);
+    }
+    return Boolean(this.audioContext && this.audioContext.state === 'running');
+  }
+
+  public onFirstUserInteraction(callback: () => void): () => void {
+    if (typeof window === 'undefined') return () => {};
+    let triggered = false;
+    const handle = () => {
+      if (triggered) return;
+      triggered = true;
+      this.hasUserGesture = true;
+      cleanup();
+      callback();
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointerdown', handle, true);
+      window.removeEventListener('keydown', handle, true);
+      window.removeEventListener('touchstart', handle, true);
+    };
+    window.addEventListener('pointerdown', handle, { capture: true, passive: true });
+    window.addEventListener('keydown', handle, { capture: true, passive: true });
+    window.addEventListener('touchstart', handle, { capture: true, passive: true });
+    return cleanup;
   }
 
   private initAudioContext(): AudioContext {
@@ -30,7 +86,9 @@ class SpeechService {
       this.audioContext = new AudioCtx();
     }
     if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+      this.audioContext.resume().catch(() => {
+        // Autoplay resume requires user interaction in browsers
+      });
     }
     return this.audioContext;
   }
@@ -287,6 +345,116 @@ class SpeechService {
     utterance.onerror = finalize;
 
     window.speechSynthesis.speak(utterance);
+  }
+
+  /**
+   * Speaks text while respecting browser autoplay security restrictions.
+   * Never bypasses browser rules or hangs in speaking state if autoplay is blocked.
+   */
+  public speakWithAutoplaySupport(
+    text: string,
+    lang: string,
+    rate = 1.0,
+    callbacks?: {
+      onStart?: () => void;
+      onEnd?: () => void;
+      onBlocked?: () => void;
+    }
+  ): Promise<SpeechPlaybackOutcome> {
+    if (typeof window === 'undefined' || !window.speechSynthesis || !text.trim()) {
+      return Promise.resolve('unsupported');
+    }
+
+    if (!this.canAutoPlaySpeech()) {
+      callbacks?.onBlocked?.();
+      return Promise.resolve('autoplay-blocked');
+    }
+
+    this.stopSpeaking();
+    const token = ++this.playbackToken;
+
+    return new Promise((resolve) => {
+      const normalizedLang = lang === 'hi' || lang === 'hi-IN' ? 'hi-IN' : 'en-IN';
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = normalizedLang;
+      utterance.rate = Math.max(0.7, Math.min(1.4, rate));
+
+      const voices = window.speechSynthesis.getVoices();
+      let matchedVoice =
+        normalizedLang === 'hi-IN'
+          ? voices.find((v) => v.lang.startsWith('hi'))
+          : null;
+      if (!matchedVoice) {
+        matchedVoice = voices.find(
+          (v) => v.lang.startsWith('en-IN') || v.lang.startsWith('en-GB') || v.lang.startsWith('en')
+        );
+      }
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
+
+      let settled = false;
+      const settle = (outcome: SpeechPlaybackOutcome) => {
+        if (settled) return;
+        settled = true;
+        if (token === this.playbackToken) {
+          this.cleanupPlayback();
+        }
+        if (outcome === 'autoplay-blocked') {
+          callbacks?.onBlocked?.();
+        } else if (outcome === 'played' || outcome === 'error') {
+          callbacks?.onEnd?.();
+        }
+        resolve(outcome);
+      };
+
+      this.isSpeaking = true;
+      callbacks?.onStart?.();
+
+      this.browserTtsInterval = setInterval(() => {
+        if (!this.isSpeaking || token !== this.playbackToken) {
+          if (this.browserTtsInterval) {
+            clearInterval(this.browserTtsInterval);
+            this.browserTtsInterval = null;
+          }
+          if (!settled && token !== this.playbackToken) {
+            settle('cancelled');
+          }
+          return;
+        }
+        const simulatedLevel = 0.22 + Math.random() * 0.68;
+        this.onAudioLevelCallback?.(simulatedLevel);
+      }, 120);
+
+      utterance.onend = () => {
+        if (token !== this.playbackToken) {
+          settle('cancelled');
+          return;
+        }
+        settle('played');
+      };
+
+      utterance.onerror = (ev: SpeechSynthesisErrorEvent) => {
+        if (token !== this.playbackToken) {
+          settle('cancelled');
+          return;
+        }
+        const errCode = (ev as any)?.error;
+        if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
+          settle('autoplay-blocked');
+        } else if (errCode === 'interrupted' || errCode === 'canceled') {
+          settle('cancelled');
+        } else {
+          settle('error');
+        }
+      };
+
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        settle('autoplay-blocked');
+      }
+    });
   }
 
   /**

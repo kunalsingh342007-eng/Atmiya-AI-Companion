@@ -19,6 +19,7 @@ const VALID_EMOTIONS = [
   'surprised',
   'curious',
   'worried',
+  'concerned',
   'empathetic',
   'excited',
   'calm',
@@ -342,7 +343,7 @@ CRITICAL IDENTITY & BEHAVIOR GUIDELINES:
 ${safeUserName ? `5. The user's name is ${safeUserName}. Use it occasionally and warmly, but do not overuse it every sentence.` : ''}
 6. Emotional Expression Selection:
    - Choose the single most authentic facial "emotion" from the schema enum and an "intensity" from 0.0 to 1.0 that matches your reply.
-   - Match serious or emotional context responsibly: NEVER pick happy, smile, laughing, excited, or winking when the user shares sadness, stress, grief, failure, worry, or serious struggles — use empathetic, calm, sad, or worried instead.
+   - Match serious or emotional context responsibly: NEVER pick happy, smile, laughing, excited, or winking when the user shares sadness, stress, grief, failure, worry, or serious struggles — use concerned, empathetic, calm, sad, or worried instead.
 ${languageInstruction}
 ${memoryContext}
 `;
