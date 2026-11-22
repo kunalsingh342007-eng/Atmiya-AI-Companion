@@ -1,25 +1,114 @@
 import * as THREE from 'three';
 import { AVATAR_EMOTIONS, AvatarEmotion, AvatarState } from '../../types/companion';
 
+export type AvatarGesture = 'none' | 'wave' | 'nod';
+
 export interface RigMorphEntry {
   mesh: THREE.Mesh;
   dict: Record<string, number>;
 }
 
+export interface HandFingerRig {
+  thumb: THREE.Object3D[];
+  index: THREE.Object3D[];
+  middle: THREE.Object3D[];
+  ring: THREE.Object3D[];
+  pinky: THREE.Object3D[];
+}
+
 export interface DetectedRigBones {
   hips: THREE.Object3D | null;
   spine: THREE.Object3D | null;
+  spine1: THREE.Object3D | null;
+  spine2: THREE.Object3D | null;
   neck: THREE.Object3D | null;
   head: THREE.Object3D | null;
   headTop: THREE.Object3D | null;
+  leftEye: THREE.Object3D | null;
+  rightEye: THREE.Object3D | null;
   jaw: THREE.Object3D | null;
+  leftShoulder: THREE.Object3D | null;
   leftArm: THREE.Object3D | null;
   leftForeArm: THREE.Object3D | null;
   leftHand: THREE.Object3D | null;
+  rightShoulder: THREE.Object3D | null;
   rightArm: THREE.Object3D | null;
   rightForeArm: THREE.Object3D | null;
   rightHand: THREE.Object3D | null;
+  leftFingers: HandFingerRig;
+  rightFingers: HandFingerRig;
+  leftUpLeg: THREE.Object3D | null;
+  leftLeg: THREE.Object3D | null;
+  leftFoot: THREE.Object3D | null;
+  leftToeBase: THREE.Object3D | null;
+  rightUpLeg: THREE.Object3D | null;
+  rightLeg: THREE.Object3D | null;
+  rightFoot: THREE.Object3D | null;
+  rightToeBase: THREE.Object3D | null;
 }
+
+export interface VerifiedFullBodySummary {
+  torsoChain: {
+    hips: string | null;
+    spine: string | null;
+    spine1: string | null;
+    spine2: string | null;
+  };
+  leftLegChain: {
+    upLeg: string | null;
+    leg: string | null;
+    foot: string | null;
+    toeBase: string | null;
+  };
+  rightLegChain: {
+    upLeg: string | null;
+    leg: string | null;
+    foot: string | null;
+    toeBase: string | null;
+  };
+  hasHips: boolean;
+  hasTorsoBreathing: boolean;
+  hasLeftLeg: boolean;
+  hasRightLeg: boolean;
+  hasFeet: boolean;
+  hasToes: boolean;
+  limitations: string[];
+}
+
+export interface VerifiedArmHandSummary {
+  rightArmChain: {
+    shoulder: string | null;
+    arm: string | null;
+    foreArm: string | null;
+    hand: string | null;
+  };
+  leftArmChain: {
+    shoulder: string | null;
+    arm: string | null;
+    foreArm: string | null;
+    hand: string | null;
+  };
+  rightFingerBones: string[];
+  leftFingerBones: string[];
+  preferredWaveSide: 'right' | 'left' | 'none';
+  hasRightArmReady: boolean;
+  hasLeftArmReady: boolean;
+  hasFingerRig: boolean;
+  limitations: string[];
+}
+
+export type VerifiedSkeletonBoneKey = 'head' | 'neck' | 'spine' | 'spine1' | 'spine2';
+
+export interface VerifiedSkeletonBoneInfo {
+  key: VerifiedSkeletonBoneKey;
+  expectedName: 'Head' | 'Neck' | 'Spine' | 'Spine1' | 'Spine2';
+  detected: boolean;
+  actualName: string | null;
+  parentName: string | null;
+  bindRotationDeg: [number, number, number] | null;
+}
+
+export type VerifiedSkeletonMap = Record<VerifiedSkeletonBoneKey, VerifiedSkeletonBoneInfo>;
 
 export interface VerifiedCoreMorphs {
   eyeBlinkLeft: boolean;
@@ -36,7 +125,15 @@ export interface RigCapabilities {
   hasVisemeMorphs: boolean;
   hasSmileMorphs: boolean;
   hasJawBone: boolean;
+  hasEyeBones: boolean;
   hasHeadNeckBones: boolean;
+  hasHeadBone: boolean;
+  hasNeckBone: boolean;
+  hasSpineChain: boolean;
+  hasArmBones: boolean;
+  hasHandFingers: boolean;
+  hasHipsAndLegs: boolean;
+  hasTorsoBreathing: boolean;
   hasExpressionMorphs: boolean;
 }
 
@@ -344,6 +441,12 @@ export interface InspectedRigData {
   uniqueMorphSlots: MorphSlotBinding[];
   bones: DetectedRigBones;
   boneInitialRotations: Map<THREE.Object3D, THREE.Euler>;
+  boneInitialQuaternions: Map<THREE.Object3D, THREE.Quaternion>;
+  boneInitialPositions: Map<THREE.Object3D, THREE.Vector3>;
+  verifiedSkeleton: VerifiedSkeletonMap;
+  verifiedArmHand: VerifiedArmHandSummary;
+  verifiedFullBody: VerifiedFullBodySummary;
+  skeletonLimitations: string[];
   availableMorphKeys: Set<string>;
   verifiedCoreMorphs: VerifiedCoreMorphs;
   activeSpeechMorphs: string[];
@@ -436,39 +539,283 @@ export function inspectGlbRig(sceneRoot: THREE.Object3D): InspectedRigData {
   const boundBones = Array.from(boundBonesSet);
   const hasChannel = (channel: FacialChannel): boolean => channelBindings[channel].length > 0;
 
+  const findFingerChain = (sidePrefix: 'Left' | 'Right', fingerName: string): THREE.Object3D[] => {
+    const chain: THREE.Object3D[] = [];
+    for (let seg = 1; seg <= 4; seg += 1) {
+      const pattern = new RegExp(`(^|[._:-])${sidePrefix}Hand${fingerName}${seg}$`, 'i');
+      const bone = findFirstBone(sceneRoot, boundBones, [pattern]);
+      if (bone) chain.push(bone);
+    }
+    return chain;
+  };
+
+  const leftFingers: HandFingerRig = {
+    thumb: findFingerChain('Left', 'Thumb'),
+    index: findFingerChain('Left', 'Index'),
+    middle: findFingerChain('Left', 'Middle'),
+    ring: findFingerChain('Left', 'Ring'),
+    pinky: findFingerChain('Left', 'Pinky'),
+  };
+
+  const rightFingers: HandFingerRig = {
+    thumb: findFingerChain('Right', 'Thumb'),
+    index: findFingerChain('Right', 'Index'),
+    middle: findFingerChain('Right', 'Middle'),
+    ring: findFingerChain('Right', 'Ring'),
+    pinky: findFingerChain('Right', 'Pinky'),
+  };
+
   const bones: DetectedRigBones = {
     hips: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])hips$/i]),
-    spine: findFirstBone(sceneRoot, boundBones, [/spine2|chest|upperchest/i, /(^|[._:-])spine$/i]),
+    spine: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])spine$/i, /mixamorig:?spine$/i]),
+    spine1: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])spine1$/i, /mixamorig:?spine1$/i]),
+    spine2: findFirstBone(sceneRoot, boundBones, [
+      /(^|[._:-])spine2$/i,
+      /mixamorig:?spine2$/i,
+      /upperchest|chest/i,
+    ]),
     neck: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])neck$/i, /mixamorig:?neck$/i]),
     head: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])head$/i, /mixamorig:?head$/i, /bip01.*head$/i]),
     headTop: findFirstBone(sceneRoot, boundBones, [/headtop_end/i]),
+    leftEye: findFirstBone(sceneRoot, boundBones, [/lefteye|eye_l|eye\.l|l_eye/i]),
+    rightEye: findFirstBone(sceneRoot, boundBones, [/righteye|eye_r|eye\.r|r_eye/i]),
     jaw: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])jaw$/i, /chin/i]),
+    leftShoulder: findFirstBone(sceneRoot, boundBones, [/^leftshoulder$/i, /clavicle_l|shoulder_l/i]),
     leftArm: findFirstBone(sceneRoot, boundBones, [/^leftarm$/i, /upperarm_l|arm_l/i]),
     leftForeArm: findFirstBone(sceneRoot, boundBones, [/^leftforearm$/i, /forearm_l|lowerarm_l/i]),
     leftHand: findFirstBone(sceneRoot, boundBones, [/^lefthand$/i, /hand_l/i]),
+    rightShoulder: findFirstBone(sceneRoot, boundBones, [/^rightshoulder$/i, /clavicle_r|shoulder_r/i]),
     rightArm: findFirstBone(sceneRoot, boundBones, [/^rightarm$/i, /upperarm_r|arm_r/i]),
     rightForeArm: findFirstBone(sceneRoot, boundBones, [/^rightforearm$/i, /forearm_r|lowerarm_r/i]),
     rightHand: findFirstBone(sceneRoot, boundBones, [/^righthand$/i, /hand_r/i]),
+    leftFingers,
+    rightFingers,
+    leftUpLeg: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])leftupleg$/i, /thigh_l|upleg_l/i]),
+    leftLeg: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])leftleg$/i, /calf_l|shin_l|knee_l/i]),
+    leftFoot: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])leftfoot$/i, /foot_l|ankle_l/i]),
+    leftToeBase: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])lefttoebase$/i, /toe_l|ball_l/i]),
+    rightUpLeg: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])rightupleg$/i, /thigh_r|upleg_r/i]),
+    rightLeg: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])rightleg$/i, /calf_r|shin_r|knee_r/i]),
+    rightFoot: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])rightfoot$/i, /foot_r|ankle_r/i]),
+    rightToeBase: findFirstBone(sceneRoot, boundBones, [/(^|[._:-])righttoebase$/i, /toe_r|ball_r/i]),
   };
 
   const boneInitialRotations = new Map<THREE.Object3D, THREE.Euler>();
+  const boneInitialQuaternions = new Map<THREE.Object3D, THREE.Quaternion>();
+  const boneInitialPositions = new Map<THREE.Object3D, THREE.Vector3>();
   const registerBone = (b: THREE.Object3D | null) => {
-    if (b && !boneInitialRotations.has(b)) {
-      boneInitialRotations.set(b, b.rotation.clone());
+    if (!b) return;
+    // Preserve original bind pose on userData so cached scene re-inspection never snapshots animated transforms
+    if (!b.userData.__atmiyaBindEuler) {
+      b.userData.__atmiyaBindEuler = b.rotation.clone();
+    }
+    if (!b.userData.__atmiyaBindQuat) {
+      b.userData.__atmiyaBindQuat = b.quaternion.clone();
+    }
+    if (!b.userData.__atmiyaBindPos) {
+      b.userData.__atmiyaBindPos = b.position.clone();
+    }
+    if (!boneInitialRotations.has(b)) {
+      boneInitialRotations.set(b, (b.userData.__atmiyaBindEuler as THREE.Euler).clone());
+    }
+    if (!boneInitialQuaternions.has(b)) {
+      boneInitialQuaternions.set(b, (b.userData.__atmiyaBindQuat as THREE.Quaternion).clone());
+    }
+    if (!boneInitialPositions.has(b)) {
+      boneInitialPositions.set(b, (b.userData.__atmiyaBindPos as THREE.Vector3).clone());
     }
   };
   registerBone(bones.hips);
   registerBone(bones.spine);
+  registerBone(bones.spine1);
+  registerBone(bones.spine2);
   registerBone(bones.neck);
   registerBone(bones.head);
   registerBone(bones.headTop);
+  registerBone(bones.leftEye);
+  registerBone(bones.rightEye);
   registerBone(bones.jaw);
+  registerBone(bones.leftShoulder);
   registerBone(bones.leftArm);
   registerBone(bones.leftForeArm);
   registerBone(bones.leftHand);
+  registerBone(bones.rightShoulder);
   registerBone(bones.rightArm);
   registerBone(bones.rightForeArm);
   registerBone(bones.rightHand);
+  registerBone(bones.leftUpLeg);
+  registerBone(bones.leftLeg);
+  registerBone(bones.leftFoot);
+  registerBone(bones.leftToeBase);
+  registerBone(bones.rightUpLeg);
+  registerBone(bones.rightLeg);
+  registerBone(bones.rightFoot);
+  registerBone(bones.rightToeBase);
+  [
+    ...leftFingers.thumb,
+    ...leftFingers.index,
+    ...leftFingers.middle,
+    ...leftFingers.ring,
+    ...leftFingers.pinky,
+    ...rightFingers.thumb,
+    ...rightFingers.index,
+    ...rightFingers.middle,
+    ...rightFingers.ring,
+    ...rightFingers.pinky,
+  ].forEach(registerBone);
+
+  const buildBoneInfo = (
+    key: VerifiedSkeletonBoneKey,
+    expectedName: VerifiedSkeletonBoneInfo['expectedName'],
+    bone: THREE.Object3D | null
+  ): VerifiedSkeletonBoneInfo => {
+    if (!bone) {
+      return {
+        key,
+        expectedName,
+        detected: false,
+        actualName: null,
+        parentName: null,
+        bindRotationDeg: null,
+      };
+    }
+    const initEuler = boneInitialRotations.get(bone) ?? bone.rotation;
+    return {
+      key,
+      expectedName,
+      detected: true,
+      actualName: bone.name || expectedName,
+      parentName: bone.parent?.name || null,
+      bindRotationDeg: [
+        Number(THREE.MathUtils.radToDeg(initEuler.x).toFixed(1)),
+        Number(THREE.MathUtils.radToDeg(initEuler.y).toFixed(1)),
+        Number(THREE.MathUtils.radToDeg(initEuler.z).toFixed(1)),
+      ],
+    };
+  };
+
+  const verifiedSkeleton: VerifiedSkeletonMap = {
+    head: buildBoneInfo('head', 'Head', bones.head),
+    neck: buildBoneInfo('neck', 'Neck', bones.neck),
+    spine: buildBoneInfo('spine', 'Spine', bones.spine),
+    spine1: buildBoneInfo('spine1', 'Spine1', bones.spine1),
+    spine2: buildBoneInfo('spine2', 'Spine2', bones.spine2),
+  };
+
+  const collectFingerNames = (handRig: HandFingerRig): string[] =>
+    [...handRig.thumb, ...handRig.index, ...handRig.middle, ...handRig.ring, ...handRig.pinky].map(
+      (b) => b.name
+    );
+
+  const rightFingerBones = collectFingerNames(rightFingers);
+  const leftFingerBones = collectFingerNames(leftFingers);
+  const hasRightArmReady = Boolean(bones.rightArm && bones.rightForeArm);
+  const hasLeftArmReady = Boolean(bones.leftArm && bones.leftForeArm);
+  const preferredWaveSide: 'right' | 'left' | 'none' = hasRightArmReady
+    ? 'right'
+    : hasLeftArmReady
+    ? 'left'
+    : 'none';
+  const hasFingerRig = rightFingerBones.length > 0 || leftFingerBones.length > 0;
+
+  const armHandLimitations: string[] = [];
+  if (!hasRightArmReady && !hasLeftArmReady) {
+    armHandLimitations.push('Upper arm/forearm bones missing; arm gestures disabled.');
+  } else if (!hasRightArmReady) {
+    armHandLimitations.push('Right arm chain incomplete; falling back to left arm for gestures.');
+  }
+  if (!bones.rightHand && !bones.leftHand) {
+    armHandLimitations.push('Hand wrist bones missing; wrist wave motion skipped.');
+  }
+  if (!hasFingerRig) {
+    armHandLimitations.push('Finger bones not detected; finger poses skipped.');
+  }
+
+  const verifiedArmHand: VerifiedArmHandSummary = {
+    rightArmChain: {
+      shoulder: bones.rightShoulder?.name || null,
+      arm: bones.rightArm?.name || null,
+      foreArm: bones.rightForeArm?.name || null,
+      hand: bones.rightHand?.name || null,
+    },
+    leftArmChain: {
+      shoulder: bones.leftShoulder?.name || null,
+      arm: bones.leftArm?.name || null,
+      foreArm: bones.leftForeArm?.name || null,
+      hand: bones.leftHand?.name || null,
+    },
+    rightFingerBones,
+    leftFingerBones,
+    preferredWaveSide,
+    hasRightArmReady,
+    hasLeftArmReady,
+    hasFingerRig,
+    limitations: armHandLimitations,
+  };
+
+  const skeletonLimitations: string[] = [];
+  if (!bones.head) {
+    skeletonLimitations.push('Head bone not detected; head rotations skipped.');
+  }
+  if (!bones.neck) {
+    skeletonLimitations.push('Neck bone not detected; cervical distribution skipped.');
+  }
+  if (!bones.spine || !bones.spine1 || !bones.spine2) {
+    const missingSpine = (['spine', 'spine1', 'spine2'] as const)
+      .filter((k) => !bones[k])
+      .map((k) => verifiedSkeleton[k].expectedName);
+    skeletonLimitations.push(`Missing spine bone(s): ${missingSpine.join(', ')}.`);
+  }
+
+  const hasHips = Boolean(bones.hips);
+  const hasTorsoBreathing = Boolean(bones.spine2 || bones.spine1 || bones.spine);
+  const hasLeftLeg = Boolean(bones.leftUpLeg && bones.leftLeg);
+  const hasRightLeg = Boolean(bones.rightUpLeg && bones.rightLeg);
+  const hasFeet = Boolean(bones.leftFoot || bones.rightFoot);
+  const hasToes = Boolean(bones.leftToeBase || bones.rightToeBase);
+  const fullBodyLimitations: string[] = [];
+  if (!hasHips) {
+    fullBodyLimitations.push('Hips bone missing; torso/hip weight shifts skipped.');
+  }
+  if (!hasTorsoBreathing) {
+    fullBodyLimitations.push('Spine/chest bones missing; breathing motion skipped.');
+  }
+  if (!hasLeftLeg && !hasRightLeg) {
+    fullBodyLimitations.push('Leg bones missing; lower-body standing posture skipped.');
+  } else if (!hasLeftLeg || !hasRightLeg) {
+    fullBodyLimitations.push('Only partial leg chain found; limiting lower-body motion to available side.');
+  }
+  if ((hasLeftLeg || hasRightLeg) && !hasFeet) {
+    fullBodyLimitations.push('Foot bones missing; ankle counter-balance skipped.');
+  }
+
+  const verifiedFullBody: VerifiedFullBodySummary = {
+    torsoChain: {
+      hips: bones.hips?.name || null,
+      spine: bones.spine?.name || null,
+      spine1: bones.spine1?.name || null,
+      spine2: bones.spine2?.name || null,
+    },
+    leftLegChain: {
+      upLeg: bones.leftUpLeg?.name || null,
+      leg: bones.leftLeg?.name || null,
+      foot: bones.leftFoot?.name || null,
+      toeBase: bones.leftToeBase?.name || null,
+    },
+    rightLegChain: {
+      upLeg: bones.rightUpLeg?.name || null,
+      leg: bones.rightLeg?.name || null,
+      foot: bones.rightFoot?.name || null,
+      toeBase: bones.rightToeBase?.name || null,
+    },
+    hasHips,
+    hasTorsoBreathing,
+    hasLeftLeg,
+    hasRightLeg,
+    hasFeet,
+    hasToes,
+    limitations: fullBodyLimitations,
+  };
 
   const activeVisemeMorphs = SUPPORTED_VISEME_NAMES.filter((name) =>
     availableMorphKeys.has(name)
@@ -505,7 +852,14 @@ export function inspectGlbRig(sceneRoot: THREE.Object3D): InspectedRigData {
   const hasVisemeMorphs = activeVisemeMorphs.length > 0;
   const hasSmileMorphs = hasChannel('smileLeft') || hasChannel('smileRight');
   const hasJawBone = Boolean(bones.jaw);
-  const hasHeadNeckBones = Boolean(bones.head || bones.neck || bones.spine);
+  const hasEyeBones = Boolean(bones.leftEye || bones.rightEye || availableMorphKeys.has('eyeLookUpLeft'));
+  const hasHeadBone = Boolean(bones.head);
+  const hasNeckBone = Boolean(bones.neck);
+  const hasSpineChain = Boolean(bones.spine && bones.spine1 && bones.spine2);
+  const hasHeadNeckBones = hasHeadBone || hasNeckBone;
+  const hasArmBones = hasRightArmReady || hasLeftArmReady;
+  const hasHandFingers = hasFingerRig;
+  const hasHipsAndLegs = hasHips && (hasLeftLeg || hasRightLeg);
   const hasExpressionMorphs = ALL_CHANNELS.some(
     (ch) => ch !== 'jawOpen' && !ch.startsWith('viseme') && hasChannel(ch)
   );
@@ -531,6 +885,12 @@ export function inspectGlbRig(sceneRoot: THREE.Object3D): InspectedRigData {
     uniqueMorphSlots,
     bones,
     boneInitialRotations,
+    boneInitialQuaternions,
+    boneInitialPositions,
+    verifiedSkeleton,
+    verifiedArmHand,
+    verifiedFullBody,
+    skeletonLimitations,
     availableMorphKeys,
     verifiedCoreMorphs,
     activeSpeechMorphs,
@@ -542,35 +902,109 @@ export function inspectGlbRig(sceneRoot: THREE.Object3D): InspectedRigData {
       hasVisemeMorphs,
       hasSmileMorphs,
       hasJawBone,
+      hasEyeBones,
       hasHeadNeckBones,
+      hasHeadBone,
+      hasNeckBone,
+      hasSpineChain,
+      hasArmBones,
+      hasHandFingers,
+      hasHipsAndLegs,
+      hasTorsoBreathing,
       hasExpressionMorphs,
     },
     supportedExpressions,
   };
 }
 
+const _armStaticEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+const _armStaticQuat = new THREE.Quaternion();
+
 /**
- * Applies a static natural standing rest pose to the arms so Upper/Full camera presets
- * do not display a rigid horizontal T-pose. Does not animate head, hands, or body (Phase 1).
+ * Applies a baseline natural standing rest pose to the arms & relaxed fingers
+ * so Upper/Full camera presets do not display a rigid horizontal T-pose.
+ * Uses bind-relative quaternion composition without touching Spine/Neck/Head.
  */
 export function applyStaticRelaxedArmPose(rig: InspectedRigData): void {
-  const applyStaticOffset = (bone: THREE.Object3D | null, dx: number, dy: number, dz: number) => {
+  const applyDelta = (bone: THREE.Object3D | null, dx: number, dy: number, dz: number) => {
     if (!bone) return;
-    const init = rig.boneInitialRotations.get(bone);
-    if (!init) return;
-    bone.rotation.set(init.x + dx, init.y + dy, init.z + dz);
+    const baseQ = rig.boneInitialQuaternions.get(bone);
+    if (!baseQ) return;
+    _armStaticEuler.set(dx, dy, dz, 'XYZ');
+    _armStaticQuat.setFromEuler(_armStaticEuler);
+    bone.quaternion.copy(baseQ).multiply(_armStaticQuat);
   };
 
-  applyStaticOffset(rig.bones.leftArm, 1.16, 0, 0.08);
-  applyStaticOffset(rig.bones.leftForeArm, 0, 0, 0.18);
-  applyStaticOffset(rig.bones.leftHand, 0, 0, 0.04);
+  applyDelta(rig.bones.leftShoulder, 0, 0, 0);
+  applyDelta(rig.bones.leftArm, 1.16, 0, 0.08);
+  applyDelta(rig.bones.leftForeArm, 0, 0, 0.18);
+  applyDelta(rig.bones.leftHand, 0, 0, 0.04);
 
-  applyStaticOffset(rig.bones.rightArm, 1.16, 0, -0.08);
-  applyStaticOffset(rig.bones.rightForeArm, 0, 0, -0.18);
-  applyStaticOffset(rig.bones.rightHand, 0, 0, -0.04);
+  applyDelta(rig.bones.rightShoulder, 0, 0, 0);
+  applyDelta(rig.bones.rightArm, 1.16, 0, -0.08);
+  applyDelta(rig.bones.rightForeArm, 0, 0, -0.18);
+  applyDelta(rig.bones.rightHand, 0, 0, -0.04);
+
+  const applyRelaxedFingers = (fingers: HandFingerRig) => {
+    const curls = [0.16, 0.2, 0.12];
+    [fingers.index, fingers.middle, fingers.ring, fingers.pinky].forEach((chain) => {
+      for (let i = 0; i < Math.min(3, chain.length); i += 1) {
+        applyDelta(chain[i], curls[i], 0, 0);
+      }
+    });
+    for (let i = 0; i < Math.min(2, fingers.thumb.length); i += 1) {
+      applyDelta(fingers.thumb[i], i === 0 ? 0.08 : 0.1, 0, 0);
+    }
+  };
+
+  applyRelaxedFingers(rig.bones.leftFingers);
+  applyRelaxedFingers(rig.bones.rightFingers);
 }
 
+/**
+ * Restores all registered bones cleanly back to their original GLB bind pose transforms.
+ */
+export function restoreRigBindPose(rig: InspectedRigData): void {
+  rig.boneInitialQuaternions.forEach((baseQuat, bone) => {
+    bone.quaternion.copy(baseQuat);
+  });
+  rig.boneInitialPositions.forEach((basePos, bone) => {
+    bone.position.copy(basePos);
+  });
+}
+
+export type HeadPoseTarget =
+  | 'neutral'
+  | 'turn-left'
+  | 'turn-right'
+  | 'tilt-left'
+  | 'tilt-right';
+
+export interface HeadNodOptions {
+  intensity?: number;
+  duration?: number;
+}
+
+export type ArmGestureName =
+  | 'none'
+  | 'wave'
+  | 'open-palm'
+  | 'raise-hand'
+  | 'conversational';
+
+export type HandPoseTarget = 'relaxed' | 'open' | 'curl';
+
+export interface ArmGestureOptions {
+  duration?: number;
+  side?: 'right' | 'left';
+}
+
+export type IdleMovementIntensity = 'low' | 'medium' | 'high';
+
+export type BodyPresentationMode = 'close-up' | 'upper-body' | 'full-body';
+
 export interface RigAnimationRuntime {
+  // Phase 1 facial state
   nextBlinkAt: number;
   blinkProgress: number;
   blinkDuration: number;
@@ -580,6 +1014,31 @@ export interface RigAnimationRuntime {
   gazeX: number;
   gazeY: number;
   talkPhase: number;
+  // Phase 2 head & neck state
+  idleEnabled: boolean;
+  idleIntensity: IdleMovementIntensity;
+  headPose: HeadPoseTarget;
+  headPoseIntensity: number;
+  nodActive: boolean;
+  nodProgress: number;
+  nodDuration: number;
+  nodIntensity: number;
+  headPitch: number;
+  headYaw: number;
+  headRoll: number;
+  headIdleBlend: number;
+  idlePhaseOffset: number;
+  // Phase 3 arm, hand & finger gesture controller state
+  armGesture: ArmGestureName;
+  armGestureElapsed: number;
+  armGestureDuration: number;
+  armGestureSide: 'right' | 'left';
+  handPose: HandPoseTarget;
+  armDeltaQuats: Map<THREE.Object3D, THREE.Quaternion>;
+  // Phase 4 torso, breathing & lower-body idle state
+  bodyIdleBlend: number;
+  hipsOffset: THREE.Vector3;
+  bodyDeltaQuats: Map<THREE.Object3D, THREE.Quaternion>;
 }
 
 export function createRigRuntime(): RigAnimationRuntime {
@@ -593,7 +1052,147 @@ export function createRigRuntime(): RigAnimationRuntime {
     gazeX: 0,
     gazeY: 0,
     talkPhase: 0,
+    idleEnabled: true,
+    idleIntensity: 'medium',
+    headPose: 'neutral',
+    headPoseIntensity: 1,
+    nodActive: false,
+    nodProgress: 0,
+    nodDuration: 0.78,
+    nodIntensity: 0.75,
+    headPitch: 0,
+    headYaw: 0,
+    headRoll: 0,
+    headIdleBlend: 1,
+    idlePhaseOffset: Math.random() * Math.PI * 2,
+    armGesture: 'none',
+    armGestureElapsed: 0,
+    armGestureDuration: 2.4,
+    armGestureSide: 'right',
+    handPose: 'relaxed',
+    armDeltaQuats: new Map<THREE.Object3D, THREE.Quaternion>(),
+    bodyIdleBlend: 1,
+    hipsOffset: new THREE.Vector3(),
+    bodyDeltaQuats: new Map<THREE.Object3D, THREE.Quaternion>(),
   };
+}
+
+export function setHeadIdleEnabled(runtime: RigAnimationRuntime, enabled: boolean): void {
+  runtime.idleEnabled = enabled;
+}
+
+export function setIdleMovementIntensity(
+  runtime: RigAnimationRuntime,
+  intensity: IdleMovementIntensity
+): void {
+  runtime.idleIntensity = intensity;
+}
+
+export function resetBodyPose(runtime: RigAnimationRuntime): void {
+  runtime.bodyIdleBlend = 0;
+  runtime.hipsOffset.set(0, 0, 0);
+}
+
+export function resetAllAvatarPoses(runtime: RigAnimationRuntime): void {
+  resetHeadPose(runtime);
+  resetArmPose(runtime);
+  resetBodyPose(runtime);
+}
+
+/**
+ * Triggers a smooth, non-stacking head nod toward baseline (+X pitch down and back).
+ * Returns false if a nod is already mid-motion to prevent fighting/stacking.
+ */
+export function triggerHeadNod(
+  runtime: RigAnimationRuntime,
+  options?: HeadNodOptions
+): boolean {
+  if (runtime.nodActive && runtime.nodProgress < 0.85) {
+    return false;
+  }
+  const intensity = Math.max(0.25, Math.min(1.0, options?.intensity ?? 0.75));
+  const duration = Math.max(0.35, Math.min(1.6, options?.duration ?? 0.78));
+  runtime.nodActive = true;
+  runtime.nodProgress = 0;
+  runtime.nodDuration = duration;
+  runtime.nodIntensity = intensity;
+  return true;
+}
+
+export function turnHeadLeft(runtime: RigAnimationRuntime, intensity = 1): void {
+  runtime.headPose = 'turn-left';
+  runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+}
+
+export function turnHeadRight(runtime: RigAnimationRuntime, intensity = 1): void {
+  runtime.headPose = 'turn-right';
+  runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+}
+
+export function tiltHeadLeft(runtime: RigAnimationRuntime, intensity = 1): void {
+  runtime.headPose = 'tilt-left';
+  runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+}
+
+export function tiltHeadRight(runtime: RigAnimationRuntime, intensity = 1): void {
+  runtime.headPose = 'tilt-right';
+  runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+}
+
+export function resetHeadPose(runtime: RigAnimationRuntime): void {
+  runtime.headPose = 'neutral';
+  runtime.headPoseIntensity = 1;
+  runtime.nodActive = false;
+  runtime.nodProgress = 0;
+}
+
+const DEFAULT_GESTURE_DURATIONS: Record<Exclude<ArmGestureName, 'none'>, number> = {
+  wave: 2.55,
+  'open-palm': 2.45,
+  'raise-hand': 2.25,
+  conversational: 1.95,
+};
+
+/**
+ * Starts a named Phase 3 arm gesture with exclusive bone ownership.
+ * Safely replaces any previously running gesture without snapping.
+ */
+export function startArmGesture(
+  runtime: RigAnimationRuntime,
+  gesture: Exclude<ArmGestureName, 'none'>,
+  options?: ArmGestureOptions
+): void {
+  runtime.armGesture = gesture;
+  runtime.armGestureElapsed = 0;
+  runtime.armGestureDuration = Math.max(
+    1.1,
+    Math.min(5.0, options?.duration ?? DEFAULT_GESTURE_DURATIONS[gesture])
+  );
+  runtime.armGestureSide = options?.side ?? 'right';
+}
+
+/**
+ * Safely cancels any active arm gesture and interpolates smoothly back to relaxed baseline.
+ */
+export function cancelArmGesture(runtime: RigAnimationRuntime): void {
+  runtime.armGesture = 'none';
+  runtime.armGestureElapsed = 0;
+}
+
+/**
+ * Resets both active arm gesture and explicit hand/finger pose smoothly to relaxed baseline.
+ */
+export function resetArmPose(runtime: RigAnimationRuntime): void {
+  runtime.armGesture = 'none';
+  runtime.armGestureElapsed = 0;
+  runtime.handPose = 'relaxed';
+}
+
+/**
+ * Sets the target finger/hand pose ('relaxed' | 'open' | 'curl').
+ */
+export function setHandPose(runtime: RigAnimationRuntime, pose: HandPoseTarget): void {
+  runtime.handPose = pose;
 }
 
 export function setMorphTargetWeight(
@@ -958,3 +1557,671 @@ export function updateExpressionRig(params: {
     }
   }
 }
+
+// Pre-allocated scratch helpers for zero-GC head/neck quaternion updates
+const _deltaEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _deltaQuat = new THREE.Quaternion();
+
+const MAX_HEAD_NOD_RAD = 0.17; // ~9.7 deg peak chin-down nod
+const MAX_HEAD_YAW_RAD = 0.22; // ~12.6 deg conservative turn
+const MAX_HEAD_ROLL_RAD = 0.13; // ~7.5 deg gentle tilt
+
+/**
+ * Phase 2 coordinated procedural controller for Neck & Head bones.
+ * - Priority: Reduced Motion > Head Nod > Explicit Turn/Tilt > Subtle Organic Idle.
+ * - Applies delta rotations relative to immutable bind quaternions (zero accumulation).
+ * - Never writes to Spine/Spine1/Spine2 or morphTargetInfluences.
+ */
+export function updateHeadNeckRig(params: {
+  rig: InspectedRigData;
+  runtime: RigAnimationRuntime;
+  state: AvatarState;
+  prefersReducedMotion: boolean;
+  elapsed: number;
+  delta: number;
+}): { isAnimating: boolean } {
+  const { rig, runtime, state, prefersReducedMotion, elapsed, delta } = params;
+  const { head, neck } = rig.bones;
+
+  if (!head && !neck) {
+    return { isAnimating: false };
+  }
+
+  // 1. Advance explicit head nod action if running
+  let nodPitch = 0;
+  if (runtime.nodActive) {
+    runtime.nodProgress += delta / Math.max(0.25, runtime.nodDuration);
+    if (runtime.nodProgress >= 1) {
+      runtime.nodActive = false;
+      runtime.nodProgress = 0;
+      nodPitch = 0;
+    } else {
+      const skewed = Math.pow(Math.max(0, Math.min(1, runtime.nodProgress)), 0.85);
+      const envelope = 0.5 * (1 - Math.cos(Math.PI * 2 * skewed));
+      nodPitch = envelope * MAX_HEAD_NOD_RAD * runtime.nodIntensity;
+    }
+  }
+
+  // 2. Explicit head turn / tilt target pose
+  let poseYaw = 0;
+  let poseRoll = 0;
+  switch (runtime.headPose) {
+    case 'turn-left':
+      poseYaw = -MAX_HEAD_YAW_RAD * runtime.headPoseIntensity;
+      break;
+    case 'turn-right':
+      poseYaw = MAX_HEAD_YAW_RAD * runtime.headPoseIntensity;
+      break;
+    case 'tilt-left':
+      poseRoll = MAX_HEAD_ROLL_RAD * runtime.headPoseIntensity;
+      break;
+    case 'tilt-right':
+      poseRoll = -MAX_HEAD_ROLL_RAD * runtime.headPoseIntensity;
+      break;
+    case 'neutral':
+    default:
+      break;
+  }
+
+  // 3. Priority-coordinated idle blend (explicit gestures override idle so idle never fights them)
+  let targetIdleBlend = 0;
+  if (
+    !prefersReducedMotion &&
+    runtime.idleEnabled &&
+    !runtime.nodActive &&
+    runtime.headPose === 'neutral'
+  ) {
+    if (state === 'listening') {
+      targetIdleBlend = 0.4; // Attentive, calm stillness
+    } else if (state === 'speaking') {
+      targetIdleBlend = 0.45; // Subtle presence without nodding while speaking
+    } else {
+      targetIdleBlend = 1.0;
+    }
+  }
+
+  runtime.headIdleBlend = THREE.MathUtils.damp(runtime.headIdleBlend, targetIdleBlend, 4.5, delta);
+
+  const idleIntensityScale =
+    runtime.idleIntensity === 'low'
+      ? 0.55
+      : runtime.idleIntensity === 'high'
+      ? 1.4
+      : 1.0;
+
+  // 4. Organic multi-frequency idle sway (non-repeating ratios, facing camera most of the time)
+  let idlePitch = 0;
+  let idleYaw = 0;
+  let idleRoll = 0;
+  if (runtime.headIdleBlend > 0.001) {
+    const t = elapsed + runtime.idlePhaseOffset;
+    idleYaw =
+      (Math.sin(t * 0.43) * 0.6 + Math.sin(t * 0.97 + 1.3) * 0.4) *
+      0.036 *
+      idleIntensityScale *
+      runtime.headIdleBlend;
+    idlePitch =
+      (Math.sin(t * 0.31 + 0.7) * 0.65 + Math.cos(t * 0.73) * 0.35) *
+      0.022 *
+      idleIntensityScale *
+      runtime.headIdleBlend;
+    idleRoll =
+      (Math.sin(t * 0.27 + 2.1) * 0.7 + Math.sin(t * 0.61) * 0.3) *
+      0.018 *
+      idleIntensityScale *
+      runtime.headIdleBlend;
+  }
+
+  // 5. Smoothly interpolate head/neck angles toward combined target
+  const targetPitch = nodPitch + idlePitch;
+  const targetYaw = poseYaw + idleYaw;
+  const targetRoll = poseRoll + idleRoll;
+
+  const dampSpeed = runtime.nodActive ? 14 : 6.5;
+  runtime.headPitch = THREE.MathUtils.damp(runtime.headPitch, targetPitch, dampSpeed, delta);
+  runtime.headYaw = THREE.MathUtils.damp(runtime.headYaw, targetYaw, dampSpeed, delta);
+  runtime.headRoll = THREE.MathUtils.damp(runtime.headRoll, targetRoll, dampSpeed, delta);
+
+  // Snap microscopic residuals cleanly to exact 0 when resting at neutral
+  if (
+    targetPitch === 0 &&
+    targetYaw === 0 &&
+    targetRoll === 0 &&
+    Math.abs(runtime.headPitch) < 1e-4 &&
+    Math.abs(runtime.headYaw) < 1e-4 &&
+    Math.abs(runtime.headRoll) < 1e-4
+  ) {
+    runtime.headPitch = 0;
+    runtime.headYaw = 0;
+    runtime.headRoll = 0;
+  }
+
+  // 6. Distribute conservatively between Neck and Head based on actual detected bones
+  const applyBoneDelta = (
+    bone: THREE.Object3D | null,
+    pitch: number,
+    yaw: number,
+    roll: number
+  ) => {
+    if (!bone) return;
+    const baseQuat = rig.boneInitialQuaternions.get(bone);
+    if (!baseQuat) return;
+    _deltaEuler.set(pitch, yaw, roll, 'YXZ');
+    _deltaQuat.setFromEuler(_deltaEuler);
+    bone.quaternion.copy(baseQuat).multiply(_deltaQuat);
+  };
+
+  if (neck && head) {
+    applyBoneDelta(
+      neck,
+      runtime.headPitch * 0.35,
+      runtime.headYaw * 0.35,
+      runtime.headRoll * 0.3
+    );
+    applyBoneDelta(
+      head,
+      runtime.headPitch * 0.65,
+      runtime.headYaw * 0.65,
+      runtime.headRoll * 0.7
+    );
+  } else if (head) {
+    applyBoneDelta(
+      head,
+      runtime.headPitch * 0.75,
+      runtime.headYaw * 0.75,
+      runtime.headRoll * 0.75
+    );
+  } else if (neck) {
+    applyBoneDelta(
+      neck,
+      runtime.headPitch * 0.55,
+      runtime.headYaw * 0.55,
+      runtime.headRoll * 0.55
+    );
+  }
+
+  const isAnimating =
+    runtime.nodActive ||
+    Math.abs(runtime.headPitch - targetPitch) > 1e-3 ||
+    Math.abs(runtime.headYaw - targetYaw) > 1e-3 ||
+    Math.abs(runtime.headRoll - targetRoll) > 1e-3;
+
+  return { isAnimating };
+}
+
+// Pre-allocated scratch helpers for zero-GC arm/hand/finger quaternion updates
+const _armTargetEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+const _armTargetQuat = new THREE.Quaternion();
+
+/**
+ * Phase 3 coordinated procedural controller for Shoulder, Arm, ForeArm, Hand, and Finger bones.
+ * - Exclusive gesture ownership: only one active ArmGestureName controls arm bones at a time.
+ * - Uses slerp interpolation on baseline-relative delta quaternions (no frame drift/accumulation).
+ * - Never writes to Head, Neck, Spine, Spine1, Spine2, or facial morph targets.
+ */
+export function updateArmHandRig(params: {
+  rig: InspectedRigData;
+  runtime: RigAnimationRuntime;
+  prefersReducedMotion: boolean;
+  delta: number;
+}): { isAnimating: boolean; activeGesture: ArmGestureName } {
+  const { rig, runtime, prefersReducedMotion, delta } = params;
+  const { bones } = rig;
+
+  if (!bones.rightArm && !bones.leftArm) {
+    return { isAnimating: false, activeGesture: 'none' };
+  }
+
+  // Determine which arm is driving any active gesture (prefer right arm, fallback to left)
+  const activeSide: 'right' | 'left' | null =
+    runtime.armGesture === 'none'
+      ? null
+      : runtime.armGestureSide === 'right' && rig.verifiedArmHand.hasRightArmReady
+      ? 'right'
+      : rig.verifiedArmHand.hasLeftArmReady
+      ? 'left'
+      : rig.verifiedArmHand.hasRightArmReady
+      ? 'right'
+      : null;
+
+  // Advance gesture timeline and auto-complete cleanly back to baseline
+  let gestureHoldBlend = 0;
+  let waveOscillation = 0;
+  let gestureConversePulse = 0;
+
+  if (runtime.armGesture !== 'none' && activeSide) {
+    runtime.armGestureElapsed += delta;
+    const dur = Math.max(1.0, runtime.armGestureDuration);
+    const tNorm = Math.min(1, runtime.armGestureElapsed / dur);
+
+    if (tNorm >= 1) {
+      runtime.armGesture = 'none';
+      runtime.armGestureElapsed = 0;
+      gestureHoldBlend = 0;
+    } else {
+      const raiseEnd = 0.22;
+      const lowerStart = 0.76;
+
+      if (tNorm < raiseEnd) {
+        const u = tNorm / raiseEnd;
+        gestureHoldBlend = u * u * (3 - 2 * u); // smoothstep 0 -> 1
+      } else if (tNorm > lowerStart) {
+        const u = (1 - tNorm) / (1 - lowerStart);
+        gestureHoldBlend = u * u * (3 - 2 * u); // smoothstep 1 -> 0
+      } else {
+        gestureHoldBlend = 1;
+      }
+
+      if (runtime.armGesture === 'wave' && tNorm > 0.18 && tNorm < 0.8) {
+        const waveNorm = (tNorm - 0.18) / (0.8 - 0.18);
+        const waveEnv = Math.sin(waveNorm * Math.PI); // zero velocity at start & end of waving
+        const cycles = prefersReducedMotion ? 1 : 2.5;
+        const amp = prefersReducedMotion ? 0.08 : 0.26;
+        waveOscillation = Math.sin(waveNorm * Math.PI * 2 * cycles) * waveEnv * amp;
+      } else if (runtime.armGesture === 'conversational') {
+        gestureConversePulse = Math.sin(tNorm * Math.PI) * (prefersReducedMotion ? 0.02 : 0.06);
+      }
+    }
+  }
+
+  let stillConverging = runtime.armGesture !== 'none';
+  const slerpAlphaArm = 1 - Math.exp(-9.5 * delta);
+  const slerpAlphaHand = 1 - Math.exp(-12.0 * delta);
+
+  const driveBone = (
+    bone: THREE.Object3D | null,
+    tx: number,
+    ty: number,
+    tz: number,
+    alpha: number
+  ) => {
+    if (!bone) return;
+    const baseQ = rig.boneInitialQuaternions.get(bone);
+    if (!baseQ) return;
+
+    let currDelta = runtime.armDeltaQuats.get(bone);
+    if (!currDelta) {
+      currDelta = new THREE.Quaternion().setFromEuler(_armTargetEuler.set(tx, ty, tz, 'XYZ'));
+      runtime.armDeltaQuats.set(bone, currDelta);
+    }
+
+    _armTargetEuler.set(tx, ty, tz, 'XYZ');
+    _armTargetQuat.setFromEuler(_armTargetEuler);
+    currDelta.slerp(_armTargetQuat, alpha);
+
+    if (currDelta.angleTo(_armTargetQuat) > 0.004) {
+      stillConverging = true;
+    }
+
+    bone.quaternion.copy(baseQ).multiply(currDelta);
+  };
+
+  // Compute target angles for Left & Right arm chains (Right is canonical; Left mirrors Y and Z)
+  const applyArmSide = (side: 'right' | 'left') => {
+    const m = side === 'right' ? 1 : -1;
+    const shoulder = side === 'right' ? bones.rightShoulder : bones.leftShoulder;
+    const arm = side === 'right' ? bones.rightArm : bones.leftArm;
+    const foreArm = side === 'right' ? bones.rightForeArm : bones.leftForeArm;
+    const hand = side === 'right' ? bones.rightHand : bones.leftHand;
+
+    // Relaxed standing baseline offsets
+    let shX = 0;
+    let shY = 0;
+    let shZ = 0;
+    let armX = 1.16;
+    let armY = 0;
+    let armZ = -0.08 * m;
+    let foreX = 0;
+    let foreY = 0;
+    let foreZ = -0.18 * m;
+    let handX = 0;
+    let handY = 0;
+    let handZ = -0.04 * m;
+
+    if (activeSide === side && gestureHoldBlend > 0.001) {
+      let gShY = 0;
+      let gShZ = 0;
+      let gArmX = armX;
+      let gArmY = 0;
+      let gArmZ = armZ;
+      let gForeX = 0;
+      let gForeY = 0;
+      let gForeZ = foreZ;
+      let gHandX = 0;
+      let gHandY = 0;
+      let gHandZ = handZ;
+
+      switch (runtime.armGesture) {
+        case 'wave':
+          gShY = 0.14 * m;
+          gShZ = -0.1 * m;
+          gArmX = 0.92;
+          gArmY = 0.72 * m;
+          gArmZ = -0.62 * m;
+          gForeX = -0.08;
+          gForeY = 0.25 * m;
+          gForeZ = (-2.02 + waveOscillation * 0.25) * m;
+          gHandX = 0.02;
+          gHandY = -0.15 * m;
+          gHandZ = (-0.05 + waveOscillation) * m;
+          break;
+        case 'open-palm':
+          gShY = 0.12 * m;
+          gShZ = -0.08 * m;
+          gArmX = 1.02;
+          gArmY = 0.42 * m;
+          gArmZ = -0.52 * m;
+          gForeX = -0.05;
+          gForeY = 0.18 * m;
+          gForeZ = -1.72 * m;
+          gHandX = -0.1;
+          gHandY = 0.15 * m;
+          gHandZ = 0;
+          break;
+        case 'raise-hand':
+          gShY = 0.14 * m;
+          gShZ = -0.12 * m;
+          gArmX = 0.72;
+          gArmY = 0.88 * m;
+          gArmZ = -0.48 * m;
+          gForeX = -0.08;
+          gForeY = 0.22 * m;
+          gForeZ = -1.78 * m;
+          gHandX = 0.04;
+          gHandY = -0.1 * m;
+          gHandZ = 0;
+          break;
+        case 'conversational':
+          gShY = 0.08 * m;
+          gShZ = -0.04 * m;
+          gArmX = 1.1;
+          gArmY = 0.28 * m;
+          gArmZ = -0.4 * m;
+          gForeX = 0;
+          gForeY = 0.1 * m;
+          gForeZ = (-1.42 - gestureConversePulse) * m;
+          gHandX = -0.08 - gestureConversePulse * 0.5;
+          gHandY = 0.12 * m;
+          gHandZ = -0.04 * m;
+          break;
+        default:
+          break;
+      }
+
+      const w = gestureHoldBlend;
+      shY = THREE.MathUtils.lerp(shY, gShY, w);
+      shZ = THREE.MathUtils.lerp(shZ, gShZ, w);
+      armX = THREE.MathUtils.lerp(armX, gArmX, w);
+      armY = THREE.MathUtils.lerp(armY, gArmY, w);
+      armZ = THREE.MathUtils.lerp(armZ, gArmZ, w);
+      foreX = THREE.MathUtils.lerp(foreX, gForeX, w);
+      foreY = THREE.MathUtils.lerp(foreY, gForeY, w);
+      foreZ = THREE.MathUtils.lerp(foreZ, gForeZ, w);
+      handX = THREE.MathUtils.lerp(handX, gHandX, w);
+      handY = THREE.MathUtils.lerp(handY, gHandY, w);
+      handZ = THREE.MathUtils.lerp(handZ, gHandZ, w);
+    }
+
+    driveBone(shoulder, shX, shY, shZ, slerpAlphaArm);
+    driveBone(arm, armX, armY, armZ, slerpAlphaArm);
+    driveBone(foreArm, foreX, foreY, foreZ, slerpAlphaArm);
+    driveBone(hand, handX, handY, handZ, slerpAlphaHand);
+  };
+
+  applyArmSide('right');
+  applyArmSide('left');
+
+  // Coordinate finger pose: active open-palm/wave gestures naturally open the gesturing hand;
+  // otherwise apply the selected HandPoseTarget ('relaxed' | 'open' | 'curl').
+  const applyFingersForSide = (side: 'right' | 'left') => {
+    const fingers = side === 'right' ? bones.rightFingers : bones.leftFingers;
+    const m = side === 'right' ? 1 : -1;
+
+    const gestureForcesOpen =
+      activeSide === side &&
+      gestureHoldBlend > 0.2 &&
+      (runtime.armGesture === 'wave' ||
+        runtime.armGesture === 'open-palm' ||
+        runtime.armGesture === 'raise-hand');
+
+    const effectiveHandPose: HandPoseTarget = gestureForcesOpen
+      ? 'open'
+      : activeSide === side && runtime.armGesture === 'conversational' && gestureHoldBlend > 0.2
+      ? 'relaxed'
+      : runtime.handPose;
+
+    const driveChain = (
+      chain: THREE.Object3D[],
+      xAngles: readonly [number, number, number],
+      zBase = 0
+    ) => {
+      for (let i = 0; i < Math.min(3, chain.length); i += 1) {
+        driveBone(chain[i], xAngles[i], 0, i === 0 ? zBase : 0, slerpAlphaHand);
+      }
+    };
+
+    if (effectiveHandPose === 'open') {
+      driveChain(fingers.index, [0.05, 0.06, 0.04], -0.05 * m);
+      driveChain(fingers.middle, [0.05, 0.06, 0.04], 0);
+      driveChain(fingers.ring, [0.06, 0.08, 0.05], 0.04 * m);
+      driveChain(fingers.pinky, [0.08, 0.1, 0.06], 0.08 * m);
+      for (let i = 0; i < Math.min(2, fingers.thumb.length); i += 1) {
+        driveBone(
+          fingers.thumb[i],
+          i === 0 ? 0.04 : 0.05,
+          0,
+          i === 0 ? -0.1 * m : 0,
+          slerpAlphaHand
+        );
+      }
+    } else if (effectiveHandPose === 'curl') {
+      driveChain(fingers.index, [0.55, 0.72, 0.52]);
+      driveChain(fingers.middle, [0.6, 0.76, 0.55]);
+      driveChain(fingers.ring, [0.62, 0.78, 0.56]);
+      driveChain(fingers.pinky, [0.65, 0.8, 0.58]);
+      for (let i = 0; i < Math.min(2, fingers.thumb.length); i += 1) {
+        driveBone(
+          fingers.thumb[i],
+          i === 0 ? 0.22 : 0.34,
+          0,
+          i === 0 ? 0.26 * m : 0.1 * m,
+          slerpAlphaHand
+        );
+      }
+    } else {
+      // Natural soft relaxed hand
+      driveChain(fingers.index, [0.16, 0.2, 0.12]);
+      driveChain(fingers.middle, [0.18, 0.22, 0.14]);
+      driveChain(fingers.ring, [0.22, 0.26, 0.16]);
+      driveChain(fingers.pinky, [0.25, 0.28, 0.18]);
+      for (let i = 0; i < Math.min(2, fingers.thumb.length); i += 1) {
+        driveBone(fingers.thumb[i], i === 0 ? 0.08 : 0.1, 0, 0, slerpAlphaHand);
+      }
+    }
+  };
+
+  applyFingersForSide('right');
+  applyFingersForSide('left');
+
+  return {
+    isAnimating: stillConverging,
+    activeGesture: runtime.armGesture,
+  };
+}
+
+// Pre-allocated scratch helpers for zero-GC torso & lower-body quaternion/position updates
+const _bodyTargetEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+const _bodyTargetQuat = new THREE.Quaternion();
+const _hipsTargetOffset = new THREE.Vector3();
+
+/**
+ * Phase 4 coordinated procedural controller for Hips, Spine, Spine1, Spine2, and Lower-Body leg/foot/toe chains.
+ * - Priority: (1) Safety / Reduced Motion > (2) Active User Gestures > (3) Speech > (4) Subtle Idle.
+ * - Respects presentationMode ('close-up' keeps lower-body standing shift settled so face framing stays steady).
+ * - Applies strictly bind-relative delta rotations and positions (zero frame-to-frame accumulation).
+ * - Never writes to Head, Neck, Shoulder, Arm, ForeArm, Hand, Finger bones, or morphTargetInfluences.
+ */
+export function updateFullBodyAndLowerRig(params: {
+  rig: InspectedRigData;
+  runtime: RigAnimationRuntime;
+  state: AvatarState;
+  presentationMode: BodyPresentationMode;
+  prefersReducedMotion: boolean;
+  elapsed: number;
+  delta: number;
+}): { isAnimating: boolean } {
+  const { rig, runtime, state, presentationMode, prefersReducedMotion, elapsed, delta } = params;
+  const { bones } = rig;
+
+  if (!bones.hips && !bones.spine && !bones.spine1 && !bones.spine2 && !bones.leftUpLeg && !bones.rightUpLeg) {
+    return { isAnimating: false };
+  }
+
+  // 1. Priority-based blend levels (idle breathing vs active gesture/speech override)
+  const hasActiveGesture = runtime.armGesture !== 'none' || runtime.nodActive;
+  const isSpeaking = state === 'speaking';
+  const isListening = state === 'listening';
+
+  let targetBodyBlend = 0;
+  if (!prefersReducedMotion && runtime.idleEnabled) {
+    if (hasActiveGesture) {
+      targetBodyBlend = 0.28; // Stabilize torso & stance while arm/nod gesture plays
+    } else if (isSpeaking) {
+      targetBodyBlend = 0.48; // Gentle breathing + calm conversational poise
+    } else if (isListening) {
+      targetBodyBlend = 0.55; // Attentive stillness
+    } else {
+      targetBodyBlend = 1.0; // Natural idle
+    }
+  }
+
+  runtime.bodyIdleBlend = THREE.MathUtils.damp(runtime.bodyIdleBlend, targetBodyBlend, 4.0, delta);
+
+  const intensityScale =
+    runtime.idleIntensity === 'low'
+      ? 0.55
+      : runtime.idleIntensity === 'high'
+      ? 1.4
+      : 1.0;
+
+  const isLowerBodyVisible = presentationMode !== 'close-up';
+  const weightShiftFactor = isLowerBodyVisible ? 1.0 : 0.0;
+  const blend = runtime.bodyIdleBlend * intensityScale;
+
+  // 2. Smooth multi-frequency time signals (sub-Hz natural breathing ~0.23Hz & slow weight sway ~0.12Hz)
+  const t = elapsed + runtime.idlePhaseOffset;
+  const breath = (Math.sin(t * 1.45) * 0.72 + Math.sin(t * 0.72 + 0.6) * 0.28) * blend;
+  const sway = (Math.sin(t * 0.76 + 0.4) * 0.7 + Math.sin(t * 0.43 + 1.9) * 0.3) * blend;
+  const microPitch = Math.sin(t * 0.53 + 1.1) * blend;
+
+  // 3. Chest breathing (Spine, Spine1, Spine2): subtle inhale expansion without bobbing/dancing
+  const spinePitch = 0.004 * breath + 0.004 * microPitch * weightShiftFactor;
+  const spineRoll = -0.012 * sway * (0.45 + 0.55 * weightShiftFactor);
+  const spineYaw = -0.01 * sway * (0.4 + 0.6 * weightShiftFactor);
+
+  const spine1Pitch = -0.008 * breath;
+  const spine1Roll = 0.004 * sway * (0.4 + 0.6 * weightShiftFactor);
+  const spine1Yaw = 0.005 * sway;
+
+  const spine2Pitch = -0.015 * breath; // Subtle chest lift on inhale (-X)
+  const spine2Roll = 0.005 * sway;
+  const spine2Yaw = 0.004 * sway;
+
+  // 4. Hips subtle posture & standing weight-shift (only when hips/lower body are part of presentation)
+  const hipPitch = -0.006 * breath * weightShiftFactor;
+  const hipYaw = 0.018 * sway * weightShiftFactor;
+  const hipRoll = 0.016 * sway * weightShiftFactor;
+
+  if (bones.hips) {
+    const baseHipsPos = rig.boneInitialPositions.get(bones.hips);
+    if (baseHipsPos) {
+      const targetShiftX = 0.007 * sway * weightShiftFactor;
+      const targetShiftY = -Math.abs(sway) * 0.0018 * weightShiftFactor + 0.0008 * breath * weightShiftFactor;
+      _hipsTargetOffset.set(targetShiftX, targetShiftY, 0);
+
+      const posAlpha = 1 - Math.exp(-5.0 * delta);
+      runtime.hipsOffset.lerp(_hipsTargetOffset, posAlpha);
+      if (
+        _hipsTargetOffset.lengthSq() === 0 &&
+        runtime.hipsOffset.lengthSq() < 1e-8
+      ) {
+        runtime.hipsOffset.set(0, 0, 0);
+      }
+      bones.hips.position.copy(baseHipsPos).add(runtime.hipsOffset);
+    }
+  }
+
+  // 5. Lower-body standing idle pose & weight-shift knee softness (using verified local bone axes!)
+  // Verified on GLB:
+  //   UpLeg: +X bends knee forward, +Z shifts left outward (+X world). For symmetrical stance: LeftUpLeg +Z, RightUpLeg -Z
+  //   Leg (knee): -X bends knee backward (anatomical flexion), never positive hyperextension
+  //   Foot: +X dorsiflexes toe upward to keep flat on ground when knee bends
+  const leftWeightRelease = Math.max(0, sway) * weightShiftFactor;
+  const rightWeightRelease = Math.max(0, -sway) * weightShiftFactor;
+  const baseKneeSoft = 0.025 * Math.min(1.2, intensityScale) * (runtime.idleEnabled && !prefersReducedMotion ? 1 : 0) * weightShiftFactor;
+
+  const lHipBend = baseKneeSoft + 0.042 * leftWeightRelease;
+  const lKneeBend = -2.0 * lHipBend;
+  const lFootComp = 0.95 * lHipBend;
+  const lToeComp = -0.15 * lHipBend;
+  const lHipSpreadZ = 0.018 * weightShiftFactor + 0.008 * leftWeightRelease;
+
+  const rHipBend = baseKneeSoft + 0.042 * rightWeightRelease;
+  const rKneeBend = -2.0 * rHipBend;
+  const rFootComp = 0.95 * rHipBend;
+  const rToeComp = -0.15 * rHipBend;
+  const rHipSpreadZ = -0.018 * weightShiftFactor - 0.008 * rightWeightRelease;
+
+  let stillConverging =
+    runtime.bodyIdleBlend > 0.002 ||
+    runtime.hipsOffset.lengthSq() > 1e-7;
+
+  const slerpAlpha = 1 - Math.exp(-6.5 * delta);
+
+  const driveBodyBone = (
+    bone: THREE.Object3D | null,
+    tx: number,
+    ty: number,
+    tz: number
+  ) => {
+    if (!bone) return;
+    const baseQ = rig.boneInitialQuaternions.get(bone);
+    if (!baseQ) return;
+
+    let currDelta = runtime.bodyDeltaQuats.get(bone);
+    if (!currDelta) {
+      currDelta = new THREE.Quaternion().setFromEuler(_bodyTargetEuler.set(tx, ty, tz, 'XYZ'));
+      runtime.bodyDeltaQuats.set(bone, currDelta);
+    }
+
+    _bodyTargetEuler.set(tx, ty, tz, 'XYZ');
+    _bodyTargetQuat.setFromEuler(_bodyTargetEuler);
+    currDelta.slerp(_bodyTargetQuat, slerpAlpha);
+
+    if (currDelta.angleTo(_bodyTargetQuat) > 0.0008) {
+      stillConverging = true;
+    }
+
+    bone.quaternion.copy(baseQ).multiply(currDelta);
+  };
+
+  driveBodyBone(bones.hips, hipPitch, hipYaw, hipRoll);
+  driveBodyBone(bones.spine, spinePitch, spineYaw, spineRoll);
+  driveBodyBone(bones.spine1, spine1Pitch, spine1Yaw, spine1Roll);
+  driveBodyBone(bones.spine2, spine2Pitch, spine2Yaw, spine2Roll);
+
+  driveBodyBone(bones.leftUpLeg, lHipBend, 0, lHipSpreadZ);
+  driveBodyBone(bones.leftLeg, lKneeBend, 0, 0);
+  driveBodyBone(bones.leftFoot, lFootComp, 0, -0.01 * sway * weightShiftFactor);
+  driveBodyBone(bones.leftToeBase, lToeComp, 0, 0);
+
+  driveBodyBone(bones.rightUpLeg, rHipBend, 0, rHipSpreadZ);
+  driveBodyBone(bones.rightLeg, rKneeBend, 0, 0);
+  driveBodyBone(bones.rightFoot, rFootComp, 0, -0.01 * sway * weightShiftFactor);
+  driveBodyBone(bones.rightToeBase, rToeComp, 0, 0);
+
+  return { isAnimating: stillConverging };
+}
+
+
+

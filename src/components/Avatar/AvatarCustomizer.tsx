@@ -211,6 +211,18 @@ export const AvatarCustomizer: React.FC<AvatarCustomizerProps> = ({
                 </div>
                 <div>Eye Gaze Bones: {glbInspection.capabilities.hasEyeBones ? 'Detected' : 'Missing'}</div>
                 <div>Head/Neck Rig: {glbInspection.capabilities.hasHeadNeckBones ? 'Detected' : 'Missing'}</div>
+                <div>Arm/Hand Rig: {glbInspection.capabilities.hasArmBones ? 'Detected' : 'Missing'}</div>
+                <div>
+                  Finger Bones:{' '}
+                  {glbInspection.capabilities.hasHandFingers
+                    ? `${
+                        glbInspection.verifiedArmHand.rightFingerBones.length +
+                        glbInspection.verifiedArmHand.leftFingerBones.length
+                      } bones`
+                    : 'Missing'}
+                </div>
+                <div>Torso Breathing: {glbInspection.capabilities.hasTorsoBreathing ? 'Detected' : 'Missing'}</div>
+                <div>Lower-Body Legs: {glbInspection.capabilities.hasHipsAndLegs ? 'Detected' : 'Missing'}</div>
               </div>
               <div className="text-[11px] text-slate-400">
                 Idle clip: {glbInspection.activeIdleClip || 'None found'}
