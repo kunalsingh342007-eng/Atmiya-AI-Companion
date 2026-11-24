@@ -184,6 +184,10 @@ function parseGeminiError(err: unknown): {
     };
   }
 
+  const isUnavailable =
+    status === 503 ||
+    /UNAVAILABLE|high demand|overloaded|try again later/i.test(rawMessage);
+
   if (isBadRequest) {
     return {
       httpStatus: 400,
@@ -193,6 +197,20 @@ function parseGeminiError(err: unknown): {
       isQuota: false,
       isAuth: false,
       isBadRequest: true,
+    };
+  }
+
+  if (isUnavailable) {
+    return {
+      httpStatus: 503,
+      code: 'MODEL_BUSY',
+      message:
+        extractedMessage.slice(0, 240) ||
+        'The AI model is temporarily busy. Please try sending your message again.',
+      isTimeout: false,
+      isQuota: false,
+      isAuth: false,
+      isBadRequest: false,
     };
   }
 
@@ -391,95 +409,158 @@ ${memoryContext}
       required: ['reply', 'emotion', 'intensity'],
     };
 
-    let rawModelText = '';
-    const primaryAbort = createUpstreamAbortControl(res, 20000);
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents,
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          responseMimeType: 'application/json',
-          responseSchema: chatResponseSchema,
-          abortSignal: primaryAbort.signal,
-        },
+    const extractResponseText = (resp: any): string => {
+      if (typeof resp?.text === 'string' && resp.text.trim()) {
+        return resp.text;
+      }
+      const parts = resp?.candidates?.[0]?.content?.parts;
+      if (Array.isArray(parts)) {
+        const joined = parts
+          .filter((p: any) => p && !p.thought && typeof p.text === 'string')
+          .map((p: any) => p.text)
+          .join('');
+        if (joined.trim()) return joined;
+      }
+      return '';
+    };
+
+    const parseChatPayload = (
+      rawText: string
+    ): { replyText: string; emotion: ServerAvatarEmotion; intensity: number } | null => {
+      const cleanedRaw = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+      if (!cleanedRaw) return null;
+
+      if (cleanedRaw.startsWith('{') || cleanedRaw.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(cleanedRaw);
+          if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
+            return {
+              replyText: parsed.reply.trim(),
+              emotion: normalizeEmotion(parsed.emotion),
+              intensity: clampIntensity(parsed.intensity, 0.7),
+            };
+          }
+          // JSON returned without a usable reply field — force retry/fallback rather than returning raw JSON
+          return null;
+        } catch {
+          // Malformed JSON fragment — reject if it looks like truncated JSON wrapper
+          if (cleanedRaw.startsWith('{"reply"')) {
+            return null;
+          }
+        }
+      }
+
+      return {
+        replyText: cleanedRaw,
+        emotion: 'neutral',
+        intensity: 0.5,
+      };
+    };
+
+    const waitMs = (ms: number, signal?: AbortSignal) =>
+      new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) {
+          reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+          return;
+        }
+        const t = setTimeout(resolve, ms);
+        signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t);
+            reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+          },
+          { once: true }
+        );
       });
-      rawModelText = response.text || '';
-    } catch (modelErr: any) {
-      if (primaryAbort.isClientClosed()) {
-        return;
-      }
-      const parsedPrimary = parseGeminiError(modelErr);
-      if (parsedPrimary.isQuota || parsedPrimary.isAuth || parsedPrimary.isBadRequest) {
-        throw modelErr;
-      }
 
-      console.warn(
-        `Primary model (${parsedPrimary.code}) fallback to gemini-3.1-flash-lite:`,
-        parsedPrimary.message
-      );
+    const attempts: Array<{ model: string; useJsonSchema: boolean; delayMs: number; timeoutMs: number }> = [
+      { model: 'gemini-4-hydrogen', useJsonSchema: true, delayMs: 0, timeoutMs: 20000 },
+      { model: 'gemini-3.1-flash-lite', useJsonSchema: true, delayMs: 350, timeoutMs: 18000 },
+      { model: 'gemini-4-hydrogen', useJsonSchema: true, delayMs: 700, timeoutMs: 18000 },
+      { model: 'gemini-3.1-flash-lite', useJsonSchema: false, delayMs: 400, timeoutMs: 15000 },
+    ];
 
-      const fallbackAbort = createUpstreamAbortControl(res, 20000);
+    let parsedPayload: { replyText: string; emotion: ServerAvatarEmotion; intensity: number } | null = null;
+    let lastAttemptError: unknown = null;
+
+    for (let i = 0; i < attempts.length; i += 1) {
+      const attempt = attempts[i];
+      if (res.writableEnded || res.headersSent) return;
+
+      const attemptControl = createUpstreamAbortControl(res, attempt.timeoutMs);
       try {
-        const fallbackResponse = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
+        if (attempt.delayMs > 0) {
+          await waitMs(attempt.delayMs, attemptControl.signal);
+        }
+
+        const attemptInstruction = attempt.useJsonSchema
+          ? systemInstruction
+          : `${systemInstruction}\nOUTPUT FORMAT: Reply directly with Ātmiya's conversational response text only (do not wrap in JSON or markdown fences).`;
+
+        const response = await ai.models.generateContent({
+          model: attempt.model,
           contents,
           config: {
-            systemInstruction,
+            systemInstruction: attemptInstruction,
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-            responseMimeType: 'application/json',
-            responseSchema: chatResponseSchema,
-            abortSignal: fallbackAbort.signal,
+            ...(attempt.useJsonSchema
+              ? {
+                  responseMimeType: 'application/json',
+                  responseSchema: chatResponseSchema,
+                }
+              : {}),
+            abortSignal: attemptControl.signal,
           },
         });
-        rawModelText = fallbackResponse.text || '';
+
+        const rawModelText = extractResponseText(response);
+        const candidatePayload = parseChatPayload(rawModelText);
+        if (candidatePayload && candidatePayload.replyText) {
+          parsedPayload = candidatePayload;
+          break;
+        }
+
+        console.warn(
+          `/api/chat attempt ${i + 1} (${attempt.model}, schema=${attempt.useJsonSchema}) returned empty payload.`
+        );
+      } catch (err) {
+        if (attemptControl.isClientClosed()) {
+          return;
+        }
+        lastAttemptError = err;
+        const parsedErr = parseGeminiError(err);
+        if (parsedErr.isQuota || parsedErr.isAuth || parsedErr.isBadRequest) {
+          throw err;
+        }
+        console.warn(
+          `/api/chat attempt ${i + 1} (${attempt.model}) failed (${parsedErr.code}): ${parsedErr.message}`
+        );
       } finally {
-        fallbackAbort.cleanup();
+        attemptControl.cleanup();
       }
-    } finally {
-      primaryAbort.cleanup();
     }
 
-    if (res.writableEnded) {
+    if (res.writableEnded || res.headersSent) {
       return;
     }
 
-    let replyText = '';
-    let emotion: ServerAvatarEmotion = 'neutral';
-    let intensity = 0.7;
-
-    const cleanedRaw = rawModelText
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
-
-    if (cleanedRaw.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(cleanedRaw);
-        if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
-          replyText = parsed.reply.trim();
-          emotion = normalizeEmotion(parsed.emotion);
-          intensity = clampIntensity(parsed.intensity, 0.7);
-        }
-      } catch {
-        // Safe fallback to plain text below
+    if (!parsedPayload || !parsedPayload.replyText.trim()) {
+      if (lastAttemptError) {
+        throw lastAttemptError;
       }
-    }
-
-    if (!replyText) {
-      replyText = rawModelText.trim();
-      emotion = 'neutral';
-      intensity = 0.5;
-    }
-
-    if (!replyText.trim()) {
       return res.status(502).json({
         error: 'EMPTY_RESPONSE',
         message: 'Ātmiya could not form a response right now. Please try again.',
       });
     }
+
+    const { replyText, emotion, intensity } = parsedPayload;
 
     // Check if message contains memorable user facts that could be suggested for saving
     let memorySuggestion = null;

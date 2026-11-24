@@ -201,12 +201,12 @@ export type CameraPresetBoundsMap = Record<CameraPreset, CameraFramingBounds>;
 
 const DEFAULT_CAMERA_PRESETS: CameraPresetBoundsMap = {
   'close-up': {
-    targetY: 0.725,
+    targetY: 0.707,
     cameraYOffset: 0.015,
-    halfW: 0.28,
-    halfH: 0.34,
+    halfW: 0.27,
+    halfH: 0.366,
     halfD: 0.18,
-    fov: 30,
+    fov: 28,
   },
   'upper-body': {
     targetY: 0.56,
@@ -361,15 +361,19 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       shoulderHalfW = (lPos.distanceTo(rPos) * normScale) / 2 * 1.65;
     }
 
-    const portraitTopY = Math.max(hairTopY, headTopBoneY ?? hairTopY) + 0.055;
+    const spine1Y = toNormY(rig.bones.spine1 ?? rig.bones.spine);
+
+    const portraitTopY = Math.max(hairTopY, headTopBoneY ?? hairTopY) + 0.05;
     const closeBottomY =
-      spine2Y !== null
-        ? spine2Y - 0.11
+      spine1Y !== null
+        ? spine1Y - 0.15
+        : spine2Y !== null
+        ? spine2Y - 0.28
         : neckBoneY !== null
-        ? neckBoneY - 0.24
+        ? neckBoneY - 0.40
         : headBoneY !== null
-        ? headBoneY - 0.35
-        : normHeight * 0.18;
+        ? headBoneY - 0.51
+        : normHeight * 0.12;
 
     const upperTopY = Math.max(hairTopY, headTopBoneY ?? hairTopY) + 0.065;
     const upperBottomY = hipsY !== null ? hipsY - 0.06 : normHeight * 0.05;
@@ -384,10 +388,10 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       'close-up': {
         targetY: (portraitTopY + closeBottomY) / 2,
         cameraYOffset: 0.015,
-        halfW: shoulderHalfW !== null ? Math.max(shoulderHalfW * 1.15, 0.29) : 0.29,
-        halfH: Math.max((portraitTopY - closeBottomY) / 2, 0.27),
+        halfW: shoulderHalfW !== null ? Math.max(shoulderHalfW * 0.88, 0.26) : 0.26,
+        halfH: Math.max((portraitTopY - closeBottomY) / 2, 0.36),
         halfD: 0.18,
-        fov: 30,
+        fov: 28,
       },
       'upper-body': {
         targetY: (upperTopY + upperBottomY) / 2,
@@ -459,6 +463,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
         clipsCount: modelMetrics.report.animations.length,
         hasGreetingClip: modelMetrics.report.hasGreetingClip,
         usingProceduralWaveFallback: modelMetrics.report.usingProceduralWaveFallback,
+        closeUp: modelMetrics.presets['close-up'],
         torso: modelMetrics.rig.verifiedFullBody.torsoChain,
         limitations: modelMetrics.rig.verifiedFullBody.limitations,
       });
@@ -621,6 +626,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       rig: modelMetrics.rig,
       runtime: rigRuntimeRef.current,
       prefersReducedMotion,
+      postureMode: 'standing',
       delta,
     });
 
@@ -630,6 +636,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       state,
       unifiedState,
       presentationMode,
+      postureMode: 'standing',
       prefersReducedMotion,
       elapsed,
       delta,
@@ -1591,11 +1598,11 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
       case 'thinking':
         return '#fbbf24';
       case 'speaking':
-        return '#3b82f6';
+        return '#60a5fa';
       case 'error':
         return '#f43f5e';
       default:
-        return config?.accentColor || '#3b82f6';
+        return config?.accentColor || '#8b5cf6';
     }
   }, [state, config?.accentColor]);
 
@@ -1863,13 +1870,13 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 frameloop={pauseContinuousLoop ? 'demand' : 'always'}
                 dpr={isSoftwareGl ? 1 : [1, 2]}
                 shadows={!isSoftwareGl}
-                camera={{ fov: 30, near: 0.08, far: 40, position: [0, 0.725, 1.4] }}
+                camera={{ fov: 28, near: 0.08, far: 40, position: [0, 0.722, 1.72] }}
                 gl={{
                   alpha: isImmersive,
                   antialias: !isSoftwareGl,
                   powerPreference: 'high-performance',
                   toneMapping: THREE.ACESFilmicToneMapping,
-                  toneMappingExposure: 0.98,
+                  toneMappingExposure: 0.94,
                 }}
                 className="w-full h-full block"
               >
@@ -1878,11 +1885,11 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   onContextRestored={() => setContextLost(false)}
                 />
                 <StudioEnvironment />
-                <hemisphereLight args={['#e2ecff', '#162038', 0.55]} />
+                <hemisphereLight args={['#dbeafe', '#141d38', 0.48]} />
                 <directionalLight
-                  position={[2.2, 2.8, 3.2]}
-                  intensity={1.25}
-                  color="#fff3e4"
+                  position={[2.4, 2.4, 2.8]}
+                  intensity={1.15}
+                  color="#ffe9d2"
                   castShadow={!isSoftwareGl}
                   shadow-mapSize-width={1024}
                   shadow-mapSize-height={1024}
@@ -1895,8 +1902,8 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   shadow-bias={-0.0004}
                   shadow-normalBias={0.02}
                 />
-                <directionalLight position={[-2.4, 1.6, 2.2]} intensity={0.48} color="#c7dfff" />
-                <directionalLight position={[0, 2.2, -2.6]} intensity={0.85} color={rimLightColor} />
+                <directionalLight position={[-2.4, 1.7, 2.0]} intensity={0.46} color="#bae6fd" />
+                <directionalLight position={[0, 2.2, -2.5]} intensity={0.95} color={rimLightColor} />
 
                 <GlbModelScene
                   modelUrl={modelUrl}
@@ -2070,7 +2077,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           <div
             className={
               isImmersive
-                ? 'fixed top-16 right-4 lg:right-[332px] xl:right-[376px] z-40 w-[min(23rem,calc(100vw-2rem))]'
+                ? 'fixed top-16 right-4 z-40 w-[min(23rem,calc(100vw-2rem))]'
                 : 'w-full flex justify-center'
             }
           >

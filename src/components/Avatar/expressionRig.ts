@@ -1011,6 +1011,11 @@ export function inspectGlbRig(sceneRoot: THREE.Object3D): InspectedRigData {
 const _armStaticEuler = new THREE.Euler(0, 0, 0, 'XYZ');
 const _armStaticQuat = new THREE.Quaternion();
 
+export type BodyPostureMode = 'seated' | 'standing';
+
+export const SEATED_HIPS_DROP_Y = -0.398;
+export const SEATED_HIPS_OFFSET_Z = -0.02;
+
 /**
  * Applies a baseline natural standing rest pose to the arms & relaxed fingers
  * so Upper/Full camera presets do not display a rigid horizontal T-pose.
@@ -1035,6 +1040,73 @@ export function applyStaticRelaxedArmPose(rig: InspectedRigData): void {
   applyDelta(rig.bones.rightArm, 1.16, 0, -0.08);
   applyDelta(rig.bones.rightForeArm, 0, 0, -0.18);
   applyDelta(rig.bones.rightHand, 0, 0, -0.04);
+
+  const applyRelaxedFingers = (fingers: HandFingerRig) => {
+    const curls = [0.16, 0.2, 0.12];
+    [fingers.index, fingers.middle, fingers.ring, fingers.pinky].forEach((chain) => {
+      for (let i = 0; i < Math.min(3, chain.length); i += 1) {
+        applyDelta(chain[i], curls[i], 0, 0);
+      }
+    });
+    for (let i = 0; i < Math.min(2, fingers.thumb.length); i += 1) {
+      applyDelta(fingers.thumb[i], i === 0 ? 0.08 : 0.1, 0, 0);
+    }
+  };
+
+  applyRelaxedFingers(rig.bones.leftFingers);
+  applyRelaxedFingers(rig.bones.rightFingers);
+}
+
+/**
+ * Applies the verified natural seated pose on initial load so the character renders
+ * immediately seated in the ergonomic chair without a standing/T-pose flash.
+ * Verified on public/models/atmiya-avatar.glb (sole Y ≈ 0.008 on rug, hands above armrests).
+ */
+export function applyStaticSeatedPose(rig: InspectedRigData): void {
+  const applyDelta = (bone: THREE.Object3D | null, dx: number, dy: number, dz: number) => {
+    if (!bone) return;
+    const baseQ = rig.boneInitialQuaternions.get(bone);
+    if (!baseQ) return;
+    _armStaticEuler.set(dx, dy, dz, 'XYZ');
+    _armStaticQuat.setFromEuler(_armStaticEuler);
+    bone.quaternion.copy(baseQ).multiply(_armStaticQuat);
+  };
+
+  if (rig.bones.hips) {
+    const baseHipsPos = rig.boneInitialPositions.get(rig.bones.hips);
+    if (baseHipsPos) {
+      rig.bones.hips.position.set(
+        baseHipsPos.x,
+        baseHipsPos.y + SEATED_HIPS_DROP_Y,
+        baseHipsPos.z + SEATED_HIPS_OFFSET_Z
+      );
+    }
+    applyDelta(rig.bones.hips, 0.02, 0, 0);
+  }
+
+  applyDelta(rig.bones.spine, -0.04, 0, 0);
+  applyDelta(rig.bones.spine1, -0.04, 0, 0);
+  applyDelta(rig.bones.spine2, 0.02, 0, 0);
+
+  applyDelta(rig.bones.leftUpLeg, 1.46, -0.05, 0.09);
+  applyDelta(rig.bones.leftLeg, -1.48, 0, 0);
+  applyDelta(rig.bones.leftFoot, 0.06, 0, 0);
+  applyDelta(rig.bones.leftToeBase, 0, 0, 0);
+
+  applyDelta(rig.bones.rightUpLeg, 1.46, 0.05, -0.09);
+  applyDelta(rig.bones.rightLeg, -1.48, 0, 0);
+  applyDelta(rig.bones.rightFoot, 0.06, 0, 0);
+  applyDelta(rig.bones.rightToeBase, 0, 0, 0);
+
+  applyDelta(rig.bones.leftShoulder, 0, 0, 0);
+  applyDelta(rig.bones.leftArm, 1.12, 0.18, 0.16);
+  applyDelta(rig.bones.leftForeArm, -0.05, -0.35, 1.12);
+  applyDelta(rig.bones.leftHand, 0.04, -0.08, -0.12);
+
+  applyDelta(rig.bones.rightShoulder, 0, 0, 0);
+  applyDelta(rig.bones.rightArm, 1.12, -0.18, -0.16);
+  applyDelta(rig.bones.rightForeArm, -0.05, 0.35, -1.12);
+  applyDelta(rig.bones.rightHand, 0.04, 0.08, 0.12);
 
   const applyRelaxedFingers = (fingers: HandFingerRig) => {
     const curls = [0.16, 0.2, 0.12];
@@ -1868,8 +1940,9 @@ export function updateArmHandRig(params: {
   runtime: RigAnimationRuntime;
   prefersReducedMotion: boolean;
   delta: number;
+  postureMode?: BodyPostureMode;
 }): { isAnimating: boolean; activeGesture: ArmGestureName } {
-  const { rig, runtime, prefersReducedMotion, delta } = params;
+  const { rig, runtime, prefersReducedMotion, delta, postureMode = 'standing' } = params;
   const { bones } = rig;
 
   if (!bones.rightArm && !bones.leftArm) {
@@ -1968,19 +2041,20 @@ export function updateArmHandRig(params: {
     const foreArm = side === 'right' ? bones.rightForeArm : bones.leftForeArm;
     const hand = side === 'right' ? bones.rightHand : bones.leftHand;
 
-    // Relaxed standing baseline offsets
+    // Seated resting baseline gently aligns hands above chair armrests without clipping
+    const isSeated = postureMode === 'seated';
     let shX = 0;
     let shY = 0;
     let shZ = 0;
-    let armX = 1.16;
-    let armY = 0;
-    let armZ = -0.08 * m;
-    let foreX = 0;
-    let foreY = 0;
-    let foreZ = -0.18 * m;
-    let handX = 0;
-    let handY = 0;
-    let handZ = -0.04 * m;
+    let armX = isSeated ? 1.12 : 1.16;
+    let armY = isSeated ? -0.18 * m : 0;
+    let armZ = (isSeated ? -0.16 : -0.08) * m;
+    let foreX = isSeated ? -0.05 : 0;
+    let foreY = isSeated ? 0.35 * m : 0;
+    let foreZ = (isSeated ? -1.12 : -0.18) * m;
+    let handX = isSeated ? 0.04 : 0;
+    let handY = isSeated ? 0.08 * m : 0;
+    let handZ = (isSeated ? 0.12 : -0.04) * m;
 
     if (activeSide === side && gestureHoldBlend > 0.001) {
       let gShY = 0;
@@ -2171,11 +2245,22 @@ export function updateFullBodyAndLowerRig(params: {
   state: AvatarState;
   unifiedState?: UnifiedAnimationState;
   presentationMode: BodyPresentationMode;
+  postureMode?: BodyPostureMode;
   prefersReducedMotion: boolean;
   elapsed: number;
   delta: number;
 }): { isAnimating: boolean } {
-  const { rig, runtime, state, unifiedState, presentationMode, prefersReducedMotion, elapsed, delta } = params;
+  const {
+    rig,
+    runtime,
+    state,
+    unifiedState,
+    presentationMode,
+    postureMode = 'standing',
+    prefersReducedMotion,
+    elapsed,
+    delta,
+  } = params;
   const { bones } = rig;
 
   if (!bones.hips && !bones.spine && !bones.spine1 && !bones.spine2 && !bones.leftUpLeg && !bones.rightUpLeg) {
@@ -2213,44 +2298,58 @@ export function updateFullBodyAndLowerRig(params: {
       ? 1.4
       : 1.0;
 
+  const isSeated = postureMode === 'seated';
   const isLowerBodyVisible = presentationMode !== 'close-up';
   const weightShiftFactor = isLowerBodyVisible ? 1.0 : 0.0;
   const blend = runtime.bodyIdleBlend * intensityScale;
 
-  // 2. Smooth multi-frequency time signals (sub-Hz natural breathing ~0.23Hz & slow weight sway ~0.12Hz)
+  // 2. Smooth multi-frequency time signals (sub-Hz natural breathing ~0.23Hz & slow sway ~0.12Hz)
   const t = elapsed + runtime.idlePhaseOffset;
   const breath = (Math.sin(t * 1.45) * 0.72 + Math.sin(t * 0.72 + 0.6) * 0.28) * blend;
   const sway = (Math.sin(t * 0.76 + 0.4) * 0.7 + Math.sin(t * 0.43 + 1.9) * 0.3) * blend;
   const microPitch = Math.sin(t * 0.53 + 1.1) * blend;
 
-  // 3. Chest breathing (Spine, Spine1, Spine2): subtle inhale expansion without bobbing/dancing
-  const spinePitch = 0.004 * breath + 0.004 * microPitch * weightShiftFactor;
-  const spineRoll = -0.012 * sway * (0.45 + 0.55 * weightShiftFactor);
-  const spineYaw = -0.01 * sway * (0.4 + 0.6 * weightShiftFactor);
+  // 3. Chest breathing (Spine, Spine1, Spine2): seated posture base + subtle inhale expansion
+  const seatedSpinePitch = isSeated ? -0.04 : 0;
+  const seatedSpine1Pitch = isSeated ? -0.04 : 0;
+  const seatedSpine2Pitch = isSeated ? 0.02 : 0;
+  const seatedSwayDamp = isSeated ? 0.55 : 1.0;
 
-  const spine1Pitch = -0.008 * breath;
-  const spine1Roll = 0.004 * sway * (0.4 + 0.6 * weightShiftFactor);
-  const spine1Yaw = 0.005 * sway;
+  const spinePitch = seatedSpinePitch + 0.004 * breath + 0.004 * microPitch * weightShiftFactor;
+  const spineRoll = -0.012 * sway * seatedSwayDamp * (0.45 + 0.55 * weightShiftFactor);
+  const spineYaw = -0.01 * sway * seatedSwayDamp * (0.4 + 0.6 * weightShiftFactor);
 
-  const spine2Pitch = -0.015 * breath; // Subtle chest lift on inhale (-X)
-  const spine2Roll = 0.005 * sway;
-  const spine2Yaw = 0.004 * sway;
+  const spine1Pitch = seatedSpine1Pitch - 0.008 * breath;
+  const spine1Roll = 0.004 * sway * seatedSwayDamp * (0.4 + 0.6 * weightShiftFactor);
+  const spine1Yaw = 0.005 * sway * seatedSwayDamp;
 
-  // 4. Hips subtle posture & standing weight-shift (only when hips/lower body are part of presentation)
-  const hipPitch = -0.006 * breath * weightShiftFactor;
-  const hipYaw = 0.018 * sway * weightShiftFactor;
-  const hipRoll = 0.016 * sway * weightShiftFactor;
+  const spine2Pitch = seatedSpine2Pitch - 0.015 * breath; // Subtle chest lift on inhale (-X)
+  const spine2Roll = 0.005 * sway * seatedSwayDamp;
+  const spine2Yaw = 0.004 * sway * seatedSwayDamp;
+
+  // 4. Hips: seated on chair cushion or subtle standing weight-shift
+  const hipPitch = (isSeated ? 0.02 : 0) - (isSeated ? 0.002 : 0.006) * breath * weightShiftFactor;
+  const hipYaw = (isSeated ? 0.006 : 0.018) * sway * weightShiftFactor;
+  const hipRoll = (isSeated ? 0.005 : 0.016) * sway * weightShiftFactor;
 
   if (bones.hips) {
     const baseHipsPos = rig.boneInitialPositions.get(bones.hips);
     if (baseHipsPos) {
-      const targetShiftX = 0.007 * sway * weightShiftFactor;
-      const targetShiftY = -Math.abs(sway) * 0.0018 * weightShiftFactor + 0.0008 * breath * weightShiftFactor;
-      _hipsTargetOffset.set(targetShiftX, targetShiftY, 0);
+      const targetShiftX = (isSeated ? 0.002 : 0.007) * sway * weightShiftFactor;
+      const targetShiftY = isSeated
+        ? SEATED_HIPS_DROP_Y + 0.0005 * breath * weightShiftFactor
+        : -Math.abs(sway) * 0.0018 * weightShiftFactor + 0.0008 * breath * weightShiftFactor;
+      const targetShiftZ = isSeated ? SEATED_HIPS_OFFSET_Z : 0;
+      _hipsTargetOffset.set(targetShiftX, targetShiftY, targetShiftZ);
 
       const posAlpha = 1 - Math.exp(-5.0 * delta);
-      runtime.hipsOffset.lerp(_hipsTargetOffset, posAlpha);
+      if (isSeated && runtime.hipsOffset.y === 0 && runtime.hipsOffset.z === 0) {
+        runtime.hipsOffset.set(targetShiftX, SEATED_HIPS_DROP_Y, SEATED_HIPS_OFFSET_Z);
+      } else {
+        runtime.hipsOffset.lerp(_hipsTargetOffset, posAlpha);
+      }
       if (
+        !isSeated &&
         _hipsTargetOffset.lengthSq() === 0 &&
         runtime.hipsOffset.lengthSq() < 1e-8
       ) {
@@ -2260,30 +2359,63 @@ export function updateFullBodyAndLowerRig(params: {
     }
   }
 
-  // 5. Lower-body standing idle pose & weight-shift knee softness (using verified local bone axes!)
-  // Verified on GLB:
-  //   UpLeg: +X bends knee forward, +Z shifts left outward (+X world). For symmetrical stance: LeftUpLeg +Z, RightUpLeg -Z
-  //   Leg (knee): -X bends knee backward (anatomical flexion), never positive hyperextension
-  //   Foot: +X dorsiflexes toe upward to keep flat on ground when knee bends
-  const leftWeightRelease = Math.max(0, sway) * weightShiftFactor;
-  const rightWeightRelease = Math.max(0, -sway) * weightShiftFactor;
-  const baseKneeSoft = 0.025 * Math.min(1.2, intensityScale) * (runtime.idleEnabled && !prefersReducedMotion ? 1 : 0) * weightShiftFactor;
+  // 5. Lower-body pose: verified seated hips/knees/ankles OR subtle standing idle
+  let lHipBend = 0;
+  let lHipYaw = 0;
+  let lHipSpreadZ = 0;
+  let lKneeBend = 0;
+  let lFootComp = 0;
+  let lFootRoll = 0;
+  let lToeComp = 0;
 
-  const lHipBend = baseKneeSoft + 0.042 * leftWeightRelease;
-  const lKneeBend = -2.0 * lHipBend;
-  const lFootComp = 0.95 * lHipBend;
-  const lToeComp = -0.15 * lHipBend;
-  const lHipSpreadZ = 0.018 * weightShiftFactor + 0.008 * leftWeightRelease;
+  let rHipBend = 0;
+  let rHipYaw = 0;
+  let rHipSpreadZ = 0;
+  let rKneeBend = 0;
+  let rFootComp = 0;
+  let rFootRoll = 0;
+  let rToeComp = 0;
 
-  const rHipBend = baseKneeSoft + 0.042 * rightWeightRelease;
-  const rKneeBend = -2.0 * rHipBend;
-  const rFootComp = 0.95 * rHipBend;
-  const rToeComp = -0.15 * rHipBend;
-  const rHipSpreadZ = -0.018 * weightShiftFactor - 0.008 * rightWeightRelease;
+  if (isSeated) {
+    const microFoot = 0.008 * sway * weightShiftFactor;
+    lHipBend = 1.46 + 0.004 * breath * weightShiftFactor;
+    lHipYaw = -0.05;
+    lHipSpreadZ = 0.09;
+    lKneeBend = -1.48 - 0.004 * breath * weightShiftFactor;
+    lFootComp = 0.06 + microFoot;
+    lFootRoll = -0.004 * sway * weightShiftFactor;
+    lToeComp = 0.004 * sway * weightShiftFactor;
+
+    rHipBend = 1.46 + 0.004 * breath * weightShiftFactor;
+    rHipYaw = 0.05;
+    rHipSpreadZ = -0.09;
+    rKneeBend = -1.48 - 0.004 * breath * weightShiftFactor;
+    rFootComp = 0.06 - microFoot;
+    rFootRoll = -0.004 * sway * weightShiftFactor;
+    rToeComp = -0.004 * sway * weightShiftFactor;
+  } else {
+    const leftWeightRelease = Math.max(0, sway) * weightShiftFactor;
+    const rightWeightRelease = Math.max(0, -sway) * weightShiftFactor;
+    const baseKneeSoft = 0.025 * Math.min(1.2, intensityScale) * (runtime.idleEnabled && !prefersReducedMotion ? 1 : 0) * weightShiftFactor;
+
+    lHipBend = baseKneeSoft + 0.042 * leftWeightRelease;
+    lKneeBend = -2.0 * lHipBend;
+    lFootComp = 0.95 * lHipBend;
+    lFootRoll = -0.01 * sway * weightShiftFactor;
+    lToeComp = -0.15 * lHipBend;
+    lHipSpreadZ = 0.018 * weightShiftFactor + 0.008 * leftWeightRelease;
+
+    rHipBend = baseKneeSoft + 0.042 * rightWeightRelease;
+    rKneeBend = -2.0 * rHipBend;
+    rFootComp = 0.95 * rHipBend;
+    rFootRoll = -0.01 * sway * weightShiftFactor;
+    rToeComp = -0.15 * rHipBend;
+    rHipSpreadZ = -0.018 * weightShiftFactor - 0.008 * rightWeightRelease;
+  }
 
   let stillConverging =
     runtime.bodyIdleBlend > 0.002 ||
-    runtime.hipsOffset.lengthSq() > 1e-7;
+    (!isSeated && runtime.hipsOffset.lengthSq() > 1e-7);
 
   const slerpAlpha = 1 - Math.exp(-6.5 * delta);
 
@@ -2319,14 +2451,14 @@ export function updateFullBodyAndLowerRig(params: {
   driveBodyBone(bones.spine1, spine1Pitch, spine1Yaw, spine1Roll);
   driveBodyBone(bones.spine2, spine2Pitch, spine2Yaw, spine2Roll);
 
-  driveBodyBone(bones.leftUpLeg, lHipBend, 0, lHipSpreadZ);
+  driveBodyBone(bones.leftUpLeg, lHipBend, lHipYaw, lHipSpreadZ);
   driveBodyBone(bones.leftLeg, lKneeBend, 0, 0);
-  driveBodyBone(bones.leftFoot, lFootComp, 0, -0.01 * sway * weightShiftFactor);
+  driveBodyBone(bones.leftFoot, lFootComp, 0, lFootRoll);
   driveBodyBone(bones.leftToeBase, lToeComp, 0, 0);
 
-  driveBodyBone(bones.rightUpLeg, rHipBend, 0, rHipSpreadZ);
+  driveBodyBone(bones.rightUpLeg, rHipBend, rHipYaw, rHipSpreadZ);
   driveBodyBone(bones.rightLeg, rKneeBend, 0, 0);
-  driveBodyBone(bones.rightFoot, rFootComp, 0, -0.01 * sway * weightShiftFactor);
+  driveBodyBone(bones.rightFoot, rFootComp, 0, rFootRoll);
   driveBodyBone(bones.rightToeBase, rToeComp, 0, 0);
 
   return { isAnimating: stillConverging };

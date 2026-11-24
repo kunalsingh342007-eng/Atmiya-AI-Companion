@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,8 +16,8 @@
       (function () {
         try {
           var raw = localStorage.getItem('atmiya_companion_settings_v1');
-          var theme = raw ? JSON.parse(raw).theme : 'dark';
-          var isLight = theme === 'light';
+          var parsed = raw ? JSON.parse(raw) : null;
+          var isLight = Boolean(parsed && parsed.darkNavyDefaultMigrated && parsed.theme === 'light');
           document.documentElement.classList.toggle('dark', !isLight);
           document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
         } catch (e) {

@@ -2,7 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChatMessage, CompanionSettings } from '../../types/companion';
 import { MessageList } from '../Chat/MessageList';
 import { QuickStarters } from '../Chat/QuickStarters';
-import { AlertCircle, Plus, RefreshCw, Sparkles, X } from 'lucide-react';
+import {
+  AlertCircle,
+  MessageSquare,
+  PanelRightClose,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  X,
+} from 'lucide-react';
 
 interface ConversationPanelProps {
   sessionTitle: string;
@@ -11,6 +19,8 @@ interface ConversationPanelProps {
   chatError: string | null;
   isThinking: boolean;
   suggestedMemory: string | null;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
   onNewChat: () => void;
   onSendMessage: (text: string) => void;
   onRetryLastMessage: () => void;
@@ -26,6 +36,8 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
   chatError,
   isThinking,
   suggestedMemory,
+  isCollapsed,
+  onToggleCollapse,
   onNewChat,
   onSendMessage,
   onRetryLastMessage,
@@ -49,40 +61,59 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
   };
 
   useEffect(() => {
-    if (shouldStickToBottomRef.current) {
+    if (!isCollapsed && shouldStickToBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages.length, isThinking, suggestedMemory, chatError]);
+  }, [isCollapsed, messages.length, isThinking, suggestedMemory, chatError]);
+
+  if (isCollapsed) {
+    return null;
+  }
 
   return (
     <aside
-      aria-label="Conversation panel"
-      className="hidden lg:flex lg:w-[312px] xl:w-[356px] shrink-0 h-full min-h-0 flex-col bg-white/95 dark:bg-[#070f20]/95 border-l border-slate-200 dark:border-slate-800/80 z-20"
+      aria-label={`Chat with ${companionName}`}
+      className="hidden md:flex md:w-[290px] lg:w-[340px] xl:w-[360px] shrink-0 h-full min-h-0 flex-col bg-white/95 dark:bg-[#070f24]/95 border-l border-slate-200 dark:border-indigo-400/18 z-20 animate-fadeIn"
     >
-      {/* Compact Conversation Header */}
-      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between gap-2 bg-slate-50/80 dark:bg-[#091326]">
-        <div className="min-w-0">
-          <h2 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">
-            {sessionTitle || 'Conversation'}
-          </h2>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-            {messages.length} message{messages.length === 1 ? '' : 's'}
-          </p>
+      {/* Compact Header: Chat with Ātmiya + New + Collapse */}
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-indigo-400/15 flex items-center justify-between gap-2 bg-slate-50/85 dark:bg-[#09132d]">
+        <div className="flex items-center gap-2 min-w-0">
+          <MessageSquare className="w-4 h-4 text-blue-600 dark:text-sky-300 shrink-0" />
+          <div className="min-w-0">
+            <h2 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">
+              Chat with {companionName}
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums truncate">
+              {sessionTitle || 'Session'} · {messages.length} msg{messages.length === 1 ? '' : 's'}
+            </p>
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setSuggestionsDismissed(false);
-            onNewChat();
-          }}
-          aria-label="Start new conversation"
-          title="New conversation"
-          className="h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-[#0f1d38] hover:bg-blue-50 dark:hover:bg-sky-500/15 border border-slate-200 dark:border-sky-400/20 text-slate-700 dark:text-sky-100 text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
-          <span>New</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setSuggestionsDismissed(false);
+              onNewChat();
+            }}
+            aria-label="Start new conversation"
+            title="New conversation"
+            className="h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-[#101e44] hover:bg-blue-50 dark:hover:bg-sky-500/20 border border-slate-200 dark:border-indigo-400/25 text-slate-700 dark:text-sky-100 text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          >
+            <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
+            <span>New</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-label={`Collapse Chat with ${companionName}`}
+            title="Collapse chat panel"
+            className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-[#101e44] hover:bg-slate-200 dark:hover:bg-[#162756] border border-slate-200 dark:border-indigo-400/25 text-slate-600 dark:text-slate-200 inline-flex items-center justify-center transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          >
+            <PanelRightClose className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable Chat History / Greeting + Max 3 Dismissible Suggestions */}
@@ -93,7 +124,7 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
       >
         {messages.length === 0 && !isThinking ? (
           <div className="space-y-4">
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0b162d] border border-slate-200/80 dark:border-sky-400/15 space-y-1.5">
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0b1635] border border-slate-200/80 dark:border-indigo-400/20 space-y-1.5">
               <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 dark:text-sky-300">
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 <span>{userName ? `Namaste, ${userName}` : 'Namaste!'}</span>
@@ -167,3 +198,4 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
     </aside>
   );
 };
+

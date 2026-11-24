@@ -4,13 +4,14 @@ import type { CameraPreset } from '../Avatar/AvatarController';
 import type { AvatarGesture } from '../Avatar/expressionRig';
 import {
   Camera,
+  ChevronDown,
   Gamepad2,
   Hand,
   Heart,
+  LayoutGrid,
   MessageSquare,
   Mic,
   MicOff,
-  MoreHorizontal,
   Palette,
   RotateCcw,
   Smile,
@@ -83,76 +84,83 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
     };
   }, [isMoreOpen]);
 
+  const secondaryPill =
+    'h-10 px-3.5 sm:px-5 rounded-full bg-white/92 dark:bg-[#0d1636]/82 hover:bg-white dark:hover:bg-[#152252] border border-slate-200/90 dark:border-indigo-400/35 hover:dark:border-sky-400/50 backdrop-blur-xl text-slate-800 dark:text-slate-100 text-xs sm:text-[13px] font-medium inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(4,9,28,0.28)] disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
+
   return (
-    <div className="relative z-20 w-full max-w-3xl mx-auto px-3 sm:px-5 pb-2.5 flex items-center justify-center pointer-events-auto shrink-0">
-      <div className="inline-flex items-center gap-1.5 p-1 rounded-2xl bg-white/92 dark:bg-[#081226]/88 border border-slate-200/85 dark:border-sky-400/20 backdrop-blur-xl shadow-lg">
-        {/* Talk */}
+    <div className="relative z-20 w-full max-w-3xl mx-auto px-3 sm:px-5 pb-2 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 pointer-events-auto shrink-0">
+      {/* Talk */}
+      <button
+        type="button"
+        onClick={onTalk}
+        disabled={isBusy}
+        aria-pressed={isListening}
+        className={`h-10 px-4 sm:px-6 rounded-full text-xs sm:text-[13px] font-semibold inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-55 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${
+          isListening
+            ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-[0_0_24px_rgba(34,211,238,0.55)] ring-2 ring-cyan-300/60'
+            : 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-white border border-sky-300/40 shadow-[0_6px_22px_rgba(37,99,235,0.5)]'
+        }`}
+      >
+        <Mic className="w-4 h-4" />
+        <span>{isListening ? 'Send Voice' : 'Talk'}</span>
+      </button>
+
+      {/* Wave */}
+      <button
+        type="button"
+        disabled={isBusy || isSpeaking}
+        onClick={() =>
+          onQuickReaction(
+            'happy',
+            'Waved hello to Ātmiya',
+            'Namaste! Great to see you. How is your energy today?',
+            'wave'
+          )
+        }
+        className={secondaryPill}
+      >
+        <Hand className="w-4 h-4 text-amber-500 dark:text-amber-300" />
+        <span>Wave</span>
+      </button>
+
+      {/* Play */}
+      <button
+        type="button"
+        onClick={onNavigatePlay}
+        className={secondaryPill}
+      >
+        <Gamepad2 className="w-4 h-4 text-blue-600 dark:text-violet-300" />
+        <span>Play</span>
+      </button>
+
+      {/* More Popover (Houses Secondary Avatar Camera, Expressions, Mic Mute & Wardrobe Actions) */}
+      <div ref={moreContainerRef} className="relative">
         <button
           type="button"
-          onClick={onTalk}
-          disabled={isBusy}
-          aria-pressed={isListening}
-          className={`h-9 px-3.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-55 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
-            isListening
-              ? 'bg-sky-500 text-white shadow-sm ring-2 ring-sky-300/60'
-              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-xs'
+          aria-expanded={isMoreOpen}
+          aria-haspopup="menu"
+          onClick={() => setIsMoreOpen((v) => !v)}
+          className={`${secondaryPill} ${
+            isMoreOpen
+              ? 'ring-2 ring-sky-400/50 dark:bg-[#152252]'
+              : ''
           }`}
         >
-          <Mic className="w-3.5 h-3.5" />
-          <span>{isListening ? 'Send Voice' : 'Talk'}</span>
-        </button>
-
-        {/* Wave */}
-        <button
-          type="button"
-          disabled={isBusy || isSpeaking}
-          onClick={() =>
-            onQuickReaction(
-              'happy',
-              'Waved hello to Ātmiya',
-              'Namaste! Great to see you. How is your energy today?',
-              'wave'
-            )
-          }
-          className="h-9 px-3 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.07] text-slate-800 dark:text-slate-100 text-xs font-medium inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          <Hand className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300" />
-          <span>Wave</span>
-        </button>
-
-        {/* Play */}
-        <button
-          type="button"
-          onClick={onNavigatePlay}
-          className="h-9 px-3 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.07] text-slate-800 dark:text-slate-100 text-xs font-medium inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          <Gamepad2 className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
-          <span>Play</span>
-        </button>
-
-        {/* More Popover (Houses Secondary Avatar Camera, Expressions, Mic Mute & Wardrobe Actions) */}
-        <div ref={moreContainerRef} className="relative">
-          <button
-            type="button"
-            aria-expanded={isMoreOpen}
-            aria-haspopup="menu"
-            onClick={() => setIsMoreOpen((v) => !v)}
-            className={`h-9 px-3 rounded-xl text-xs font-medium inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
-              isMoreOpen
-                ? 'bg-slate-100 dark:bg-white/10 text-slate-950 dark:text-white'
-                : 'hover:bg-slate-100 dark:hover:bg-white/[0.07] text-slate-700 dark:text-slate-200'
+          <LayoutGrid className="w-3.5 h-3.5 text-slate-600 dark:text-slate-200" />
+          <span>More</span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-300 transition-transform ${
+              isMoreOpen ? 'rotate-180' : ''
             }`}
-          >
-            <MoreHorizontal className="w-3.5 h-3.5 text-slate-500 dark:text-slate-300" />
-            <span>More</span>
-          </button>
+          />
+        </button>
 
-          {isMoreOpen && (
-            <div
-              role="menu"
-              aria-label="Secondary avatar and companion actions"
-              className="absolute bottom-full right-0 mb-2 w-56 p-2 rounded-2xl bg-white/98 dark:bg-[#091428]/98 border border-slate-200 dark:border-sky-400/20 shadow-2xl space-y-1.5 animate-fadeIn z-40"
-            >
+        {isMoreOpen && (
+          <div
+            role="menu"
+            aria-label="Secondary avatar and companion actions"
+            className="absolute bottom-full right-0 mb-2.5 w-56 p-2 rounded-2xl bg-white/98 dark:bg-[#09142c]/98 border border-slate-200 dark:border-indigo-400/25 shadow-2xl space-y-1.5 animate-fadeIn z-40"
+          >
               {/* Secondary Camera View Presets */}
               {onChangeCameraPreset && (
                 <div className="pb-1.5 border-b border-slate-200/80 dark:border-slate-800/90 space-y-1">
@@ -305,14 +313,13 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
                   setIsMoreOpen(false);
                   onOpenChat();
                 }}
-                className="lg:hidden w-full px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.07] flex items-center gap-2 transition cursor-pointer"
+                className="md:hidden w-full px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.07] flex items-center gap-2 transition cursor-pointer"
               >
                 <MessageSquare className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400 shrink-0" />
                 <span>Open Chat</span>
               </button>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -601,7 +601,10 @@ export default function App() {
     const ctrl = animControllerRef.current;
     if (!ctrl) return;
 
-    const greetingLine = 'Hi! Welcome back!';
+    const trimmedUser = settings.userName?.trim();
+    const greetingLine = trimmedUser
+      ? `Hi ${trimmedUser}! Welcome back! How can I help you today?`
+      : 'Hi! Welcome back! How can I help you today?';
     const greetingSpeechRate = settings.speechRate;
     const greetingLang = settings.language === 'hi' ? 'hi-IN' : 'en-IN';
     const soundAllowed = settings.voiceEngine !== 'none' && settings.autoSpeakResponse;
@@ -860,9 +863,9 @@ export default function App() {
         return;
       }
 
-      const replyText = response.reply || '';
-      if (!replyText.trim()) {
-        throw new Error('Empty response received from assistant.');
+      const replyText = typeof response?.reply === 'string' ? response.reply.trim() : '';
+      if (!replyText) {
+        throw new Error('Ātmiya could not form a response right now. Please try again.');
       }
       setAiSpokenText(replyText);
       const shortPreview =
@@ -987,7 +990,7 @@ export default function App() {
       if (err?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
         return;
       }
-      console.error('Failed to send message:', err);
+      console.warn('Recoverable chat turn failure:', err?.message || err);
       setIsThinking(false);
       isProcessingRef.current = false;
       animControllerRef.current?.returnToIdle();

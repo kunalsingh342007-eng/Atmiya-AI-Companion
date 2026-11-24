@@ -198,6 +198,7 @@ export interface AvatarAppearanceConfig {
   threeWsModelUrl?: string;
   threeWsMigrated?: boolean;
   localGlbMigrated?: boolean;
+  seatedDefaultMigrated?: boolean;
 }
 
 export interface CompanionSettings {
@@ -213,6 +214,7 @@ export interface CompanionSettings {
   avatarConfig: AvatarAppearanceConfig;
   roomConfig?: RoomConfig;
   theme: 'dark' | 'light';
+  darkNavyDefaultMigrated?: boolean;
 }
 
 export interface SystemStatus {

@@ -32,6 +32,7 @@ export const DEFAULT_AVATAR_CONFIG: CompanionSettings['avatarConfig'] = {
     'https://three.ws/cdn/u/32cbe0d2-f178-4ef7-8d82-a29f6c6a18cb/wren-9c74a4/mwqqnhw6.glb',
   threeWsMigrated: true,
   localGlbMigrated: true,
+  seatedDefaultMigrated: true,
 };
 
 export const DEFAULT_ROOM_CONFIG: NonNullable<CompanionSettings['roomConfig']> = {
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   handsFreeMode: false,
   memoryEnabled: true,
   theme: 'dark',
+  darkNavyDefaultMigrated: true,
   avatarConfig: DEFAULT_AVATAR_CONFIG,
   roomConfig: DEFAULT_ROOM_CONFIG,
 };
@@ -133,16 +135,37 @@ export const storage = {
         mergedAvatar.glbModelPath = mergedAvatar.glbModelPath || '/models/atmiya-avatar.glb';
         mergedAvatar.localGlbMigrated = true;
       }
-      return {
+      if (!parsedAvatar.seatedDefaultMigrated) {
+        mergedAvatar.defaultCameraPreset = 'close-up';
+        mergedAvatar.seatedDefaultMigrated = true;
+      }
+      const needsDarkNavyMigration = !parsed.darkNavyDefaultMigrated;
+      if (needsDarkNavyMigration) {
+        mergedAvatar.defaultCameraPreset = 'close-up';
+      }
+      const resolved: CompanionSettings = {
         ...DEFAULT_SETTINGS,
         ...parsed,
-        theme: parsed.theme === 'light' ? 'light' : 'dark',
+        theme: needsDarkNavyMigration
+          ? 'dark'
+          : parsed.theme === 'light'
+          ? 'light'
+          : 'dark',
+        darkNavyDefaultMigrated: true,
         avatarConfig: mergedAvatar,
         roomConfig: {
           ...DEFAULT_ROOM_CONFIG,
           ...parsedRoom,
         },
       };
+      if (needsDarkNavyMigration) {
+        try {
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(resolved));
+        } catch {
+          // ignore storage quota errors
+        }
+      }
+      return resolved;
     } catch {
       return DEFAULT_SETTINGS;
     }

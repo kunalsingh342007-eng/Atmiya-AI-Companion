@@ -125,23 +125,76 @@ export const api = {
     },
     signal?: AbortSignal
   ): Promise<ChatResponse> {
-    const res = await fetchWithTimeout('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-      signal,
-      timeoutMs: 48000,
-    });
+    const maxAttempts = 2;
+    let lastError: Error | null = null;
 
-    const data = await parseJsonSafe(res);
-    if (!res.ok) {
-      throw createApiError(data.message || data.error || 'Failed to send message', {
-        status: res.status,
-        code: data.error,
-        retryAfterSeconds: data.retryAfterSeconds,
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (signal?.aborted) {
+        throw signal.reason || new DOMException('Aborted', 'AbortError');
+      }
+
+      if (attempt > 0) {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 650);
+          signal?.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+            },
+            { once: true }
+          );
+        });
+      }
+
+      const res = await fetchWithTimeout('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+        signal,
+        timeoutMs: 48000,
       });
+
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        const err = createApiError(data.message || data.error || 'Failed to send message', {
+          status: res.status,
+          code: data.error,
+          retryAfterSeconds: data.retryAfterSeconds,
+        });
+        const isTransient = res.status === 502 || res.status === 503 || res.status === 504;
+        if (isTransient && attempt < maxAttempts - 1) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+
+      if (typeof data?.reply !== 'string' || !data.reply.trim()) {
+        const emptyErr = createApiError(
+          'Ātmiya could not form a response right now. Please try sending your message again.',
+          {
+            status: 502,
+            code: 'EMPTY_RESPONSE',
+          }
+        );
+        if (attempt < maxAttempts - 1) {
+          lastError = emptyErr;
+          continue;
+        }
+        throw emptyErr;
+      }
+
+      return data as ChatResponse;
     }
-    return data;
+
+    throw (
+      lastError ||
+      createApiError('Failed to send message. Please try again.', {
+        status: 502,
+        code: 'EMPTY_RESPONSE',
+      })
+    );
   },
 
   async generateTTS(

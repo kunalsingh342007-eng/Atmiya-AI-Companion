@@ -113,9 +113,9 @@ const CAMERA_PRESET_OPTIONS: {
   label: string;
   desc: string;
 }[] = [
-  { id: 'close-up', label: 'Close-Up', desc: 'Video-call face & upper chest framing' },
-  { id: 'upper-body', label: 'Upper Body', desc: 'Waist-up view showing hand gestures' },
-  { id: 'full-body', label: 'Full Body', desc: 'Complete standing pose in room stage' },
+  { id: 'close-up', label: 'Close-Up', desc: 'Portrait face & upper chest framing' },
+  { id: 'upper-body', label: 'Upper Body', desc: 'Eye-level seated torso, chair & cozy room' },
+  { id: 'full-body', label: 'Full Body', desc: 'Complete seated figure, chair & full room' },
 ];
 
 export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
@@ -178,7 +178,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
   };
 
   const activeType = draftAvatar.avatarType || '3d-glb';
-  const defaultCamera = draftAvatar.defaultCameraPreset || activeCameraPreset || 'close-up';
+  const defaultCamera = draftAvatar.defaultCameraPreset || activeCameraPreset || 'upper-body';
 
   return (
     <div className="h-full w-full overflow-y-auto bg-slate-50 dark:bg-gradient-to-b dark:from-[#070d1a] dark:via-[#0b162d] dark:to-[#070d1a] px-4 sm:px-6 py-6">
@@ -551,16 +551,16 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          onResetCamera();
                           updateDraft(
-                            { ...draftAvatar, defaultCameraPreset: 'close-up' },
+                            { ...draftAvatar, defaultCameraPreset: 'upper-body' },
                             draftRoom
                           );
+                          onChangeCameraPreset?.('upper-body');
                         }}
                         className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-[#081020] hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 cursor-pointer"
                       >
                         <RotateCcw className="w-3 h-3" />
-                        <span>Reset to Close-Up</span>
+                        <span>Reset to Upper Body</span>
                       </button>
                     )}
                   </div>

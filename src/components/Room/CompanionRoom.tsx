@@ -50,8 +50,8 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
           }
           referrerPolicy="no-referrer"
           onError={() => setImgFailed((prev) => ({ ...prev, [envId]: true }))}
-          className={`absolute inset-0 w-full h-full object-cover object-center blur-[2px] brightness-[0.88] dark:brightness-[0.46] dark:saturate-[0.8] transition-all duration-700 ${
-            prefersReducedMotion ? 'scale-[1.02]' : 'scale-[1.03]'
+          className={`absolute inset-0 w-full h-full object-cover object-center brightness-[0.94] dark:brightness-[0.80] dark:contrast-[1.06] dark:saturate-[1.04] transition-all duration-700 ${
+            prefersReducedMotion ? 'scale-[1.0]' : 'scale-[1.01]'
           }`}
         />
       ) : isIndigoLoft ? (
@@ -68,7 +68,7 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
           <svg
             viewBox="0 0 1200 720"
             preserveAspectRatio="xMidYMid slice"
-            className="w-full h-full opacity-30 blur-[1px]"
+            className="w-full h-full opacity-35"
           >
             <rect x="85" y="70" width="310" height="390" rx="22" fill="#0f172a" fillOpacity="0.45" stroke="#a5b4fc" strokeOpacity="0.35" strokeWidth="3" />
             <line x1="240" y1="70" x2="240" y2="460" stroke="#a5b4fc" strokeOpacity="0.28" strokeWidth="2.5" />
@@ -96,7 +96,7 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
           <svg
             viewBox="0 0 1200 720"
             preserveAspectRatio="xMidYMid slice"
-            className="w-full h-full opacity-35 blur-[1px]"
+            className="w-full h-full opacity-35"
           >
             <path d="M90 480 L90 210 A160 160 0 0 1 410 210 L410 480 Z" fill="#fffaf0" fillOpacity="0.55" stroke="#b49a7e" strokeOpacity="0.45" strokeWidth="3" />
             <line x1="250" y1="50" x2="250" y2="480" stroke="#b49a7e" strokeOpacity="0.35" strokeWidth="2.5" />
@@ -117,28 +117,23 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
         />
       )}
 
-      {/* Subtle Natural Window Lighting & Deep Navy Studio Atmosphere */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: isEvening
-            ? 'radial-gradient(circle at 18% 55%, rgba(245, 158, 11, 0.12), transparent 45%), radial-gradient(circle at 50% 42%, transparent 32%, rgba(5, 10, 20, 0.56) 100%)'
-            : isIndigoLoft
-            ? 'radial-gradient(circle at 50% 42%, transparent 34%, rgba(5, 10, 20, 0.52) 100%)'
-            : isCreamSolarium
-            ? 'radial-gradient(circle at 22% 25%, rgba(255, 251, 235, 0.28), transparent 48%), radial-gradient(circle at 50% 42%, transparent 38%, rgba(30, 27, 75, 0.25) 100%)'
-            : 'radial-gradient(circle at 20% 25%, rgba(255, 249, 232, 0.24), transparent 48%), radial-gradient(circle at 50% 42%, transparent 38%, rgba(20, 26, 24, 0.34) 100%)',
-        }}
-      />
-
-      {/* Deep Navy Ambient Halo (dark mode) for clean 3D silhouette separation */}
+      {/* Subtle Cool Navy Room Color Grade & Warm Lamp Highlight (dark mode) */}
       <div
         aria-hidden="true"
         className="hidden dark:block absolute inset-0 pointer-events-none"
         style={{
           background:
-            'radial-gradient(circle at 50% 44%, rgba(56, 189, 248, 0.13) 0%, rgba(37, 99, 235, 0.08) 28%, rgba(5, 10, 20, 0.68) 76%)',
+            'radial-gradient(circle at 76% 64%, rgba(251, 191, 36, 0.14), transparent 36%), radial-gradient(circle at 48% 42%, rgba(56, 189, 248, 0.14) 0%, rgba(99, 102, 241, 0.14) 36%, rgba(6, 12, 34, 0.52) 86%)',
+        }}
+      />
+
+      {/* Light Mode Gentle Window Vignette */}
+      <div
+        aria-hidden="true"
+        className="dark:hidden absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at 22% 28%, rgba(255, 249, 232, 0.2), transparent 48%), radial-gradient(circle at 50% 44%, transparent 45%, rgba(15, 23, 42, 0.18) 100%)',
         }}
       />
 
@@ -149,23 +144,23 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
         style={{
           background:
             avatarState === 'listening'
-              ? 'radial-gradient(circle at 50% 46%, rgba(56, 189, 248, 0.2), transparent 58%)'
+              ? 'radial-gradient(circle at 50% 46%, rgba(56, 189, 248, 0.22), transparent 58%)'
               : avatarState === 'speaking'
-              ? 'radial-gradient(circle at 50% 46%, rgba(59, 130, 246, 0.2), transparent 58%)'
+              ? 'radial-gradient(circle at 50% 46%, rgba(99, 102, 241, 0.2), transparent 58%)'
               : avatarState === 'thinking'
-              ? 'radial-gradient(circle at 50% 46%, rgba(251, 146, 60, 0.14), transparent 58%)'
+              ? 'radial-gradient(circle at 50% 46%, rgba(251, 146, 60, 0.16), transparent 58%)'
               : 'none',
         }}
       />
 
-      {/* Top & Bottom Contrast Scrims for HUD and Bottom Bar Legibility */}
+      {/* Subtle Top & Bottom Legibility Vignettes (do not wash out room) */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/55 via-white/15 dark:from-[#050a14]/82 dark:via-[#050a14]/35 to-transparent pointer-events-none"
+        className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-slate-900/15 dark:from-[#040818]/55 to-transparent pointer-events-none"
       />
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-t from-slate-100/80 via-slate-100/35 dark:from-[#050a14]/92 dark:via-[#050a14]/52 to-transparent pointer-events-none"
+        className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-slate-900/20 dark:from-[#040818]/82 via-transparent to-transparent pointer-events-none"
       />
 
       {/* Room Foreground Content Layer */}
