@@ -4,15 +4,22 @@ import {
   CompanionPersonality,
   CompanionSettings,
 } from '../../types/companion';
-import { storage } from '../../services/storage';
+import { DEFAULT_SETTINGS, storage } from '../../services/storage';
+import { PageHeading, SubpageBackdrop } from '../Layout/CompanionPagePrimitives';
 import {
   AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Download,
+  Globe,
   HardDrive,
   Mic,
   Moon,
-  Settings as SettingsIcon,
+  Palette,
+  RotateCcw,
   ShieldCheck,
+  Smile,
   Sun,
   Trash2,
   Upload,
@@ -22,71 +29,113 @@ import {
 
 interface SettingsScreenProps {
   settings: CompanionSettings;
-  onSaveSettings: (settings: CompanionSettings) => void;
+  onSaveSettings: (settings: CompanionSettings, toastText?: string) => void;
   onDataRestored?: () => void;
   onClearAllConversations: () => void;
+  onOpenCustomize?: () => void;
   isApiKeyConfigured: boolean;
 }
 
-const PERSONALITIES: { id: CompanionPersonality; title: string; subtitle: string; desc: string }[] = [
+const LANGUAGES: { id: CompanionLanguage; label: string }[] = [
+  { id: 'en', label: 'English' },
+  { id: 'auto', label: 'Auto-detect (स्वतः)' },
+  { id: 'hi', label: 'हिन्दी (Hindi)' },
+  { id: 'hinglish', label: 'Hinglish (हिंग्लिश)' },
+];
+
+// Real supported outfit trim / accent presets shared with WardrobeScreen
+const APPEARANCE_THUMBNAILS: {
+  id: string;
+  label: string;
+  outfitColor: string;
+  bgGradient: string;
+  collarColor: string;
+}[] = [
   {
-    id: 'calm',
-    title: 'Calm & Gentle (शांत और सौम्य)',
-    subtitle: 'Warm, reassuring, empathetic listener',
-    desc: 'Listens with gentle patience, provides peaceful clarity, validates emotional well-being.',
+    id: 'navy-classic',
+    label: 'Navy Classic',
+    outfitColor: '#1e3a5f',
+    bgGradient: 'from-[#1e293b] to-[#0f172a]',
+    collarColor: '#38bdf8',
   },
   {
-    id: 'friendly',
-    title: 'Friendly & Playful (दोस्ताना और चुलबुला)',
-    subtitle: 'Witty, vibrant, upbeat companion',
-    desc: 'Brings lighthearted humor, conversational banter, and cheering encouragement.',
+    id: 'ocean-blue',
+    label: 'Ocean Blue',
+    outfitColor: '#2563eb',
+    bgGradient: 'from-[#1d4ed8]/60 to-[#0f172a]',
+    collarColor: '#60a5fa',
   },
   {
-    id: 'reflective',
-    title: 'Thoughtful & Reflective (गंभीर और विचारशील)',
-    subtitle: 'Philosophical, curious, deep thinker',
-    desc: 'Asks meaningful open questions, explores life topics, literature, and human nature.',
+    id: 'deep-indigo',
+    label: 'Deep Indigo',
+    outfitColor: '#4f46e5',
+    bgGradient: 'from-[#4338ca]/60 to-[#1e1b4b]',
+    collarColor: '#a78bfa',
   },
   {
-    id: 'study',
-    title: 'Study & Code Partner (अध्ययन और कोडिंग साथी)',
-    subtitle: 'Patient tutor for C++, DSA, STEM & Exams',
-    desc: 'Explains complex topics with analogies, breaks down code step-by-step with clean intuition.',
-  },
-  {
-    id: 'creative',
-    title: 'Creative Brainstormer (रचनात्मक मार्गदर्शक)',
-    subtitle: 'Inventive, lateral thinking collaborator',
-    desc: 'Generates fresh concepts, project architectures, and imaginative stories.',
+    id: 'coral-dawn',
+    label: 'Coral Dawn',
+    outfitColor: '#e11d48',
+    bgGradient: 'from-[#be123c]/55 to-[#1e1b4b]',
+    collarColor: '#fb7185',
   },
 ];
 
-const LANGUAGES: { id: CompanionLanguage; label: string; script: string }[] = [
-  { id: 'auto', label: 'Auto-detect (स्वतः पहचानें)', script: 'Matches user language automatically' },
-  { id: 'hi', label: 'हिन्दी (Hindi)', script: 'Pure Devanagari conversational Hindi' },
-  { id: 'hinglish', label: 'Hinglish (हिंग्लिश)', script: 'Conversational Hindi in Roman script' },
-  { id: 'en', label: 'English', script: 'Standard natural English' },
+const PERSONALITIES: { id: CompanionPersonality; title: string; subtitle: string }[] = [
+  { id: 'calm', title: 'Calm & Gentle (शांत और सौम्य)', subtitle: 'Warm, reassuring, empathetic listener' },
+  { id: 'friendly', title: 'Friendly & Playful (दोस्ताना)', subtitle: 'Witty, vibrant, upbeat companion' },
+  { id: 'reflective', title: 'Thoughtful & Reflective', subtitle: 'Philosophical, curious, deep thinker' },
+  { id: 'study', title: 'Study & Code Partner', subtitle: 'Patient tutor for STEM & problem solving' },
+  { id: 'creative', title: 'Creative Brainstormer', subtitle: 'Inventive, lateral thinking collaborator' },
 ];
 
 const GEMINI_VOICES = [
-  { id: 'Kore', label: 'Kore', tone: 'Calm, soothing, feminine presence' },
-  { id: 'Puck', label: 'Puck', tone: 'Warm, youthful, energetic' },
-  { id: 'Fenrir', label: 'Fenrir', tone: 'Deep, resonant, grounding voice' },
-  { id: 'Zephyr', label: 'Zephyr', tone: 'Airy, serene, gentle cadence' },
-  { id: 'Charon', label: 'Charon', tone: 'Mature, steady, dignified tone' },
+  { id: 'Kore', label: 'Kore', tone: 'Calm, soothing presence' },
+  { id: 'Puck', label: 'Puck', tone: 'Warm, energetic' },
+  { id: 'Fenrir', label: 'Fenrir', tone: 'Deep, grounding voice' },
+  { id: 'Zephyr', label: 'Zephyr', tone: 'Airy, gentle cadence' },
+  { id: 'Charon', label: 'Charon', tone: 'Mature, steady tone' },
 ];
+
+const AppearanceBustThumb: React.FC<{
+  bgGradient: string;
+  outfitColor: string;
+  collarColor: string;
+}> = ({ bgGradient, outfitColor, collarColor }) => (
+  <div
+    className={`w-full h-14 rounded-lg bg-gradient-to-b ${bgGradient} flex items-end justify-center overflow-hidden relative`}
+  >
+    <svg viewBox="0 0 64 64" className="w-12 h-12" aria-hidden="true">
+      {/* Hair back */}
+      <path d="M18 22 C16 34 15 44 19 48 L45 48 C49 44 48 34 46 22 Z" fill="#4a2c22" />
+      {/* Shoulders & outfit */}
+      <path d="M12 64 C13 49 20 44 32 44 C44 44 51 49 52 64 Z" fill={outfitColor} />
+      <path d="M21 48 L32 52 L43 48" fill="none" stroke={collarColor} strokeWidth="2.4" strokeLinecap="round" />
+      {/* Neck & face */}
+      <rect x="28" y="37" width="8" height="8" rx="3" fill="#f3c5a2" />
+      <circle cx="32" cy="27" r="11" fill="#f5cbb0" />
+      {/* Bangs */}
+      <path d="M20 25 C21 15 43 15 44 25 C40 20 24 20 20 25 Z" fill="#4a2c22" />
+      {/* Eyes */}
+      <circle cx="28" cy="28" r="1.4" fill="#1e293b" />
+      <circle cx="36" cy="28" r="1.4" fill="#1e293b" />
+      {/* Soft smile */}
+      <path d="M29 33 Q32 35.5 35 33" fill="none" stroke="#c2410c" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  </div>
+);
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   settings,
   onSaveSettings,
   onDataRestored,
   onClearAllConversations,
+  onOpenCustomize,
   isApiKeyConfigured,
 }) => {
-  const [activeTab, setActiveTab] = useState<'personality' | 'voice' | 'privacy' | 'storage'>(
-    'personality'
-  );
-  const [localSettings, setLocalSettings] = useState<CompanionSettings>(settings);
+  const [draftSettings, setDraftSettings] = useState<CompanionSettings>(settings);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [micPermissionState, setMicPermissionState] = useState<string>('checking');
   const [exportNotice, setExportNotice] = useState<{
     type: 'success' | 'error';
@@ -95,7 +144,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [showClearChatsConfirm, setShowClearChatsConfirm] = useState(false);
 
   useEffect(() => {
-    setLocalSettings(settings);
+    setDraftSettings(settings);
   }, [settings]);
 
   useEffect(() => {
@@ -108,18 +157,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             setMicPermissionState(permissionStatus.state);
           };
         })
-        .catch(() => {
-          setMicPermissionState('prompt');
-        });
+        .catch(() => setMicPermissionState('prompt'));
     } else {
       setMicPermissionState('unknown');
     }
   }, []);
 
-  const handleUpdate = (updates: Partial<CompanionSettings>) => {
-    const next = { ...localSettings, ...updates };
-    setLocalSettings(next);
-    onSaveSettings(next);
+  const hasUnsavedChanges = JSON.stringify(draftSettings) !== JSON.stringify(settings);
+  const voiceOutputActive =
+    draftSettings.voiceEngine !== 'none' && draftSettings.autoSpeakResponse;
+  const expressionsActive = draftSettings.expressionsEnabled !== false;
+
+  const updateDraft = (updates: Partial<CompanionSettings>) => {
+    setDraftSettings((prev) => ({ ...prev, ...updates }));
+  };
+
+  const handleSaveChanges = () => {
+    onSaveSettings(draftSettings, 'Settings saved');
+  };
+
+  const handleConfirmReset = () => {
+    const resetTarget: CompanionSettings = {
+      ...DEFAULT_SETTINGS,
+      userName: draftSettings.userName,
+    };
+    setDraftSettings(resetTarget);
+    setShowResetConfirm(false);
+    onSaveSettings(resetTarget, 'Settings reset to default');
   };
 
   const handleExport = () => {
@@ -149,11 +213,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       input.value = '';
       if (success) {
         setExportNotice({ type: 'success', text: 'Import successful! Data restored.' });
-        setLocalSettings(storage.getSettings());
+        setDraftSettings(storage.getSettings());
         if (onDataRestored) {
           onDataRestored();
         } else {
-          onSaveSettings(storage.getSettings());
+          onSaveSettings(storage.getSettings(), 'Backup restored');
         }
         setTimeout(() => setExportNotice(null), 3500);
       } else {
@@ -174,176 +238,260 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-slate-50 dark:bg-gradient-to-b dark:from-[#070d1a] dark:via-[#0b162d] dark:to-[#070d1a] px-4 sm:px-6 py-6">
-      <div className="max-w-3xl mx-auto space-y-5">
-        {/* Header */}
-        <header className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/35 text-blue-600 dark:text-sky-300 flex items-center justify-center shrink-0">
-            <SettingsIcon className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Settings & Preferences (सेटिंग्स)
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-              Configure theme, personality, voice engine, languages, backups, and privacy.
-            </p>
-          </div>
-        </header>
-
-        {/* Sub-Tabs */}
-        <div className="flex flex-wrap gap-2">
-          {[
-            { id: 'personality' as const, label: 'Appearance & Personality' },
-            { id: 'voice' as const, label: 'Voice & Microphone' },
-            { id: 'privacy' as const, label: 'Privacy & Trust' },
-            { id: 'storage' as const, label: 'Backup & History' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`h-10 px-4 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                activeTab === tab.id
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-white dark:bg-[#0c162b] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:text-slate-950 dark:hover:text-white'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+    <SubpageBackdrop>
+      <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 flex flex-col justify-center gap-6">
+        {/* Heading */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <PageHeading
+            title="Settings"
+            subtitle="Customize your experience"
+          />
+          {hasUnsavedChanges && (
+            <span className="text-xs font-medium text-blue-700 dark:text-sky-300">
+              Unsaved changes ready to save
+            </span>
+          )}
         </div>
 
-        {/* Main Card Surface */}
-        <div className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800/90 p-5 sm:p-6 shadow-sm dark:shadow-2xl space-y-6">
-          {activeTab === 'personality' && (
-            <div className="space-y-6">
-              {/* Theme Mode Switcher */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Interface Theme (थीम)
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => handleUpdate({ theme: 'dark' })}
-                    className={`p-3.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-3 ${
-                      localSettings.theme !== 'light'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-slate-900 dark:text-white'
-                        : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
-                    }`}
+        {/* Two Side-by-Side Glass Panels */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+          {/* Left Panel: General Settings */}
+          <section
+            aria-label="General Settings"
+            className="rounded-2xl bg-white dark:bg-[#091332]/86 border border-slate-200 dark:border-indigo-400/28 p-5 sm:p-6 shadow-xs dark:shadow-[0_18px_42px_rgba(3,8,28,0.55)] flex flex-col justify-between gap-4"
+          >
+            <div className="space-y-4">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+                General Settings
+              </h2>
+
+              {/* Language Row */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#070f28]/85 border border-slate-200 dark:border-indigo-400/18 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-sky-500/20 border border-blue-200 dark:border-sky-400/30 flex items-center justify-center text-blue-600 dark:text-sky-300 shrink-0">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <label
+                    htmlFor="settings-language-select"
+                    className="text-sm font-medium text-slate-800 dark:text-slate-100"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-[#091224] border border-slate-700 flex items-center justify-center text-sky-300 shrink-0">
-                      <Moon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-xs">Deep Navy Dark (Default)</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Focused slate-navy surfaces with crisp blue highlights
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleUpdate({ theme: 'light' })}
-                    className={`p-3.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-3 ${
-                      localSettings.theme === 'light'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-slate-900 dark:text-white'
-                        : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-amber-500 shrink-0">
-                      <Sun className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-xs">Soft Neutral Light</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Clean daylight white surfaces with navy-blue accents
-                      </div>
-                    </div>
-                  </button>
+                    Language
+                  </label>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  What should Ātmiya call you? (आपका नाम)
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <input
-                    type="text"
-                    value={localSettings.userName}
-                    onChange={(e) => handleUpdate({ userName: e.target.value })}
-                    placeholder="Enter your name or nickname..."
-                    className="w-full bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Preferred Language (भाषा प्राथमिकता)
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <select
+                  id="settings-language-select"
+                  value={draftSettings.language}
+                  onChange={(e) =>
+                    updateDraft({ language: e.target.value as CompanionLanguage })
+                  }
+                  className="h-9 min-w-[140px] rounded-xl bg-white dark:bg-[#0c1a42] border border-slate-200 dark:border-indigo-300/28 px-3 text-xs font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
                   {LANGUAGES.map((lang) => (
-                    <button
-                      key={lang.id}
-                      type="button"
-                      onClick={() => handleUpdate({ language: lang.id })}
-                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                        localSettings.language === lang.id
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-slate-900 dark:text-white'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="font-semibold text-xs">{lang.label}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {lang.script}
-                      </div>
-                    </button>
+                    <option key={lang.id} value={lang.id}>
+                      {lang.label}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Companion Personality Mode (व्यक्तित्व मोड)
-                </label>
-                <div className="space-y-2.5">
-                  {PERSONALITIES.map((p) => {
-                    const isSelected = localSettings.personality === p.id;
+              {/* Voice Output Row */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#070f28]/85 border border-slate-200 dark:border-indigo-400/18 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-slate-200/70 dark:bg-indigo-500/18 border border-slate-300/70 dark:border-indigo-300/25 flex items-center justify-center text-slate-700 dark:text-slate-200 shrink-0">
+                    <Volume2 className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    Voice Output
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={voiceOutputActive}
+                  aria-label="Toggle voice output"
+                  onClick={() =>
+                    updateDraft({
+                      autoSpeakResponse: !voiceOutputActive,
+                      voiceEngine:
+                        !voiceOutputActive && draftSettings.voiceEngine === 'none'
+                          ? 'gemini-native'
+                          : draftSettings.voiceEngine,
+                    })
+                  }
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer shrink-0 ${
+                    voiceOutputActive ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
+                      voiceOutputActive ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Theme Segmented Row (Auto / Light / Dark) */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#070f28]/85 border border-slate-200 dark:border-indigo-400/18 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-slate-200/70 dark:bg-indigo-500/18 border border-slate-300/70 dark:border-indigo-300/25 flex items-center justify-center text-slate-700 dark:text-slate-200 shrink-0">
+                    <Palette className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    Theme
+                  </span>
+                </div>
+
+                <div
+                  role="radiogroup"
+                  aria-label="Theme mode"
+                  className="grid grid-cols-3 gap-2"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={draftSettings.theme === 'auto'}
+                    onClick={() => updateDraft({ theme: 'auto' })}
+                    className={`h-9 px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      draftSettings.theme === 'auto'
+                        ? 'bg-blue-600 border-sky-300/50 text-white shadow-sm'
+                        : 'bg-white dark:bg-[#0b1638] border-slate-200 dark:border-indigo-400/20 text-slate-700 dark:text-slate-300 hover:border-blue-400'
+                    }`}
+                  >
+                    <span>Auto</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={draftSettings.theme === 'light'}
+                    onClick={() => updateDraft({ theme: 'light' })}
+                    className={`h-9 px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      draftSettings.theme === 'light'
+                        ? 'bg-blue-600 border-sky-300/50 text-white shadow-sm'
+                        : 'bg-white dark:bg-[#0b1638] border-slate-200 dark:border-indigo-400/20 text-slate-700 dark:text-slate-300 hover:border-blue-400'
+                    }`}
+                  >
+                    <Sun className="w-3.5 h-3.5" />
+                    <span>Light</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={draftSettings.theme === 'dark'}
+                    onClick={() => updateDraft({ theme: 'dark' })}
+                    className={`h-9 px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      draftSettings.theme === 'dark'
+                        ? 'bg-blue-600 border-sky-300/50 text-white shadow-sm'
+                        : 'bg-white dark:bg-[#0b1638] border-slate-200 dark:border-indigo-400/20 text-slate-700 dark:text-slate-300 hover:border-blue-400'
+                    }`}
+                  >
+                    <Moon className="w-3.5 h-3.5" />
+                    <span>Dark</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Right Panel: Avatar Options */}
+          <section
+            aria-label="Avatar Options"
+            className="rounded-2xl bg-white dark:bg-[#091332]/86 border border-slate-200 dark:border-indigo-400/28 p-5 sm:p-6 shadow-xs dark:shadow-[0_18px_42px_rgba(3,8,28,0.55)] flex flex-col justify-between gap-4"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+                  Avatar Options
+                </h2>
+                {onOpenCustomize && (
+                  <button
+                    type="button"
+                    onClick={onOpenCustomize}
+                    className="text-xs font-medium text-blue-600 dark:text-sky-300 hover:underline cursor-pointer"
+                  >
+                    Customize 3D Stage →
+                  </button>
+                )}
+              </div>
+
+              {/* Expressions Toggle */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#070f28]/85 border border-slate-200 dark:border-indigo-400/18 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-slate-200/70 dark:bg-indigo-500/18 border border-slate-300/70 dark:border-indigo-300/25 flex items-center justify-center text-slate-700 dark:text-slate-200 shrink-0">
+                    <Smile className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    Expressions
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={expressionsActive}
+                  aria-label="Toggle facial expressions"
+                  onClick={() => updateDraft({ expressionsEnabled: !expressionsActive })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer shrink-0 ${
+                    expressionsActive ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
+                      expressionsActive ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Appearance Presets Row (Real Supported Accent & Outfit Trim Presets) */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    Appearance
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {draftSettings.avatarConfig.outfitStyleLabel || 'Navy Classic'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2.5">
+                  {APPEARANCE_THUMBNAILS.map((preset) => {
+                    const isSelected =
+                      (draftSettings.avatarConfig.outfitColor || '#1e3a5f') ===
+                      preset.outfitColor;
                     return (
                       <button
-                        key={p.id}
+                        key={preset.id}
                         type="button"
-                        onClick={() => handleUpdate({ personality: p.id })}
-                        className={`w-full p-3.5 rounded-xl border text-left transition flex items-start justify-between gap-3 cursor-pointer ${
+                        onClick={() =>
+                          updateDraft({
+                            avatarConfig: {
+                              ...draftSettings.avatarConfig,
+                              outfitColor: preset.outfitColor,
+                              outfitStyleLabel: preset.label,
+                              accentColor: preset.outfitColor,
+                            },
+                          })
+                        }
+                        title={preset.label}
+                        aria-label={`Select ${preset.label} appearance`}
+                        aria-pressed={isSelected}
+                        className={`p-1.5 rounded-xl border transition cursor-pointer flex flex-col items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
                           isSelected
-                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60'
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] hover:border-blue-300 dark:hover:border-slate-700'
+                            ? 'border-blue-500 dark:border-sky-300 bg-blue-50 dark:bg-blue-600/20 shadow-[0_0_16px_rgba(56,189,248,0.3)]'
+                            : 'border-slate-200 dark:border-indigo-400/20 bg-slate-50 dark:bg-[#070f28] hover:border-blue-300 dark:hover:border-indigo-300/45'
                         }`}
                       >
-                        <div>
-                          <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-                            {p.title}
-                          </div>
-                          <div className="text-xs text-blue-600 dark:text-sky-300 mt-0.5">
-                            {p.subtitle}
-                          </div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                            {p.desc}
-                          </div>
-                        </div>
-                        <span
-                          className={`w-4 h-4 rounded-full mt-1 border flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? 'border-blue-500 bg-blue-600'
-                              : 'border-slate-300 dark:border-slate-600'
-                          }`}
-                        >
-                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        <AppearanceBustThumb
+                          bgGradient={preset.bgGradient}
+                          outfitColor={preset.outfitColor}
+                          collarColor={preset.collarColor}
+                        />
+                        <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300 truncate max-w-full">
+                          {preset.label.split(' ')[0]}
                         </span>
                       </button>
                     );
@@ -351,287 +499,282 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </div>
               </div>
             </div>
-          )}
 
-          {activeTab === 'voice' && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Speech Output Mode (आवाज़ मॉडल)
+            {/* Reset to Default */}
+            {!showResetConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(true)}
+                className="w-full h-10 rounded-xl bg-slate-100 dark:bg-[#0d193d] hover:bg-slate-200 dark:hover:bg-[#142559] border border-slate-200 dark:border-indigo-400/28 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset to Default</span>
+              </button>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-500/35 flex items-center justify-between gap-2 text-xs">
+                <span className="text-amber-900 dark:text-amber-100 font-medium">
+                  Reset all settings?
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleConfirmReset}
+                    className="h-7 px-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirm(false)}
+                    className="h-7 px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Centered Purple Save Changes CTA */}
+        <div className="flex flex-col items-center gap-3 pt-1">
+          <button
+            type="button"
+            onClick={handleSaveChanges}
+            className="h-11 px-8 rounded-full bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 hover:from-indigo-500 hover:via-violet-500 hover:to-purple-500 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-[0_10px_28px_rgba(99,102,241,0.45)] transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          >
+            <Check className="w-4 h-4" />
+            <span>Save Changes</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer transition"
+          >
+            <span>Personality, Voice Engine &amp; Backup Options</span>
+            {showAdvanced ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </div>
+
+        {/* Expandable Full Settings (Preserves All Existing Capabilities) */}
+        {showAdvanced && (
+          <div className="rounded-2xl bg-white dark:bg-[#091332]/90 border border-slate-200 dark:border-indigo-400/25 p-5 sm:p-6 space-y-6 shadow-sm animate-fadeIn">
+            {/* Name & Personality */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-3">
+                <label
+                  htmlFor="user-name-input"
+                  className="block text-xs font-semibold text-slate-600 dark:text-slate-300"
+                >
+                  What should Ātmiya call you?
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {[
-                    {
-                      id: 'gemini-native' as const,
-                      title: 'Gemini Flash TTS',
-                      sub: 'High quality 24kHz native voice',
-                    },
-                    {
-                      id: 'browser-tts' as const,
-                      title: 'Browser Speech',
-                      sub: 'Web Speech Synthesis fallback',
-                    },
-                    {
-                      id: 'none' as const,
-                      title: 'Silent (Text Only)',
-                      sub: 'No automated audio playback',
-                    },
-                  ].map((mode) => (
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    id="user-name-input"
+                    type="text"
+                    value={draftSettings.userName}
+                    onChange={(e) => updateDraft({ userName: e.target.value })}
+                    placeholder="Enter your name..."
+                    className="w-full h-10 bg-slate-50 dark:bg-[#060d24] border border-slate-200 dark:border-indigo-400/22 rounded-xl pl-9 pr-3 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="pt-2 space-y-2">
+                  <span className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Speech Output Engine
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'gemini-native' as const, label: 'Gemini TTS' },
+                      { id: 'browser-tts' as const, label: 'Browser TTS' },
+                      { id: 'none' as const, label: 'Silent' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => updateDraft({ voiceEngine: mode.id })}
+                        className={`h-9 px-2 rounded-xl border text-xs font-medium cursor-pointer transition ${
+                          draftSettings.voiceEngine === mode.id
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/25 text-blue-800 dark:text-white'
+                            : 'border-slate-200 dark:border-indigo-400/20 bg-slate-50 dark:bg-[#060d24] text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {draftSettings.voiceEngine === 'gemini-native' && (
+                  <div className="pt-1 space-y-2">
+                    <span className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      Gemini Voice Model
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {GEMINI_VOICES.map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => updateDraft({ selectedVoice: v.id })}
+                          title={v.tone}
+                          className={`h-8 px-3 rounded-lg border text-xs font-medium cursor-pointer transition ${
+                            draftSettings.selectedVoice === v.id
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/25 text-blue-800 dark:text-white'
+                              : 'border-slate-200 dark:border-indigo-400/20 bg-slate-50 dark:bg-[#060d24] text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          {v.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-[#060d24] border border-slate-200 dark:border-indigo-400/20 cursor-pointer gap-3">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 block">
+                      Hands-Free Voice Flow
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Automatically listen after Ātmiya finishes speaking
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={draftSettings.handsFreeMode}
+                    onChange={(e) => updateDraft({ handsFreeMode: e.target.checked })}
+                    className="accent-blue-600 w-4 h-4 shrink-0"
+                  />
+                </label>
+              </div>
+
+              {/* Personality Mode */}
+              <div className="space-y-2">
+                <span className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  Companion Personality Mode
+                </span>
+                <div className="space-y-2">
+                  {PERSONALITIES.map((p) => (
                     <button
-                      key={mode.id}
+                      key={p.id}
                       type="button"
-                      onClick={() => handleUpdate({ voiceEngine: mode.id })}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition ${
-                        localSettings.voiceEngine === mode.id
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-slate-900 dark:text-white'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
+                      onClick={() => updateDraft({ personality: p.id })}
+                      className={`w-full p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        draftSettings.personality === p.id
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/25'
+                          : 'border-slate-200 dark:border-indigo-400/20 bg-slate-50 dark:bg-[#060d24]'
                       }`}
                     >
-                      <div className="font-semibold text-xs">{mode.title}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        {mode.sub}
+                      <div className="text-xs font-semibold text-slate-900 dark:text-white">
+                        {p.title}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {p.subtitle}
                       </div>
                     </button>
                   ))}
                 </div>
               </div>
-
-              {localSettings.voiceEngine === 'gemini-native' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Gemini Voice Model
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {GEMINI_VOICES.map((v) => (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() => handleUpdate({ selectedVoice: v.id })}
-                        className={`p-3 rounded-xl border text-left cursor-pointer transition ${
-                          localSettings.selectedVoice === v.id
-                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-slate-900 dark:text-white'
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="font-semibold text-xs flex items-center justify-between">
-                          <span>{v.label}</span>
-                          <Volume2 className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                          {v.tone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Speaking Pace ({localSettings.speechRate.toFixed(2)}x)
-                </label>
-                <div className="grid grid-cols-5 gap-2">
-                  {[0.8, 0.9, 1.0, 1.15, 1.3].map((rate) => (
-                    <button
-                      key={rate}
-                      type="button"
-                      onClick={() => handleUpdate({ speechRate: rate })}
-                      className={`h-9 rounded-xl border text-xs font-semibold cursor-pointer transition tabular-nums ${
-                        Math.abs((localSettings.speechRate || 1.0) - rate) < 0.03
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-white'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
-                      }`}
-                    >
-                      {rate}x
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <label className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 cursor-pointer gap-3">
-                  <div>
-                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 block">
-                      Auto-speak responses & game sound chimes
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                      Plays voice replies and subtle Web Audio chimes during mini-games.
-                    </span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={localSettings.autoSpeakResponse}
-                    onChange={(e) => handleUpdate({ autoSpeakResponse: e.target.checked })}
-                    className="accent-blue-600 w-4 h-4 shrink-0"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 cursor-pointer gap-3">
-                  <div>
-                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 block">
-                      Hands-Free Voice Flow (ऑटो लिसन)
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                      Automatically starts listening after Ātmiya finishes speaking.
-                    </span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={localSettings.handsFreeMode}
-                    onChange={(e) => handleUpdate({ handsFreeMode: e.target.checked })}
-                    className="accent-blue-600 w-4 h-4 shrink-0"
-                  />
-                </label>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <Mic className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
-                    Microphone Permission Status
-                  </span>
-                  <span
-                    className={`font-semibold uppercase text-[11px] ${
-                      micPermissionState === 'denied'
-                        ? 'text-rose-600 dark:text-rose-300'
-                        : 'text-blue-700 dark:text-sky-300'
-                    }`}
-                  >
-                    {micPermissionState}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {micPermissionState === 'denied'
-                    ? 'Microphone access is blocked in your browser site settings. Allow microphone access in the address bar and reload or tap Retry Mic on Companion Home.'
-                    : 'Voice input only activates when you press Speak/Talk. Audio streams are not saved permanently by the application.'}
-                </p>
-              </div>
             </div>
-          )}
 
-          {activeTab === 'privacy' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-semibold text-sm">
-                  <ShieldCheck className="w-5 h-5" />
-                  <span>Transparent Local-First Privacy Architecture</span>
+            {/* Backup, Privacy & API Status */}
+            <div className="pt-4 border-t border-slate-200 dark:border-indigo-400/20 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#060d24] border border-slate-200 dark:border-indigo-400/20 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-white">
+                  <HardDrive className="w-4 h-4 text-blue-600 dark:text-sky-300" />
+                  <span>Backup & Restore (Local JSON)</span>
                 </div>
-                <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-2 list-disc pl-5 leading-relaxed">
-                  <li>
-                    <strong>Local Storage Only:</strong> Conversations, approved memories, and progression stay in your browser’s localStorage with zero ads or tracking telemetry.
-                  </li>
-                  <li>
-                    <strong>Server-Side API Proxy:</strong> The Gemini API key stays strictly on the server and is never exposed to client code.
-                  </li>
-                  <li>
-                    <strong>No Manipulative Mechanics:</strong> No countdown pressure, fake streaks, loot boxes, or hidden prompts.
-                  </li>
-                  <li>
-                    <strong>Microphone Transparency:</strong> Voice recognition runs only when requested; raw microphone audio is never archived.
-                  </li>
-                </ul>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-600 dark:text-slate-400">Gemini Server API Key:</span>
-                <span
-                  className={
-                    isApiKeyConfigured
-                      ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                      : 'text-amber-700 dark:text-amber-300 font-semibold'
-                  }
-                >
-                  {isApiKeyConfigured ? 'Configured & Ready' : 'Not Configured'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'storage' && (
-            <div className="space-y-5">
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center gap-2 text-blue-700 dark:text-sky-300 font-semibold text-sm">
-                  <HardDrive className="w-4 h-4" />
-                  <span>Data Portability & Backup</span>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Export your conversations, memories, settings, and game progression to JSON, or restore from an existing backup file.
-                </p>
-
                 {exportNotice && (
                   <div
                     role="status"
-                    className={`p-2.5 rounded-xl border text-xs ${
+                    className={`p-2 rounded-lg text-[11px] ${
                       exportNotice.type === 'error'
-                        ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-700 text-rose-800 dark:text-rose-200'
-                        : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
+                        ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200'
+                        : 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200'
                     }`}
                   >
                     {exportNotice.text}
                   </div>
                 )}
-
-                <div className="flex flex-wrap gap-2.5 pt-1">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={handleExport}
-                    className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white inline-flex items-center gap-2 cursor-pointer transition"
+                    className="h-9 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Export Backup (JSON)</span>
+                    <span>Export Backup</span>
                   </button>
-
-                  <label className="h-10 px-4 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 inline-flex items-center gap-2 cursor-pointer transition">
+                  <label className="h-9 px-3.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5 cursor-pointer">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Restore Backup</span>
+                    <span>Restore</span>
                     <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
                   </label>
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#081020] border border-rose-200 dark:border-rose-500/25 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-semibold text-rose-700 dark:text-rose-200">
-                      Clear Conversation History
-                    </div>
-                    <div className="text-[11px] text-slate-600 dark:text-slate-400">
-                      Removes all chat transcripts stored in this browser (memories remain untouched).
-                    </div>
-                  </div>
-                  {!showClearChatsConfirm && (
-                    <button
-                      type="button"
-                      onClick={() => setShowClearChatsConfirm(true)}
-                      className="h-9 px-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-500/40 text-xs font-semibold text-rose-700 dark:text-rose-200 inline-flex items-center gap-1.5 cursor-pointer shrink-0"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Clear Chats</span>
-                    </button>
-                  )}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#060d24] border border-slate-200 dark:border-indigo-400/20 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                    <Mic className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
+                    Microphone
+                  </span>
+                  <span className="font-semibold text-blue-700 dark:text-sky-300 uppercase text-[11px]">
+                    {micPermissionState}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    Server Gemini API
+                  </span>
+                  <span
+                    className={
+                      isApiKeyConfigured
+                        ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                        : 'text-amber-600 dark:text-amber-300 font-semibold'
+                    }
+                  >
+                    {isApiKeyConfigured ? 'Ready' : 'Not Configured'}
+                  </span>
                 </div>
 
-                {showClearChatsConfirm && (
-                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-700 flex flex-wrap items-center justify-between gap-2 text-xs text-rose-800 dark:text-rose-100">
-                    <span className="inline-flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 text-rose-500 dark:text-rose-300" />
-                      Confirm deleting all conversations?
+                {!showClearChatsConfirm ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowClearChatsConfirm(true)}
+                    className="h-8 px-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-500/35 text-[11px] font-semibold text-rose-700 dark:text-rose-200 inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear Conversation History</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="inline-flex items-center gap-1 text-[11px] text-rose-700 dark:text-rose-200">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Delete all chats?
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex gap-1.5">
                       <button
                         type="button"
                         onClick={() => {
                           onClearAllConversations();
                           setShowClearChatsConfirm(false);
                         }}
-                        className="h-8 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer"
+                        className="h-7 px-2.5 rounded bg-rose-600 text-white text-[11px] font-semibold cursor-pointer"
                       >
                         Confirm
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowClearChatsConfirm(false)}
-                        className="h-8 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
+                        className="h-7 px-2.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -640,9 +783,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 )}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </div>
+    </SubpageBackdrop>
   );
 };

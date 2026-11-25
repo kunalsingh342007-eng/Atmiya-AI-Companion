@@ -49,7 +49,11 @@ export const CompanionHUD: React.FC<CompanionHUDProps> = ({
   onOpenSettings,
 }) => {
   const isSoundEnabled = settings.voiceEngine !== 'none' && settings.autoSpeakResponse;
-  const isDark = settings.theme !== 'light';
+  const isDark =
+    settings.theme === 'auto'
+      ? typeof window !== 'undefined' &&
+        Boolean(window.matchMedia?.('(prefers-color-scheme: dark)').matches)
+      : settings.theme !== 'light';
   const moodText = getCompanionMoodLabel(avatarState, emotion, unifiedState);
   const showActiveMood = avatarState !== 'idle' || micPermission === 'denied';
 

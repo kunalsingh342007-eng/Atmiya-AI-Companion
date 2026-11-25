@@ -21,18 +21,46 @@ interface QuizQuestion {
 
 const QUIZ_BANK: QuizQuestion[] = [
   {
+    id: 'm1',
+    prompt: 'What is 18 × 12 − 16?',
+    options: ['196', '200', '204', '216'],
+    correctIndex: 1,
+    fact: '18 × 12 = 216, and 216 − 16 = 200.',
+  },
+  {
+    id: 'm2',
+    prompt: 'A train travels at 72 km/h. How far does it travel in 25 minutes?',
+    options: ['24 km', '28 km', '30 km', '36 km'],
+    correctIndex: 2,
+    fact: 'At 72 km/h (1.2 km per minute), 25 minutes equals 1.2 × 25 = 30 km.',
+  },
+  {
+    id: 'm3',
+    prompt: 'What is the next number in the sequence: 3, 6, 12, 24, ___?',
+    options: ['36', '42', '48', '54'],
+    correctIndex: 2,
+    fact: 'Each term doubles the previous number (24 × 2 = 48).',
+  },
+  {
+    id: 'm4',
+    prompt: 'If a square has a perimeter of 52 cm, what is its area?',
+    options: ['144 cm²', '169 cm²', '196 cm²', '225 cm²'],
+    correctIndex: 1,
+    fact: 'Each side is 52 ÷ 4 = 13 cm, so area = 13 × 13 = 169 cm².',
+  },
+  {
+    id: 'm5',
+    prompt: 'What is 25% of 360?',
+    options: ['80', '85', '90', '96'],
+    correctIndex: 2,
+    fact: '25% is one quarter: 360 ÷ 4 = 90.',
+  },
+  {
     id: 'q1',
     prompt: 'Which planet in our solar system is known for its prominent icy ring system?',
     options: ['Mars', 'Saturn', 'Venus', 'Mercury'],
     correctIndex: 1,
     fact: 'Saturn has the brightest, most extensive ring system made of ice and rock particles.',
-  },
-  {
-    id: 'q2',
-    prompt: 'In classical Indian music, how many primary swaras (notes) form an octave (Saptak)?',
-    options: ['5', '7', '9', '12'],
-    correctIndex: 1,
-    fact: 'The seven swaras are Sa, Re, Ga, Ma, Pa, Dha, and Ni.',
   },
   {
     id: 'q3',
@@ -42,39 +70,11 @@ const QUIZ_BANK: QuizQuestion[] = [
     fact: 'Earth’s atmosphere is about 78% nitrogen and 21% oxygen.',
   },
   {
-    id: 'q4',
-    prompt: 'What is the largest ocean on Earth?',
-    options: ['Atlantic Ocean', 'Indian Ocean', 'Arctic Ocean', 'Pacific Ocean'],
-    correctIndex: 3,
-    fact: 'The Pacific Ocean covers nearly one-third of Earth’s surface.',
-  },
-  {
-    id: 'q5',
-    prompt: 'Which instrument is used to measure atmospheric pressure?',
-    options: ['Barometer', 'Hygrometer', 'Anemometer', 'Thermometer'],
-    correctIndex: 0,
-    fact: 'A barometer tracks air pressure changes to help forecast weather.',
-  },
-  {
-    id: 'q6',
-    prompt: 'Who wrote the famous collection of poems "Gitanjali"?',
-    options: ['Munshi Premchand', 'Rabindranath Tagore', 'Sarojini Naidu', 'Mirza Ghalib'],
-    correctIndex: 1,
-    fact: 'Rabindranath Tagore won the 1913 Nobel Prize in Literature for Gitanjali.',
-  },
-  {
     id: 'q7',
     prompt: 'Which mathematical constant represents the ratio of a circle’s circumference to its diameter?',
     options: ['Euler’s e', 'Golden Ratio φ', 'Pi (π)', 'Tau (τ)'],
     correctIndex: 2,
     fact: 'Pi (π ≈ 3.14159) is constant for every circle regardless of size.',
-  },
-  {
-    id: 'q8',
-    prompt: 'Which part of a plant primarily absorbs water and minerals from soil?',
-    options: ['Roots', 'Leaves', 'Petals', 'Stomata'],
-    correctIndex: 0,
-    fact: 'Root hairs increase surface area to absorb water and dissolved nutrients.',
   },
 ];
 
@@ -173,10 +173,10 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
-                Quick Quiz
+                Math Quiz
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                5 short general-knowledge questions with instant explanations.
+                5 short math &amp; general-knowledge questions with instant explanations.
               </p>
             </div>
             {phase !== 'ready' && (

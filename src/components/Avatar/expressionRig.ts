@@ -6,6 +6,7 @@ import {
   CoreCompanionEmotion,
   UnifiedAnimationState,
 } from '../../types/companion';
+import type { LipSyncMorphWeights, LipSyncVisemeName } from './lipSync';
 
 export type AvatarGesture = 'none' | 'wave' | 'nod';
 
@@ -197,6 +198,12 @@ const CHANNEL_ALIASES = {
   mouthStretchRight: ['mouthStretchRight', 'MouthStretchRight'],
   mouthPressLeft: ['mouthPressLeft', 'MouthPressLeft'],
   mouthPressRight: ['mouthPressRight', 'MouthPressRight'],
+  mouthRollLower: ['mouthRollLower', 'MouthRollLower'],
+  mouthRollUpper: ['mouthRollUpper', 'MouthRollUpper'],
+  mouthLowerDownLeft: ['mouthLowerDownLeft', 'MouthLowerDownLeft'],
+  mouthLowerDownRight: ['mouthLowerDownRight', 'MouthLowerDownRight'],
+  mouthUpperUpLeft: ['mouthUpperUpLeft', 'MouthUpperUpLeft'],
+  mouthUpperUpRight: ['mouthUpperUpRight', 'MouthUpperUpRight'],
   eyeLookUpLeft: ['eyeLookUpLeft', 'EyeLookUpLeft'],
   eyeLookUpRight: ['eyeLookUpRight', 'EyeLookUpRight'],
   eyeLookDownLeft: ['eyeLookDownLeft', 'EyeLookDownLeft'],
@@ -228,9 +235,19 @@ const ALL_CHANNELS = Object.keys(CHANNEL_ALIASES) as FacialChannel[];
 
 const SPEECH_CHANNELS: FacialChannel[] = [
   'jawOpen',
+  'mouthClose',
   'mouthFunnel',
+  'mouthPucker',
   'mouthStretchLeft',
   'mouthStretchRight',
+  'mouthPressLeft',
+  'mouthPressRight',
+  'mouthRollLower',
+  'mouthRollUpper',
+  'mouthLowerDownLeft',
+  'mouthLowerDownRight',
+  'mouthUpperUpLeft',
+  'mouthUpperUpRight',
   'visemeSil',
   'visemePP',
   'visemeFF',
@@ -502,7 +519,16 @@ function findFirstBone(
 function getMorphDampSpeed(morphName: string): number {
   const lower = morphName.toLowerCase();
   if (lower.includes('blink')) return 28;
-  if (lower.includes('jaw') || lower.startsWith('viseme_')) return 20;
+  if (
+    lower.includes('jaw') ||
+    lower.startsWith('viseme_') ||
+    lower.includes('mouthfunnel') ||
+    lower.includes('mouthpucker') ||
+    lower.includes('mouthclose') ||
+    lower.includes('mouthroll')
+  ) {
+    return 26;
+  }
   return 9;
 }
 
@@ -925,10 +951,14 @@ export function inspectGlbRig(sceneRoot: THREE.Object3D): InspectedRigData {
     (
       [
         ...CHANNEL_ALIASES.jawOpen,
+        ...CHANNEL_ALIASES.mouthClose,
         ...CHANNEL_ALIASES.mouthFunnel,
         ...CHANNEL_ALIASES.mouthPucker,
         ...CHANNEL_ALIASES.mouthStretchLeft,
         ...CHANNEL_ALIASES.mouthPressLeft,
+        ...CHANNEL_ALIASES.mouthRollLower,
+        ...CHANNEL_ALIASES.mouthLowerDownLeft,
+        ...CHANNEL_ALIASES.mouthUpperUpLeft,
         ...SUPPORTED_VISEME_NAMES,
       ] as string[]
     ).includes(k)
@@ -1202,6 +1232,12 @@ export interface RigAnimationRuntime {
   bodyIdleBlend: number;
   hipsOffset: THREE.Vector3;
   bodyDeltaQuats: Map<THREE.Object3D, THREE.Quaternion>;
+  // Milestone 2 idle shoulder/arm & speech-pause coordination
+  armIdleBlend: number;
+  speechPausedSec: number;
+  speechPauseDamp: number;
+  speechHeadInflectionLevel: number;
+  speechControlledHeadPose: boolean;
 }
 
 export function createRigRuntime(): RigAnimationRuntime {
@@ -1237,6 +1273,11 @@ export function createRigRuntime(): RigAnimationRuntime {
     bodyIdleBlend: 1,
     hipsOffset: new THREE.Vector3(),
     bodyDeltaQuats: new Map<THREE.Object3D, THREE.Quaternion>(),
+    armIdleBlend: 1,
+    speechPausedSec: 0,
+    speechPauseDamp: 1,
+    speechHeadInflectionLevel: 0,
+    speechControlledHeadPose: false,
   };
 }
 
@@ -1253,6 +1294,10 @@ export function setIdleMovementIntensity(
 
 export function resetBodyPose(runtime: RigAnimationRuntime): void {
   runtime.bodyIdleBlend = 0;
+  runtime.armIdleBlend = 1;
+  runtime.speechPausedSec = 0;
+  runtime.speechPauseDamp = 1;
+  runtime.speechHeadInflectionLevel = 0;
   runtime.hipsOffset.set(0, 0, 0);
 }
 
@@ -1285,21 +1330,45 @@ export function triggerHeadNod(
 export function turnHeadLeft(runtime: RigAnimationRuntime, intensity = 1): void {
   runtime.headPose = 'turn-left';
   runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+  runtime.speechControlledHeadPose = false;
 }
 
 export function turnHeadRight(runtime: RigAnimationRuntime, intensity = 1): void {
   runtime.headPose = 'turn-right';
   runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+  runtime.speechControlledHeadPose = false;
 }
 
 export function tiltHeadLeft(runtime: RigAnimationRuntime, intensity = 1): void {
   runtime.headPose = 'tilt-left';
   runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+  runtime.speechControlledHeadPose = false;
 }
 
 export function tiltHeadRight(runtime: RigAnimationRuntime, intensity = 1): void {
   runtime.headPose = 'tilt-right';
   runtime.headPoseIntensity = Math.max(0.25, Math.min(1.0, intensity));
+  runtime.speechControlledHeadPose = false;
+}
+
+export function setSpeechHeadTilt(
+  runtime: RigAnimationRuntime,
+  pose: 'tilt-left' | 'tilt-right',
+  intensity = 0.48
+): void {
+  if (runtime.headPose !== 'neutral' && !runtime.speechControlledHeadPose) {
+    return;
+  }
+  runtime.headPose = pose;
+  runtime.headPoseIntensity = Math.max(0.25, Math.min(0.85, intensity));
+  runtime.speechControlledHeadPose = true;
+}
+
+export function clearSpeechHeadTilt(runtime: RigAnimationRuntime): void {
+  if (!runtime.speechControlledHeadPose) return;
+  runtime.headPose = 'neutral';
+  runtime.headPoseIntensity = 1;
+  runtime.speechControlledHeadPose = false;
 }
 
 export function resetHeadPose(runtime: RigAnimationRuntime): void {
@@ -1307,6 +1376,7 @@ export function resetHeadPose(runtime: RigAnimationRuntime): void {
   runtime.headPoseIntensity = 1;
   runtime.nodActive = false;
   runtime.nodProgress = 0;
+  runtime.speechControlledHeadPose = false;
 }
 
 const DEFAULT_GESTURE_DURATIONS: Record<Exclude<ArmGestureName, 'none'>, number> = {
@@ -1475,6 +1545,7 @@ export function updateExpressionRig(params: {
   emotion: AvatarEmotion;
   emotionIntensity: number;
   audioLevel: number;
+  lipSyncFrame?: LipSyncMorphWeights;
   prefersReducedMotion: boolean;
   elapsed: number;
   delta: number;
@@ -1487,6 +1558,7 @@ export function updateExpressionRig(params: {
     emotion,
     emotionIntensity,
     audioLevel,
+    lipSyncFrame,
     prefersReducedMotion,
     elapsed,
     delta,
@@ -1494,7 +1566,8 @@ export function updateExpressionRig(params: {
 
   const clampedIntensity = Math.max(0.15, Math.min(1, emotionIntensity));
   const safeEmotion = rig.supportedExpressions[emotion] ? emotion : 'neutral';
-  const isSpeakingActive = state === 'speaking' || unifiedState === 'speaking';
+  const isSpeakingActive =
+    state === 'speaking' || unifiedState === 'speaking' || Boolean(lipSyncFrame?.isActive);
 
   // Effective expression: coordinate unifiedState with explicit emotion without overwriting speech
   let activeEmotion: AvatarEmotion = safeEmotion;
@@ -1600,60 +1673,55 @@ export function updateExpressionRig(params: {
     }
   }
 
-  // 4. Audio-amplitude approximate speech animation (jawOpen + visemes)
+  // 4. Real-time audio-reactive / clock-paced speech lip-sync (visemes + ARKit jaw/mouth shapes)
   let speechJawWeight = 0;
   let speechFunnelWeight = 0;
+  let speechPuckerWeight = 0;
   let speechStretchWeight = 0;
+  let speechCloseWeight = 0;
+  let speechPressWeight = 0;
+  let speechRollLowerWeight = 0;
+  let speechUpperUpWeight = 0;
+  let speechLowerDownWeight = 0;
 
-  if (isSpeakingActive) {
+  if (lipSyncFrame && lipSyncFrame.isActive) {
+    const motionScale = prefersReducedMotion ? 0.65 : 1.0;
+
+    if (rig.capabilities.hasVisemeMorphs) {
+      for (let i = 0; i < SUPPORTED_VISEME_NAMES.length; i += 1) {
+        const vName = SUPPORTED_VISEME_NAMES[i] as LipSyncVisemeName;
+        const w = (lipSyncFrame.visemes[vName] ?? 0) * (vName === 'viseme_sil' ? 1 : motionScale);
+        if (w > 0) {
+          _desiredChannels[VISEME_CHANNEL_BY_NAME[vName]] = Math.min(1, w);
+        }
+      }
+    }
+
+    speechJawWeight = lipSyncFrame.jawOpen * motionScale;
+    speechFunnelWeight = lipSyncFrame.mouthFunnel * motionScale;
+    speechPuckerWeight = lipSyncFrame.mouthPucker * motionScale;
+    speechStretchWeight = lipSyncFrame.mouthStretch * motionScale;
+    speechCloseWeight = lipSyncFrame.mouthClose * motionScale;
+    speechPressWeight = lipSyncFrame.mouthPress * motionScale;
+    speechRollLowerWeight = lipSyncFrame.mouthRollLower * motionScale;
+    speechUpperUpWeight = lipSyncFrame.mouthUpperUp * motionScale;
+    speechLowerDownWeight = lipSyncFrame.mouthLowerDown * motionScale;
+
+    if (lipSyncFrame.roundingAttenuation > 0.02) {
+      const smileKeep = Math.max(0.28, 1 - lipSyncFrame.roundingAttenuation * 0.7);
+      _desiredChannels.smileLeft = (_desiredChannels.smileLeft ?? 0) * smileKeep;
+      _desiredChannels.smileRight = (_desiredChannels.smileRight ?? 0) * smileKeep;
+    }
+  } else if (isSpeakingActive && state === 'speaking') {
+    // Minimal scalar fallback only if external caller passes audioLevel without LipSyncEngine
     const effectiveAudio = Math.max(0, Math.min(1, audioLevel));
-    if (effectiveAudio > 0.02) {
-      runtime.talkPhase += delta * 13.0;
-      const harmonic = 0.78 + 0.22 * Math.sin(runtime.talkPhase);
-      speechJawWeight = Math.min(0.44, effectiveAudio * 0.6 * harmonic);
-
+    if (effectiveAudio > 0.03) {
+      const motionScale = prefersReducedMotion ? 0.65 : 1.0;
+      speechJawWeight = Math.min(0.42, effectiveAudio * 0.52 * motionScale);
       if (rig.capabilities.hasVisemeMorphs) {
-        const vowelWave = (Math.sin(runtime.talkPhase * 0.62) + 1) * 0.5;
-        const roundWave = (Math.cos(runtime.talkPhase * 0.45) + 1) * 0.5;
-        const spreadWave = (Math.sin(runtime.talkPhase * 0.95 + 1.1) + 1) * 0.5;
-        const consonantWave = Math.max(0, Math.sin(runtime.talkPhase * 1.45));
-
         _desiredChannels[VISEME_CHANNEL_BY_NAME.viseme_aa] = Math.min(
-          0.42,
-          effectiveAudio * 0.5 * vowelWave
-        );
-        _desiredChannels[VISEME_CHANNEL_BY_NAME.viseme_O] = Math.min(
-          0.32,
-          effectiveAudio * 0.36 * roundWave * (1 - vowelWave * 0.4)
-        );
-        _desiredChannels[VISEME_CHANNEL_BY_NAME.viseme_E] = Math.min(
-          0.28,
-          effectiveAudio * 0.32 * spreadWave * (1 - roundWave * 0.5)
-        );
-        _desiredChannels[VISEME_CHANNEL_BY_NAME.viseme_I] = Math.min(
-          0.2,
-          effectiveAudio * 0.24 * spreadWave * (1 - vowelWave * 0.6)
-        );
-        _desiredChannels[VISEME_CHANNEL_BY_NAME.viseme_U] = Math.min(
-          0.22,
-          effectiveAudio * 0.24 * (1 - vowelWave) * roundWave
-        );
-        _desiredChannels[VISEME_CHANNEL_BY_NAME.viseme_PP] = Math.min(
-          0.18,
-          effectiveAudio * 0.22 * (1 - vowelWave) * consonantWave
-        );
-        _desiredChannels[VISEME_CHANNEL_BY_NAME.viseme_SS] = Math.min(
-          0.16,
-          effectiveAudio * 0.2 * spreadWave * consonantWave * 0.6
-        );
-      } else {
-        speechFunnelWeight = Math.min(
-          0.32,
-          effectiveAudio * 0.4 * (0.5 + 0.5 * Math.cos(runtime.talkPhase * 0.7))
-        );
-        speechStretchWeight = Math.min(
-          0.26,
-          effectiveAudio * 0.32 * (0.5 + 0.5 * Math.sin(runtime.talkPhase * 1.1))
+          0.4,
+          effectiveAudio * 0.45 * motionScale
         );
       }
     } else if (rig.capabilities.hasVisemeMorphs) {
@@ -1667,6 +1735,9 @@ export function updateExpressionRig(params: {
   if (speechFunnelWeight > 0) {
     _desiredChannels.mouthFunnel = Math.max(_desiredChannels.mouthFunnel ?? 0, speechFunnelWeight);
   }
+  if (speechPuckerWeight > 0) {
+    _desiredChannels.mouthPucker = Math.max(_desiredChannels.mouthPucker ?? 0, speechPuckerWeight);
+  }
   if (speechStretchWeight > 0) {
     _desiredChannels.mouthStretchLeft = Math.max(
       _desiredChannels.mouthStretchLeft ?? 0,
@@ -1677,9 +1748,48 @@ export function updateExpressionRig(params: {
       speechStretchWeight
     );
   }
+  if (speechCloseWeight > 0) {
+    _desiredChannels.mouthClose = Math.max(_desiredChannels.mouthClose ?? 0, speechCloseWeight);
+  }
+  if (speechPressWeight > 0) {
+    _desiredChannels.mouthPressLeft = Math.max(
+      _desiredChannels.mouthPressLeft ?? 0,
+      speechPressWeight
+    );
+    _desiredChannels.mouthPressRight = Math.max(
+      _desiredChannels.mouthPressRight ?? 0,
+      speechPressWeight
+    );
+  }
+  if (speechRollLowerWeight > 0) {
+    _desiredChannels.mouthRollLower = Math.max(
+      _desiredChannels.mouthRollLower ?? 0,
+      speechRollLowerWeight
+    );
+  }
+  if (speechUpperUpWeight > 0) {
+    _desiredChannels.mouthUpperUpLeft = Math.max(
+      _desiredChannels.mouthUpperUpLeft ?? 0,
+      speechUpperUpWeight
+    );
+    _desiredChannels.mouthUpperUpRight = Math.max(
+      _desiredChannels.mouthUpperUpRight ?? 0,
+      speechUpperUpWeight
+    );
+  }
+  if (speechLowerDownWeight > 0) {
+    _desiredChannels.mouthLowerDownLeft = Math.max(
+      _desiredChannels.mouthLowerDownLeft ?? 0,
+      speechLowerDownWeight
+    );
+    _desiredChannels.mouthLowerDownRight = Math.max(
+      _desiredChannels.mouthLowerDownRight ?? 0,
+      speechLowerDownWeight
+    );
+  }
 
-  // Conflict prevention: suppress lip press/close during jaw opening, and frown during smile
-  if ((_desiredChannels.jawOpen ?? 0) > 0.02 || isSpeakingActive) {
+  // Conflict prevention: suppress lip press/close during wide jaw opening (while permitting bilabial closures), and frown during smile
+  if ((_desiredChannels.jawOpen ?? 0) > 0.05) {
     _desiredChannels.mouthClose = 0;
     _desiredChannels.mouthPressLeft = 0;
     _desiredChannels.mouthPressRight = 0;
@@ -1750,18 +1860,48 @@ export function updateHeadNeckRig(params: {
   runtime: RigAnimationRuntime;
   state: AvatarState;
   unifiedState?: UnifiedAnimationState;
+  lipSyncFrame?: LipSyncMorphWeights;
   prefersReducedMotion: boolean;
   elapsed: number;
   delta: number;
 }): { isAnimating: boolean } {
-  const { rig, runtime, state, unifiedState, prefersReducedMotion, elapsed, delta } = params;
+  const { rig, runtime, state, unifiedState, lipSyncFrame, prefersReducedMotion, elapsed, delta } =
+    params;
   const { head, neck } = rig.bones;
 
   if (!head && !neck) {
     return { isAnimating: false };
   }
 
-  // 1. Advance explicit head nod action if running
+  const isSpeaking = state === 'speaking' || unifiedState === 'speaking';
+
+  // Track speech-pause silence duration cleanly so continuous motion calms during pauses
+  if (isSpeaking && lipSyncFrame?.isActive) {
+    if (lipSyncFrame.isVoiced) {
+      runtime.speechPausedSec = 0;
+    } else {
+      runtime.speechPausedSec = Math.min(10, runtime.speechPausedSec + delta);
+    }
+  } else {
+    runtime.speechPausedSec = 0;
+  }
+
+  const isInSpeechPause = isSpeaking && runtime.speechPausedSec > 0.28;
+  const targetPauseDamp = isInSpeechPause ? 0.36 : 1.0;
+  runtime.speechPauseDamp = THREE.MathUtils.damp(runtime.speechPauseDamp, targetPauseDamp, 6.0, delta);
+
+  const targetSpeechInflection =
+    !prefersReducedMotion && isSpeaking && lipSyncFrame?.isVoiced
+      ? Math.max(0, Math.min(1, lipSyncFrame.overallLevel))
+      : 0;
+  runtime.speechHeadInflectionLevel = THREE.MathUtils.damp(
+    runtime.speechHeadInflectionLevel,
+    targetSpeechInflection,
+    5.5,
+    delta
+  );
+
+  // 1. Advance explicit head nod action if running (completes smoothly even during speech pause)
   let nodPitch = 0;
   if (runtime.nodActive) {
     runtime.nodProgress += delta / Math.max(0.25, runtime.nodDuration);
@@ -1807,8 +1947,8 @@ export function updateHeadNeckRig(params: {
   ) {
     if (state === 'listening' || unifiedState === 'listening') {
       targetIdleBlend = 0.4; // Attentive, calm stillness
-    } else if (state === 'speaking' || unifiedState === 'speaking') {
-      targetIdleBlend = 0.45; // Subtle presence without nodding while speaking
+    } else if (isSpeaking) {
+      targetIdleBlend = 0.45 * runtime.speechPauseDamp; // Subtle presence; calm during pauses
     } else if (unifiedState === 'greeting' || unifiedState === 'goodbye') {
       targetIdleBlend = 0.35; // Poised posture during wave/greeting
     } else {
@@ -1825,7 +1965,7 @@ export function updateHeadNeckRig(params: {
       ? 1.4
       : 1.0;
 
-  // 4. Organic multi-frequency idle sway (non-repeating ratios, facing camera most of the time)
+  // 4. Organic multi-frequency idle sway + subtle speech phrasing inflection
   let idlePitch = 0;
   let idleYaw = 0;
   let idleRoll = 0;
@@ -1846,6 +1986,12 @@ export function updateHeadNeckRig(params: {
       0.018 *
       idleIntensityScale *
       runtime.headIdleBlend;
+
+    if (isSpeaking && runtime.speechHeadInflectionLevel > 0.01) {
+      const speechGain = runtime.speechHeadInflectionLevel * runtime.speechPauseDamp * runtime.headIdleBlend;
+      idlePitch += Math.sin(t * 2.05 + 0.4) * 0.015 * speechGain;
+      idleYaw += Math.sin(t * 1.32 + 1.1) * 0.017 * speechGain;
+    }
   }
 
   // 5. Smoothly interpolate head/neck angles toward combined target
@@ -1941,8 +2087,20 @@ export function updateArmHandRig(params: {
   prefersReducedMotion: boolean;
   delta: number;
   postureMode?: BodyPostureMode;
+  state?: AvatarState;
+  unifiedState?: UnifiedAnimationState;
+  elapsed?: number;
 }): { isAnimating: boolean; activeGesture: ArmGestureName } {
-  const { rig, runtime, prefersReducedMotion, delta, postureMode = 'standing' } = params;
+  const {
+    rig,
+    runtime,
+    prefersReducedMotion,
+    delta,
+    postureMode = 'standing',
+    state = 'idle',
+    unifiedState,
+    elapsed = 0,
+  } = params;
   const { bones } = rig;
 
   if (!bones.rightArm && !bones.leftArm) {
@@ -2001,7 +2159,33 @@ export function updateArmHandRig(params: {
     }
   }
 
-  let stillConverging = runtime.armGesture !== 'none';
+  // Subtle resting shoulder & arm breathing accompaniment (synchronized with torso breath)
+  let targetArmIdleBlend = 0;
+  if (!prefersReducedMotion && runtime.idleEnabled) {
+    if (state === 'listening' || unifiedState === 'listening') {
+      targetArmIdleBlend = 0.35;
+    } else if (state === 'speaking' || unifiedState === 'speaking') {
+      targetArmIdleBlend = 0.55 * runtime.speechPauseDamp;
+    } else {
+      targetArmIdleBlend = 1.0;
+    }
+  }
+  runtime.armIdleBlend = THREE.MathUtils.damp(runtime.armIdleBlend, targetArmIdleBlend, 4.0, delta);
+
+  const armIntensityScale =
+    runtime.idleIntensity === 'low'
+      ? 0.55
+      : runtime.idleIntensity === 'high'
+      ? 1.35
+      : 1.0;
+  const armIdleWeight = runtime.armIdleBlend * armIntensityScale;
+  const t = elapsed + runtime.idlePhaseOffset;
+  const armBreath =
+    (Math.sin(t * 1.45 - 0.15) * 0.72 + Math.sin(t * 0.72 + 0.45) * 0.28) * armIdleWeight;
+  const armSway =
+    (Math.sin(t * 0.76 + 0.4) * 0.7 + Math.sin(t * 0.43 + 1.9) * 0.3) * armIdleWeight;
+
+  let stillConverging = runtime.armGesture !== 'none' || runtime.armIdleBlend > 0.002;
   const slerpAlphaArm = 1 - Math.exp(-9.5 * delta);
   const slerpAlphaHand = 1 - Math.exp(-12.0 * delta);
 
@@ -2041,18 +2225,20 @@ export function updateArmHandRig(params: {
     const foreArm = side === 'right' ? bones.rightForeArm : bones.leftForeArm;
     const hand = side === 'right' ? bones.rightHand : bones.leftHand;
 
+    const sideGestureFade = activeSide === side ? Math.max(0, 1 - gestureHoldBlend) : 1;
+
     // Seated resting baseline gently aligns hands above chair armrests without clipping
     const isSeated = postureMode === 'seated';
-    let shX = 0;
+    let shX = 0.008 * armBreath * sideGestureFade;
     let shY = 0;
-    let shZ = 0;
-    let armX = isSeated ? 1.12 : 1.16;
-    let armY = isSeated ? -0.18 * m : 0;
-    let armZ = (isSeated ? -0.16 : -0.08) * m;
+    let shZ = -0.016 * armBreath * m * sideGestureFade;
+    let armX = (isSeated ? 1.12 : 1.16) + 0.011 * armBreath * sideGestureFade;
+    let armY = (isSeated ? -0.18 * m : 0) + 0.007 * armSway * m * sideGestureFade;
+    let armZ = ((isSeated ? -0.16 : -0.08) - 0.009 * armBreath * sideGestureFade) * m;
     let foreX = isSeated ? -0.05 : 0;
     let foreY = isSeated ? 0.35 * m : 0;
-    let foreZ = (isSeated ? -1.12 : -0.18) * m;
-    let handX = isSeated ? 0.04 : 0;
+    let foreZ = ((isSeated ? -1.12 : -0.18) - 0.015 * armSway * sideGestureFade) * m;
+    let handX = (isSeated ? 0.04 : 0) + 0.008 * armSway * sideGestureFade;
     let handY = isSeated ? 0.08 * m : 0;
     let handZ = (isSeated ? 0.12 : -0.04) * m;
 
@@ -2281,7 +2467,7 @@ export function updateFullBodyAndLowerRig(params: {
     if (hasActiveGesture) {
       targetBodyBlend = 0.28; // Stabilize torso & stance while arm/nod gesture plays
     } else if (isSpeaking) {
-      targetBodyBlend = 0.48; // Gentle breathing + calm conversational poise
+      targetBodyBlend = 0.48 * (0.65 + 0.35 * runtime.speechPauseDamp); // Gentle breathing + calm conversational poise
     } else if (isListening) {
       targetBodyBlend = 0.55; // Attentive stillness
     } else {
@@ -2302,12 +2488,16 @@ export function updateFullBodyAndLowerRig(params: {
   const isLowerBodyVisible = presentationMode !== 'close-up';
   const weightShiftFactor = isLowerBodyVisible ? 1.0 : 0.0;
   const blend = runtime.bodyIdleBlend * intensityScale;
+  const speechSwayPauseFactor = isSpeaking ? 0.45 + 0.55 * runtime.speechPauseDamp : 1.0;
 
   // 2. Smooth multi-frequency time signals (sub-Hz natural breathing ~0.23Hz & slow sway ~0.12Hz)
   const t = elapsed + runtime.idlePhaseOffset;
   const breath = (Math.sin(t * 1.45) * 0.72 + Math.sin(t * 0.72 + 0.6) * 0.28) * blend;
-  const sway = (Math.sin(t * 0.76 + 0.4) * 0.7 + Math.sin(t * 0.43 + 1.9) * 0.3) * blend;
-  const microPitch = Math.sin(t * 0.53 + 1.1) * blend;
+  const sway =
+    (Math.sin(t * 0.76 + 0.4) * 0.7 + Math.sin(t * 0.43 + 1.9) * 0.3) *
+    blend *
+    speechSwayPauseFactor;
+  const microPitch = Math.sin(t * 0.53 + 1.1) * blend * speechSwayPauseFactor;
 
   // 3. Chest breathing (Spine, Spine1, Spine2): seated posture base + subtle inhale expansion
   const seatedSpinePitch = isSeated ? -0.04 : 0;

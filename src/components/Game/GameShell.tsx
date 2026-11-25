@@ -15,7 +15,7 @@ interface GameShellProps {
   activeTab: ActiveNavTab;
   onSelectTab: (tab: ActiveNavTab) => void;
   memoriesCount: number;
-  theme: 'dark' | 'light';
+  theme: 'auto' | 'dark' | 'light';
   userName?: string;
   xp?: number;
   onToggleTheme: () => void;
@@ -33,9 +33,9 @@ interface SidebarNavItem {
 const SIDEBAR_ITEMS: SidebarNavItem[] = [
   { id: 'home', targetTab: 'home', label: 'Home', icon: Home, implemented: true },
   { id: 'play', targetTab: 'play', label: 'Play', icon: Gamepad2, implemented: true },
+  { id: 'learning', targetTab: 'learning', label: 'Learning', icon: BookOpen, implemented: true },
   { id: 'memories', targetTab: 'memories', label: 'Memories', icon: Brain, implemented: true },
   { id: 'wardrobe', targetTab: 'wardrobe', label: 'Customize', icon: Palette, implemented: true },
-  { id: 'learning', label: 'Learning', icon: BookOpen, implemented: false },
   { id: 'games', targetTab: 'play', label: 'Games', icon: Dices, implemented: true },
   { id: 'settings', targetTab: 'settings', label: 'Settings', icon: Settings, implemented: true },
 ];
@@ -47,6 +47,7 @@ const MOBILE_NAV_ITEMS: {
 }[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'play', label: 'Play', icon: Gamepad2 },
+  { id: 'learning', label: 'Learn', icon: BookOpen },
   { id: 'memories', label: 'Memories', icon: Brain },
   { id: 'wardrobe', label: 'Customize', icon: Palette },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -130,11 +131,11 @@ export const GameShell: React.FC<GameShellProps> = ({
   const level = 1 + Math.floor(Math.max(0, xp) / 100);
 
   return (
-    <div className="relative flex flex-col md:flex-row h-dvh w-full overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#040818] dark:text-slate-100 font-sans transition-colors duration-200">
+    <div className="relative flex flex-col md:flex-row h-dvh w-full overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#050b21] dark:text-slate-100 font-sans transition-colors duration-200">
       {/* Desktop & Tablet Deep Navy Left Navigation Sidebar (md+) */}
       <aside
         aria-label="Primary companion navigation"
-        className="hidden md:flex flex-col justify-between shrink-0 w-[76px] lg:w-[216px] bg-white/95 dark:bg-gradient-to-b dark:from-[#070f28] dark:via-[#060c21] dark:to-[#040818] border-r border-slate-200 dark:border-indigo-400/18 z-30 py-4 px-2.5 lg:px-3.5 shadow-[6px_0_32px_rgba(2,6,23,0.45)]"
+        className="hidden md:flex flex-col justify-between shrink-0 w-[76px] lg:w-[216px] bg-white/95 dark:bg-gradient-to-b dark:from-[#08102b] dark:via-[#060c23] dark:to-[#040818] border-r border-slate-200 dark:border-indigo-400/20 z-30 py-4 px-2.5 lg:px-3.5 shadow-[6px_0_32px_rgba(2,6,23,0.48)]"
       >
         <div className="space-y-5">
           {/* Official Ātmiya Lotus Brand Crest */}
@@ -142,9 +143,9 @@ export const GameShell: React.FC<GameShellProps> = ({
             <div className="relative flex items-center justify-center">
               <div
                 aria-hidden="true"
-                className="hidden dark:block absolute inset-0 rounded-full bg-violet-500/30 blur-md"
+                className="hidden dark:block absolute inset-0 rounded-full bg-violet-500/35 blur-md"
               />
-              <AtmiyaLotusLogo className="relative w-10 h-10 lg:w-11 lg:h-11 drop-shadow-[0_0_12px_rgba(168,85,247,0.55)]" />
+              <AtmiyaLotusLogo className="relative w-10 h-10 lg:w-11 lg:h-11 drop-shadow-[0_0_12px_rgba(168,85,247,0.58)]" />
             </div>
             <div className="hidden lg:flex flex-col items-center mt-1 text-center">
               <span className="text-[17px] font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
@@ -164,25 +165,6 @@ export const GameShell: React.FC<GameShellProps> = ({
                 item.implemented &&
                 item.targetTab === activeTab &&
                 item.id !== 'games';
-
-              if (!item.implemented) {
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    disabled
-                    aria-disabled="true"
-                    title="Learning section is not implemented yet"
-                    className="w-full min-h-[40px] px-2.5 lg:px-3 py-2 rounded-xl flex items-center justify-center lg:justify-start gap-3 text-[13px] font-medium whitespace-nowrap border border-transparent text-slate-400 dark:text-slate-500/80 opacity-75 cursor-not-allowed"
-                  >
-                    <Icon className="w-4 h-4 shrink-0 text-slate-400 dark:text-slate-500" />
-                    <span className="hidden lg:inline truncate">{item.label}</span>
-                    <span className="hidden lg:inline ml-auto text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                      Soon
-                    </span>
-                  </button>
-                );
-              }
 
               return (
                 <button
@@ -262,9 +244,9 @@ export const GameShell: React.FC<GameShellProps> = ({
       {/* Mobile Only Compact Bottom Navigation (< md / 768px) */}
       <nav
         aria-label="Mobile companion navigation"
-        className="md:hidden relative z-30 shrink-0 w-full bg-white/95 dark:bg-[#070f26]/95 border-t border-slate-200 dark:border-indigo-400/18 backdrop-blur-xl px-2 py-1.5"
+        className="md:hidden relative z-30 shrink-0 w-full bg-white/95 dark:bg-[#070f26]/95 border-t border-slate-200 dark:border-indigo-400/18 backdrop-blur-xl px-1.5 py-1.5"
       >
-        <div className="max-w-2xl mx-auto grid grid-cols-5 gap-1">
+        <div className="max-w-2xl mx-auto grid grid-cols-6 gap-0.5">
           {MOBILE_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -277,7 +259,7 @@ export const GameShell: React.FC<GameShellProps> = ({
                 aria-label={
                   item.id === 'memories' ? `Memories (${memoriesCount})` : item.label
                 }
-                className={`min-h-[44px] px-1 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+                className={`min-h-[44px] px-0.5 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
                   isActive
                     ? 'bg-blue-50 dark:bg-blue-600/25 text-blue-700 dark:text-sky-100'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.04]'

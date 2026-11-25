@@ -192,8 +192,12 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
   };
 
   const speakReply = async (replyText: string) => {
-    setAvatarState('speaking');
-    setStatusMessage('Ātmiya is speaking (आत्मीय बोल रही है)...');
+    setStatusMessage('Preparing voice response...');
+
+    const onPlaybackStart = () => {
+      setAvatarState('speaking');
+      setStatusMessage('Ātmiya is speaking (आत्मीय बोल रही है)...');
+    };
 
     const onSpeechEnd = () => {
       setAvatarState('idle');
@@ -226,7 +230,19 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
             onSpeechEnd,
             (err) => {
               console.warn('WAV playback failed, falling back to browser TTS:', err);
-              speechService.speakWithBrowserTTS(replyText, settings.language, settings.speechRate, onSpeechEnd);
+              speechService.speakWithBrowserTTS(
+                replyText,
+                settings.language,
+                settings.speechRate,
+                onSpeechEnd,
+                onPlaybackStart
+              );
+            },
+            {
+              text: replyText,
+              lang: settings.language,
+              rate: settings.speechRate,
+              onStart: onPlaybackStart,
             }
           );
           return;
@@ -241,7 +257,8 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
       replyText,
       settings.language === 'hi' ? 'hi-IN' : 'en-IN',
       settings.speechRate,
-      onSpeechEnd
+      onSpeechEnd,
+      onPlaybackStart
     );
   };
 

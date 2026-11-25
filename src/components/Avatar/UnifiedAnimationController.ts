@@ -6,6 +6,7 @@ import {
   UnifiedAnimationState,
 } from '../../types/companion';
 import {
+  ArmGestureName,
   AvatarGesture,
   mapToCoreEmotion,
   normalizeAvatarEmotion,
@@ -31,6 +32,8 @@ export interface UnifiedControllerSnapshot {
   activeGesture: AvatarGesture;
   gestureNonce: number;
   requestId: number;
+  speechSessionId: number;
+  activeSpeechPlan: SpeechGesturePlan | null;
   greetingPlayedThisSession: boolean;
   isDisposed: boolean;
 }
@@ -39,6 +42,372 @@ export interface UnifiedTransitionInput extends AvatarAnimationRequest {
   force?: boolean;
   keepActiveSpeech?: boolean;
   source?: 'app-open' | 'conversation' | 'voice' | 'user-action' | 'system';
+}
+
+export type SpeechUtteranceCategory =
+  | 'greeting'
+  | 'question'
+  | 'confirmation'
+  | 'explanation'
+  | 'minimal';
+
+export interface SpeechGestureCue {
+  id: string;
+  atSec: number;
+  kind: 'arm' | 'nod' | 'tilt';
+  armGesture?: 'conversational' | 'open-palm';
+  side?: 'right' | 'left';
+  headPose?: 'tilt-left' | 'tilt-right';
+  intensity?: number;
+  durationSec: number;
+}
+
+export interface SpeechGesturePlan {
+  sessionId: number;
+  requestId: number;
+  category: SpeechUtteranceCategory;
+  estimatedDurationSec: number;
+  cues: SpeechGestureCue[];
+}
+
+const CONFIRMATION_RE =
+  /^(yes|yeah|yep|sure|of course|certainly|definitely|absolutely|haan|haanji|bilkul|zaroor|theek hai|got it|understood|i agree|sounds good)\b/i;
+const GREETING_RE =
+  /^(hi|hello|hey|namaste|good morning|good afternoon|good evening|welcome back|goodbye|bye)\b/i;
+const EXPLANATION_RE =
+  /\b(because|first|second|here's|here is|step|means|explain|for example|let's|notice|remember|basically|actually|kyunki|samjho|chalo)\b/i;
+
+export function classifySpeechUtterance(
+  text: string,
+  emotion: AvatarEmotion = 'neutral'
+): SpeechUtteranceCategory {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return 'minimal';
+
+  if (GREETING_RE.test(trimmed) && trimmed.length < 95 && !trimmed.includes('?')) {
+    return 'greeting';
+  }
+  if (trimmed.includes('?') || emotion === 'curious' || emotion === 'confused') {
+    return 'question';
+  }
+  if (CONFIRMATION_RE.test(trimmed) || emotion === 'empathetic') {
+    return 'confirmation';
+  }
+
+  const sentenceCount = trimmed.split(/[.!?\n।]+/).filter((s) => s.trim().length > 0).length;
+  if (trimmed.length >= 95 || sentenceCount >= 2 || EXPLANATION_RE.test(trimmed)) {
+    return 'explanation';
+  }
+
+  return 'minimal';
+}
+
+export function planSpeechGestureCues(params: {
+  text: string;
+  emotion?: AvatarEmotion;
+  unifiedState?: UnifiedAnimationState;
+  activeGesture?: AvatarGesture;
+  speechRate?: number;
+  sessionId: number;
+  requestId: number;
+}): SpeechGesturePlan {
+  const {
+    text,
+    emotion = 'neutral',
+    unifiedState,
+    activeGesture = 'none',
+    speechRate = 1.0,
+    sessionId,
+    requestId,
+  } = params;
+
+  const trimmed = (text || '').trim();
+  const clampedRate = Math.max(0.7, Math.min(1.4, speechRate || 1.0));
+  const estimatedDurationSec = trimmed
+    ? Math.max(1.2, trimmed.length / 13.5 / clampedRate)
+    : 0;
+  const category = classifySpeechUtterance(trimmed, emotion);
+
+  // Never inject conversational arm/head cues while greeting/goodbye or wave owns the body
+  if (
+    !trimmed ||
+    unifiedState === 'greeting' ||
+    unifiedState === 'goodbye' ||
+    activeGesture === 'wave'
+  ) {
+    return {
+      sessionId,
+      requestId,
+      category,
+      estimatedDurationSec,
+      cues: [],
+    };
+  }
+
+  const cues: SpeechGestureCue[] = [];
+
+  if (category === 'minimal') {
+    return {
+      sessionId,
+      requestId,
+      category,
+      estimatedDurationSec,
+      cues,
+    };
+  }
+
+  if (category === 'greeting') {
+    // Gentle non-intrusive acknowledgment nod when conversational reply opens with a short greeting
+    cues.push({
+      id: `${sessionId}:nod-greet`,
+      atSec: 0.15,
+      kind: 'nod',
+      intensity: 0.52,
+      durationSec: 0.72,
+    });
+    return {
+      sessionId,
+      requestId,
+      category,
+      estimatedDurationSec,
+      cues,
+    };
+  }
+
+  if (category === 'confirmation') {
+    cues.push({
+      id: `${sessionId}:nod-confirm`,
+      atSec: 0.14,
+      kind: 'nod',
+      intensity: 0.58,
+      durationSec: 0.74,
+    });
+    if (trimmed.length >= 130 && estimatedDurationSec >= 4.2) {
+      cues.push({
+        id: `${sessionId}:arm-confirm`,
+        atSec: 1.25,
+        kind: 'arm',
+        armGesture: 'conversational',
+        side: 'right',
+        durationSec: 1.85,
+      });
+    }
+    return {
+      sessionId,
+      requestId,
+      category,
+      estimatedDurationSec,
+      cues,
+    };
+  }
+
+  if (category === 'question') {
+    const tiltDuration = Math.min(1.85, Math.max(1.1, estimatedDurationSec * 0.55));
+    cues.push({
+      id: `${sessionId}:tilt-question`,
+      atSec: Math.min(0.4, estimatedDurationSec * 0.18),
+      kind: 'tilt',
+      headPose: emotion === 'confused' ? 'tilt-left' : 'tilt-right',
+      intensity: 0.48,
+      durationSec: tiltDuration,
+    });
+    if (trimmed.length >= 135 && estimatedDurationSec >= 4.5) {
+      cues.push({
+        id: `${sessionId}:arm-question`,
+        atSec: Math.max(0.95, estimatedDurationSec * 0.34),
+        kind: 'arm',
+        armGesture: 'open-palm',
+        side: 'right',
+        durationSec: 1.9,
+      });
+    }
+    return {
+      sessionId,
+      requestId,
+      category,
+      estimatedDurationSec,
+      cues,
+    };
+  }
+
+  // Explanation / longer thoughtful response: restrained, well-spaced gestures (min >= 4s apart)
+  cues.push({
+    id: `${sessionId}:arm-explain-1`,
+    atSec: 0.45,
+    kind: 'arm',
+    armGesture: 'conversational',
+    side: 'right',
+    durationSec: 1.85,
+  });
+
+  if (estimatedDurationSec >= 5.2) {
+    cues.push({
+      id: `${sessionId}:nod-boundary`,
+      atSec: 2.65,
+      kind: 'nod',
+      intensity: 0.48,
+      durationSec: 0.68,
+    });
+    cues.push({
+      id: `${sessionId}:arm-explain-2`,
+      atSec: 4.7,
+      kind: 'arm',
+      armGesture:
+        emotion === 'happy' || emotion === 'excited' || emotion === 'empathetic'
+          ? 'open-palm'
+          : 'conversational',
+      side: 'left',
+      durationSec: 1.9,
+    });
+  } else if (estimatedDurationSec >= 3.2) {
+    cues.push({
+      id: `${sessionId}:nod-soft`,
+      atSec: Math.max(1.9, estimatedDurationSec * 0.56),
+      kind: 'nod',
+      intensity: 0.45,
+      durationSec: 0.68,
+    });
+  }
+
+  if (estimatedDurationSec >= 9.6) {
+    cues.push({
+      id: `${sessionId}:arm-explain-3`,
+      atSec: 8.9,
+      kind: 'arm',
+      armGesture: 'conversational',
+      side: 'right',
+      durationSec: 1.85,
+    });
+  }
+
+  return {
+    sessionId,
+    requestId,
+    category,
+    estimatedDurationSec,
+    cues,
+  };
+}
+
+export interface SpeechGestureRunnerState {
+  sessionId: number;
+  elapsedSec: number;
+  firedIds: Set<string>;
+  lastArmCueAtSec: number;
+  activeTiltUntilSec: number;
+}
+
+export function createSpeechGestureRunner(): SpeechGestureRunnerState {
+  return {
+    sessionId: 0,
+    elapsedSec: 0,
+    firedIds: new Set<string>(),
+    lastArmCueAtSec: -10,
+    activeTiltUntilSec: 0,
+  };
+}
+
+export function resetSpeechGestureRunner(runner: SpeechGestureRunnerState): void {
+  runner.sessionId = 0;
+  runner.elapsedSec = 0;
+  runner.firedIds.clear();
+  runner.lastArmCueAtSec = -10;
+  runner.activeTiltUntilSec = 0;
+}
+
+export function stepSpeechGesturePlan(params: {
+  runner: SpeechGestureRunnerState;
+  plan: SpeechGesturePlan | null | undefined;
+  delta: number;
+  isSpeaking: boolean;
+  isVoiced: boolean;
+  speechPausedSec: number;
+  activeGesture: AvatarGesture;
+  runtimeArmGesture: ArmGestureName;
+  prefersReducedMotion: boolean;
+}): { clearTilt: boolean; cue: SpeechGestureCue | null } {
+  const {
+    runner,
+    plan,
+    delta,
+    isSpeaking,
+    isVoiced,
+    speechPausedSec,
+    activeGesture,
+    runtimeArmGesture,
+    prefersReducedMotion,
+  } = params;
+
+  if (!plan || !isSpeaking || prefersReducedMotion) {
+    const hadSession = runner.sessionId !== 0 || runner.activeTiltUntilSec > 0;
+    if (hadSession) {
+      resetSpeechGestureRunner(runner);
+    }
+    return { clearTilt: hadSession, cue: null };
+  }
+
+  let clearTilt = false;
+  if (runner.sessionId !== plan.sessionId) {
+    clearTilt = runner.activeTiltUntilSec > 0;
+    runner.sessionId = plan.sessionId;
+    runner.elapsedSec = 0;
+    runner.firedIds.clear();
+    runner.lastArmCueAtSec = -10;
+    runner.activeTiltUntilSec = 0;
+  }
+
+  runner.elapsedSec += Math.max(0, delta);
+
+  if (runner.activeTiltUntilSec > 0 && runner.elapsedSec >= runner.activeTiltUntilSec) {
+    runner.activeTiltUntilSec = 0;
+    clearTilt = true;
+  }
+
+  // Speaking gestures never interrupt an active greeting or manual wave
+  if (activeGesture === 'wave' || runtimeArmGesture === 'wave') {
+    return { clearTilt, cue: null };
+  }
+
+  // Pause gate: do not fire new gestures during audible speech pauses
+  const inSpeechPause = speechPausedSec > 0.28 || (speechPausedSec > 0.14 && !isVoiced);
+
+  for (let i = 0; i < plan.cues.length; i += 1) {
+    const cue = plan.cues[i];
+    if (runner.firedIds.has(cue.id)) continue;
+    if (runner.elapsedSec < cue.atSec) continue;
+
+    // Skip stale cues that expired during a long pause so they don't burst together on resume
+    if (runner.elapsedSec - cue.atSec > 1.6) {
+      runner.firedIds.add(cue.id);
+      continue;
+    }
+
+    if (inSpeechPause) {
+      break;
+    }
+
+    if (cue.kind === 'arm') {
+      if (runtimeArmGesture !== 'none' || runner.elapsedSec - runner.lastArmCueAtSec < 3.5) {
+        continue;
+      }
+      runner.firedIds.add(cue.id);
+      runner.lastArmCueAtSec = runner.elapsedSec;
+      return { clearTilt, cue };
+    }
+
+    if (cue.kind === 'nod') {
+      runner.firedIds.add(cue.id);
+      return { clearTilt, cue };
+    }
+
+    if (cue.kind === 'tilt') {
+      runner.firedIds.add(cue.id);
+      runner.activeTiltUntilSec = runner.elapsedSec + cue.durationSec;
+      return { clearTilt: false, cue };
+    }
+  }
+
+  return { clearTilt, cue: null };
 }
 
 // Module-level StrictMode-safe session lock for the opening greeting
@@ -111,6 +480,8 @@ export class UnifiedAnimationController {
     activeGesture: 'none',
     gestureNonce: 0,
     requestId: 0,
+    speechSessionId: 0,
+    activeSpeechPlan: null,
     greetingPlayedThisSession: sessionOpeningGreetingPlayed,
     isDisposed: false,
   };
@@ -118,10 +489,19 @@ export class UnifiedAnimationController {
   private autoReturnTimer: ReturnType<typeof setTimeout> | null = null;
   private gestureReturnTimer: ReturnType<typeof setTimeout> | null = null;
   private greetingPendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private greetingVoiceActive = false;
   private listeners = new Set<(snap: UnifiedControllerSnapshot) => void>();
 
   public getSnapshot(): UnifiedControllerSnapshot {
-    return { ...this.snapshot };
+    return {
+      ...this.snapshot,
+      activeSpeechPlan: this.snapshot.activeSpeechPlan
+        ? {
+            ...this.snapshot.activeSpeechPlan,
+            cues: this.snapshot.activeSpeechPlan.cues.map((c) => ({ ...c })),
+          }
+        : null,
+    };
   }
 
   public subscribe(listener: (snap: UnifiedControllerSnapshot) => void): () => void {
@@ -166,7 +546,12 @@ export class UnifiedAnimationController {
     this.clearAutoReturnTimer();
     this.clearGestureReturnTimer();
     this.clearGreetingPendingTimer();
+    this.greetingVoiceActive = false;
     this.snapshot.requestId += 1;
+    if (this.snapshot.activeSpeechPlan) {
+      this.snapshot.speechSessionId += 1;
+      this.snapshot.activeSpeechPlan = null;
+    }
     return this.snapshot.requestId;
   }
 
@@ -198,6 +583,35 @@ export class UnifiedAnimationController {
 
     const currentPriority = UNIFIED_STATE_PRIORITY[currentState];
     const nextPriority = UNIFIED_STATE_PRIORITY[nextState];
+
+    // App-open greeting voice must never interrupt or cut short an active opening wave
+    if (
+      input.source === 'app-open' &&
+      input.animationState === 'speaking' &&
+      (currentState === 'greeting' || this.snapshot.activeGesture === 'wave')
+    ) {
+      this.greetingVoiceActive = true;
+      this.clearAutoReturnTimer();
+      this.snapshot = {
+        ...this.snapshot,
+        avatarState: 'speaking',
+        emotion: input.emotion !== undefined ? normalizeAvatarEmotion(input.emotion) : this.snapshot.emotion,
+        coreEmotion:
+          input.emotion !== undefined
+            ? mapToCoreEmotion(normalizeAvatarEmotion(input.emotion))
+            : this.snapshot.coreEmotion,
+        emotionIntensity:
+          typeof input.intensity === 'number' && !Number.isNaN(input.intensity)
+            ? Math.max(0.2, Math.min(1, input.intensity))
+            : this.snapshot.emotionIntensity,
+      };
+      this.emit();
+      return {
+        accepted: true,
+        requestId: this.snapshot.requestId,
+        snapshot: this.getSnapshot(),
+      };
+    }
 
     // Enforce priority unless caller explicitly forces a transition (e.g. interrupt/end/reset)
     if (!input.force && nextState !== currentState && nextPriority < currentPriority) {
@@ -244,9 +658,16 @@ export class UnifiedAnimationController {
       (nextState === 'greeting' || nextState === 'goodbye') &&
       currentState !== nextState;
 
+    const preserveWaveDuringSpeech =
+      input.gesture === undefined &&
+      nextState === 'speaking' &&
+      this.snapshot.activeGesture === 'wave';
+
     const nextGesture: AvatarGesture =
       input.gesture !== undefined
         ? input.gesture
+        : preserveWaveDuringSpeech
+        ? 'wave'
         : nextState === 'greeting' || nextState === 'goodbye'
         ? 'wave'
         : nextState === 'idle'
@@ -272,6 +693,15 @@ export class UnifiedAnimationController {
     this.snapshot.requestId += 1;
     const reqId = this.snapshot.requestId;
 
+    const shouldClearSpeechPlan =
+      nextState === 'idle' ||
+      nextState === 'listening' ||
+      nextState === 'thinking';
+    const nextSpeechSessionId = shouldClearSpeechPlan
+      ? this.snapshot.speechSessionId + 1
+      : this.snapshot.speechSessionId;
+    const nextSpeechPlan = shouldClearSpeechPlan ? null : this.snapshot.activeSpeechPlan;
+
     this.snapshot = {
       ...this.snapshot,
       unifiedState: nextState,
@@ -282,6 +712,8 @@ export class UnifiedAnimationController {
       activeGesture: nextGesture,
       gestureNonce: nextGestureNonce,
       requestId: reqId,
+      speechSessionId: nextSpeechSessionId,
+      activeSpeechPlan: nextSpeechPlan,
     };
 
     if (shouldStartNewGesture && nextGesture !== 'none') {
@@ -289,12 +721,15 @@ export class UnifiedAnimationController {
         input.durationMs ?? (nextGesture === 'wave' ? 2800 : 1500);
       this.gestureReturnTimer = setTimeout(() => {
         if (this.snapshot.isDisposed) return;
+        this.gestureReturnTimer = null;
         this.snapshot = {
           ...this.snapshot,
           activeGesture: 'none',
         };
-        this.gestureReturnTimer = null;
         this.emit();
+        if (this.snapshot.unifiedState === 'greeting' && !this.greetingVoiceActive && !this.autoReturnTimer) {
+          this.returnToIdle(this.snapshot.requestId);
+        }
       }, gestureMs);
     }
 
@@ -308,6 +743,7 @@ export class UnifiedAnimationController {
     if (isAutoReturningState && typeof input.durationMs === 'number' && input.durationMs > 0) {
       this.autoReturnTimer = setTimeout(() => {
         if (this.snapshot.isDisposed || this.snapshot.requestId !== reqId) return;
+        if (nextState === 'greeting' && this.greetingVoiceActive) return;
         this.returnToIdle(reqId);
       }, input.durationMs);
     }
@@ -342,6 +778,79 @@ export class UnifiedAnimationController {
   }
 
   /**
+   * Starts a speech-synchronized gesture plan tied strictly to the active playback turn.
+   */
+  public beginSpeechSession(params: {
+    text: string;
+    emotion?: AvatarEmotion;
+    speechRate?: number;
+    requestId?: number;
+  }): SpeechGesturePlan {
+    if (this.snapshot.isDisposed) {
+      return {
+        sessionId: this.snapshot.speechSessionId,
+        requestId: this.snapshot.requestId,
+        category: 'minimal',
+        estimatedDurationSec: 0,
+        cues: [],
+      };
+    }
+
+    const nextSessionId = this.snapshot.speechSessionId + 1;
+    const plan = planSpeechGestureCues({
+      text: params.text,
+      emotion: params.emotion ?? this.snapshot.emotion,
+      unifiedState: this.snapshot.unifiedState,
+      activeGesture: this.snapshot.activeGesture,
+      speechRate: params.speechRate ?? 1.0,
+      sessionId: nextSessionId,
+      requestId: params.requestId ?? this.snapshot.requestId,
+    });
+
+    this.snapshot = {
+      ...this.snapshot,
+      speechSessionId: nextSessionId,
+      activeSpeechPlan: plan,
+    };
+    this.emit();
+    return plan;
+  }
+
+  public endSpeechSession(expectedSessionId?: number): void {
+    if (this.snapshot.isDisposed) return;
+    if (
+      expectedSessionId !== undefined &&
+      expectedSessionId !== this.snapshot.speechSessionId
+    ) {
+      return;
+    }
+    if (!this.snapshot.activeSpeechPlan) return;
+    this.snapshot = {
+      ...this.snapshot,
+      speechSessionId: this.snapshot.speechSessionId + 1,
+      activeSpeechPlan: null,
+    };
+    this.emit();
+  }
+
+  /**
+   * Finishes app-open greeting speech without clipping an ongoing opening wave.
+   */
+  public finishAppOpenSpeech(): void {
+    if (this.snapshot.isDisposed) return;
+    this.greetingVoiceActive = false;
+    if (this.snapshot.unifiedState === 'greeting' && this.snapshot.activeGesture === 'wave' && this.gestureReturnTimer) {
+      this.snapshot = {
+        ...this.snapshot,
+        avatarState: 'idle',
+      };
+      this.emit();
+      return;
+    }
+    this.returnToIdle();
+  }
+
+  /**
    * Returns cleanly to idle body state & neutral expression only if expectedRequestId matches
    * (or when forced), preventing stale callbacks from overriding a newer interaction.
    */
@@ -356,7 +865,12 @@ export class UnifiedAnimationController {
 
     this.clearAutoReturnTimer();
     this.clearGestureReturnTimer();
+    this.greetingVoiceActive = false;
     const nextReqId = this.snapshot.requestId + 1;
+    const nextSpeechSessionId = this.snapshot.activeSpeechPlan
+      ? this.snapshot.speechSessionId + 1
+      : this.snapshot.speechSessionId;
+
     this.snapshot = {
       ...this.snapshot,
       unifiedState: 'idle',
@@ -366,6 +880,8 @@ export class UnifiedAnimationController {
       emotionIntensity: 0.7,
       activeGesture: 'none',
       requestId: nextReqId,
+      speechSessionId: nextSpeechSessionId,
+      activeSpeechPlan: null,
     };
     this.emit();
     return true;
@@ -423,6 +939,7 @@ export class UnifiedAnimationController {
     this.clearAutoReturnTimer();
     this.clearGestureReturnTimer();
     this.clearGreetingPendingTimer();
+    this.greetingVoiceActive = false;
     this.snapshot = {
       ...this.snapshot,
       unifiedState: 'idle',
@@ -432,6 +949,8 @@ export class UnifiedAnimationController {
       activeGesture: 'none',
       isDisposed: true,
       requestId: this.snapshot.requestId + 1,
+      speechSessionId: this.snapshot.speechSessionId + 1,
+      activeSpeechPlan: null,
     };
     this.listeners.clear();
   }

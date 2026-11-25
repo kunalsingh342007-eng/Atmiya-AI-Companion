@@ -9,6 +9,7 @@ import {
 } from '../../types/companion';
 import type { GlbInspectionReport } from './RealisticAvatar';
 import type { AvatarGesture } from './expressionRig';
+import type { SpeechGesturePlan } from './UnifiedAnimationController';
 import { speechService } from '../../services/speech';
 
 export type { AvatarGesture } from './expressionRig';
@@ -22,6 +23,7 @@ export interface AvatarControllerState {
   previewEmotion: AvatarEmotion | null;
   activeGesture: AvatarGesture;
   gestureNonce: number;
+  speechPlan?: SpeechGesturePlan | null;
   audioLevel: number;
   micPermission: MicPermissionStatus;
   voiceError: string | null;

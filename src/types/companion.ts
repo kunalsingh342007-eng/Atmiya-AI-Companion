@@ -134,7 +134,13 @@ export interface ConversationSession {
   language: CompanionLanguage;
 }
 
-export type ActiveNavTab = 'home' | 'play' | 'wardrobe' | 'memories' | 'settings';
+export type ActiveNavTab =
+  | 'home'
+  | 'play'
+  | 'learning'
+  | 'wardrobe'
+  | 'memories'
+  | 'settings';
 
 export type RoomEnvironmentId =
   | 'sunlit-study'
@@ -213,7 +219,8 @@ export interface CompanionSettings {
   memoryEnabled: boolean;
   avatarConfig: AvatarAppearanceConfig;
   roomConfig?: RoomConfig;
-  theme: 'dark' | 'light';
+  theme: 'auto' | 'dark' | 'light';
+  expressionsEnabled?: boolean;
   darkNavyDefaultMigrated?: boolean;
 }
 

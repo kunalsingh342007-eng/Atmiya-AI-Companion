@@ -66,6 +66,7 @@ export const AvatarStage: React.FC<AvatarStageProps> = React.memo(({
             previewEmotion={controller.previewEmotion}
             activeGesture={controller.activeGesture}
             gestureNonce={controller.gestureNonce}
+            speechPlan={controller.speechPlan}
             onSelectPreviewEmotion={actions.onSelectPreviewEmotion}
             onTriggerGesture={actions.onTriggerGesture}
             onResetPose={actions.onResetPose}
@@ -80,6 +81,7 @@ export const AvatarStage: React.FC<AvatarStageProps> = React.memo(({
             resetCameraNonce={controller.resetCameraNonce}
             isExpressionsOpen={controller.isExpressionsOpen}
             onSetExpressionsOpen={actions.onSetExpressionsOpen}
+            expressionsEnabled={settings.expressionsEnabled ?? true}
           />
         </Suspense>
       ) : (

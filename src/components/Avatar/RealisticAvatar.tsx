@@ -12,6 +12,7 @@ import {
   UnifiedAnimationState,
 } from '../../types/companion';
 import { CompanionAvatar } from './CompanionAvatar';
+import { speechService } from '../../services/speech';
 import {
   applyStaticRelaxedArmPose,
   ArmGestureName,
@@ -19,6 +20,7 @@ import {
   BodyPresentationMode,
   cancelArmGesture,
   clearAllRigMorphs,
+  clearSpeechHeadTilt,
   createRigRuntime,
   findAnimationClipsByRole,
   HandPoseTarget,
@@ -36,6 +38,7 @@ import {
   setHandPose,
   setHeadIdleEnabled,
   setIdleMovementIntensity,
+  setSpeechHeadTilt,
   startArmGesture,
   tiltHeadLeft,
   tiltHeadRight,
@@ -51,6 +54,12 @@ import {
   VerifiedFullBodySummary,
   VerifiedSkeletonMap,
 } from './expressionRig';
+import {
+  createSpeechGestureRunner,
+  resetSpeechGestureRunner,
+  SpeechGesturePlan,
+  stepSpeechGesturePlan,
+} from './UnifiedAnimationController';
 import {
   AlertCircle,
   Loader2,
@@ -102,6 +111,9 @@ interface RealisticAvatarProps {
   previewEmotion?: AvatarEmotion | null;
   activeGesture?: AvatarGesture;
   gestureNonce?: number;
+  speechPlan?: SpeechGesturePlan | null;
+  expressionsEnabled?: boolean;
+  hideStageChrome?: boolean;
   onSelectPreviewEmotion?: (emotion: AvatarEmotion | null) => void;
   onTriggerGesture?: (gesture: AvatarGesture) => void;
   onResetPose?: () => void;
@@ -235,6 +247,7 @@ interface GlbModelSceneProps {
   audioLevel: number;
   activeGesture: AvatarGesture;
   gestureNonce: number;
+  speechPlan?: SpeechGesturePlan | null;
   headActionNonce: number;
   presentationMode: BodyPresentationMode;
   rigRuntimeRef: React.MutableRefObject<RigAnimationRuntime>;
@@ -253,6 +266,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   audioLevel,
   activeGesture,
   gestureNonce,
+  speechPlan = null,
   headActionNonce,
   presentationMode,
   rigRuntimeRef,
@@ -273,6 +287,8 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   const lastHandledGestureNonceRef = useRef<number>(gestureNonce);
   const prevActiveGesturePropRef = useRef<AvatarGesture>(activeGesture);
   const lastReportedArmGestureRef = useRef<ArmGestureName>('none');
+  const speechRunnerRef = useRef(createSpeechGestureRunner());
+  const speechArmControlledRef = useRef(false);
 
   // Measure actual GLB bounding box, inspect bones/clips/morphs, and calibrate framing presets
   const modelMetrics = useMemo(() => {
@@ -550,6 +566,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       } else {
         const preferredSide =
           modelMetrics.rig.verifiedArmHand.preferredWaveSide === 'left' ? 'left' : 'right';
+        speechArmControlledRef.current = false;
         startArmGesture(rigRuntimeRef.current, 'wave', { side: preferredSide });
         lastReportedArmGestureRef.current = 'wave';
         onArmGestureStateChange?.('wave');
@@ -573,15 +590,31 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
     }
   }, [headActionNonce, invalidate]);
 
-  // Immediately reset mouth/jaw targets on speech finish/cancel + single gentle nod on listening start
+  // Immediately reset mouth/jaw targets on speech finish/cancel + single gentle nod on listening start + clean speech gesture settle
   useEffect(() => {
     const prevState = prevStateRef.current;
     prevStateRef.current = state;
 
     if (state === 'interrupted' || state === 'error') {
       resetSpeechMorphs(modelMetrics.rig);
-    } else if (prevState === 'speaking' && state !== 'speaking' && prefersReducedMotion) {
-      resetSpeechMorphs(modelMetrics.rig);
+      clearSpeechHeadTilt(rigRuntimeRef.current);
+      if (speechArmControlledRef.current) {
+        cancelArmGesture(rigRuntimeRef.current);
+        speechArmControlledRef.current = false;
+      }
+      resetSpeechGestureRunner(speechRunnerRef.current);
+      invalidate();
+    } else if (prevState === 'speaking' && state !== 'speaking') {
+      if (prefersReducedMotion) {
+        resetSpeechMorphs(modelMetrics.rig);
+      }
+      clearSpeechHeadTilt(rigRuntimeRef.current);
+      if (speechArmControlledRef.current) {
+        cancelArmGesture(rigRuntimeRef.current);
+        speechArmControlledRef.current = false;
+      }
+      resetSpeechGestureRunner(speechRunnerRef.current);
+      invalidate();
     }
 
     if (prevState !== 'listening' && state === 'listening' && !prefersReducedMotion) {
@@ -589,6 +622,19 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       invalidate();
     }
   }, [state, prefersReducedMotion, modelMetrics.rig, rigRuntimeRef, invalidate]);
+
+  // Reset speech tilt/runner immediately if speechPlan clears or changes session
+  useEffect(() => {
+    if (!speechPlan) {
+      clearSpeechHeadTilt(rigRuntimeRef.current);
+      if (speechArmControlledRef.current && state !== 'speaking') {
+        cancelArmGesture(rigRuntimeRef.current);
+        speechArmControlledRef.current = false;
+      }
+      resetSpeechGestureRunner(speechRunnerRef.current);
+      invalidate();
+    }
+  }, [speechPlan, state, rigRuntimeRef, invalidate]);
 
   // Single coordinated per-frame loop: Phase 1 face + Phase 2 head/neck + Phase 3 arms/hands + Phase 4 torso/breathing/legs
   useFrame((frameState, rawDelta) => {
@@ -599,6 +645,46 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       mixerRef.current.update(delta);
     }
 
+    const lipSyncFrame = speechService.sampleLipSyncFrame();
+
+    const isSpeakingNow = state === 'speaking' || unifiedState === 'speaking';
+    const speechStep = stepSpeechGesturePlan({
+      runner: speechRunnerRef.current,
+      plan: speechPlan,
+      delta,
+      isSpeaking: isSpeakingNow,
+      isVoiced: lipSyncFrame.isActive ? lipSyncFrame.isVoiced : isSpeakingNow,
+      speechPausedSec: rigRuntimeRef.current.speechPausedSec,
+      activeGesture,
+      runtimeArmGesture: rigRuntimeRef.current.armGesture,
+      prefersReducedMotion,
+    });
+
+    if (speechStep.clearTilt) {
+      clearSpeechHeadTilt(rigRuntimeRef.current);
+    }
+
+    if (speechStep.cue) {
+      const cue = speechStep.cue;
+      if (cue.kind === 'arm' && cue.armGesture) {
+        const preferredSide =
+          cue.side ??
+          (modelMetrics.rig.verifiedArmHand.preferredWaveSide === 'left' ? 'left' : 'right');
+        startArmGesture(rigRuntimeRef.current, cue.armGesture, {
+          side: preferredSide,
+          duration: cue.durationSec,
+        });
+        speechArmControlledRef.current = true;
+      } else if (cue.kind === 'nod') {
+        triggerHeadNod(rigRuntimeRef.current, {
+          intensity: cue.intensity ?? 0.56,
+          duration: cue.durationSec,
+        });
+      } else if (cue.kind === 'tilt' && cue.headPose) {
+        setSpeechHeadTilt(rigRuntimeRef.current, cue.headPose, cue.intensity ?? 0.48);
+      }
+    }
+
     updateExpressionRig({
       rig: modelMetrics.rig,
       runtime: rigRuntimeRef.current,
@@ -607,6 +693,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       emotion,
       emotionIntensity,
       audioLevel,
+      lipSyncFrame,
       prefersReducedMotion,
       elapsed,
       delta,
@@ -617,6 +704,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       runtime: rigRuntimeRef.current,
       state,
       unifiedState,
+      lipSyncFrame,
       prefersReducedMotion,
       elapsed,
       delta,
@@ -627,8 +715,15 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       runtime: rigRuntimeRef.current,
       prefersReducedMotion,
       postureMode: 'standing',
+      state,
+      unifiedState,
+      elapsed,
       delta,
     });
+
+    if (armStatus.activeGesture === 'none') {
+      speechArmControlledRef.current = false;
+    }
 
     const bodyStatus = updateFullBodyAndLowerRig({
       rig: modelMetrics.rig,
@@ -655,7 +750,10 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   // Dispose geometries/materials cleanly and restore bind pose + clear runtime/cache on unmount
   useEffect(() => {
     const runtime = rigRuntimeRef.current;
+    const speechRunner = speechRunnerRef.current;
     return () => {
+      resetSpeechGestureRunner(speechRunner);
+      speechArmControlledRef.current = false;
       resetAllAvatarPoses(runtime);
       runtime.armDeltaQuats.clear();
       runtime.bodyDeltaQuats.clear();
@@ -1334,6 +1432,9 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
   previewEmotion = null,
   activeGesture = 'none',
   gestureNonce = 0,
+  speechPlan = null,
+  expressionsEnabled = true,
+  hideStageChrome = false,
   onSelectPreviewEmotion,
   onTriggerGesture,
   onResetPose,
@@ -1508,7 +1609,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
 
   const webglProbe = useMemo(() => probeWebGLCapabilities(), []);
   const isSoftwareGl = webglProbe.isSoftware;
-  const effectiveEmotion = previewEmotion ?? emotion;
+  const effectiveEmotion = expressionsEnabled ? (previewEmotion ?? emotion) : 'neutral';
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
@@ -1727,7 +1828,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
       } ${className}`}
     >
       {/* Discreet Top-Right Stage Controls Toggle only when external More controls aren't mounted */}
-      {isImmersive && !hasExternalStageControls && assetStatus === 'ready' && (
+      {isImmersive && !hideStageChrome && !hasExternalStageControls && assetStatus === 'ready' && (
         <div className="absolute top-1 right-1 z-30 flex flex-col items-end">
           <button
             type="button"
@@ -1910,10 +2011,11 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   state={state}
                   unifiedState={unifiedState}
                   emotion={effectiveEmotion}
-                  emotionIntensity={emotionIntensity}
+                  emotionIntensity={expressionsEnabled ? emotionIntensity : 0.2}
                   audioLevel={audioLevel}
                   activeGesture={activeGesture}
                   gestureNonce={gestureNonce}
+                  speechPlan={speechPlan}
                   headActionNonce={headActionNonce}
                   presentationMode={cameraPreset}
                   rigRuntimeRef={rigRuntimeRef}

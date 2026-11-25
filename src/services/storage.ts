@@ -51,6 +51,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   handsFreeMode: false,
   memoryEnabled: true,
   theme: 'dark',
+  expressionsEnabled: true,
   darkNavyDefaultMigrated: true,
   avatarConfig: DEFAULT_AVATAR_CONFIG,
   roomConfig: DEFAULT_ROOM_CONFIG,
@@ -148,9 +149,11 @@ export const storage = {
         ...parsed,
         theme: needsDarkNavyMigration
           ? 'dark'
-          : parsed.theme === 'light'
-          ? 'light'
+          : parsed.theme === 'light' || parsed.theme === 'auto' || parsed.theme === 'dark'
+          ? parsed.theme
           : 'dark',
+        expressionsEnabled:
+          typeof parsed.expressionsEnabled === 'boolean' ? parsed.expressionsEnabled : true,
         darkNavyDefaultMigrated: true,
         avatarConfig: mergedAvatar,
         roomConfig: {
@@ -517,7 +520,14 @@ export const storage = {
         const mergedSettings: CompanionSettings = {
           ...DEFAULT_SETTINGS,
           ...data.settings,
-          theme: data.settings.theme === 'light' ? 'light' : 'dark',
+          theme:
+            data.settings.theme === 'light' || data.settings.theme === 'auto'
+              ? data.settings.theme
+              : 'dark',
+          expressionsEnabled:
+            typeof data.settings.expressionsEnabled === 'boolean'
+              ? data.settings.expressionsEnabled
+              : true,
           avatarConfig: {
             ...DEFAULT_AVATAR_CONFIG,
             ...(data.settings.avatarConfig && typeof data.settings.avatarConfig === 'object'

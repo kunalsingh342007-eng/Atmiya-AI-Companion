@@ -1,4 +1,9 @@
-// Speech and Audio synthesis, recognition, and lip-sync analyser service
+// Speech and Audio synthesis, recognition, and real-time lip-sync service
+import {
+  analyzeAudioBufferEnvelope,
+  LipSyncEngine,
+  LipSyncMorphWeights,
+} from '../components/Avatar/lipSync';
 
 export type SpeechPlaybackOutcome =
   | 'played'
@@ -14,6 +19,13 @@ export interface SpeechRecognitionHandlers {
   onEnd: () => void;
 }
 
+export interface WavPlaybackMetadata {
+  text?: string;
+  lang?: string;
+  rate?: number;
+  onStart?: () => void;
+}
+
 class SpeechService {
   private recognition: any = null;
   private isListening = false;
@@ -22,14 +34,17 @@ class SpeechService {
   private currentAudioElement: HTMLAudioElement | null = null;
   private analyser: AnalyserNode | null = null;
   private animationFrameId: number | null = null;
-  private browserTtsInterval: ReturnType<typeof setInterval> | null = null;
   private onAudioLevelCallback: ((level: number) => void) | null = null;
+  private lastUiEmitMs = 0;
+  private lastUiLevel = -1;
   private isSpeaking = false;
   private playbackToken = 0;
   private hasUserGesture = false;
   private gestureTrackerBound = false;
   private lastRecognitionStartMs = 0;
   private browserTtsSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+  private browserTtsStartWatchdog: ReturnType<typeof setTimeout> | null = null;
+  private lipSyncEngine = new LipSyncEngine();
 
   constructor() {
     this.bindUserGestureTracker();
@@ -82,25 +97,39 @@ class SpeechService {
     return cleanup;
   }
 
-  private initAudioContext(): AudioContext {
+  private async ensureAudioContextRunning(): Promise<AudioContext> {
     if (!this.audioContext) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       this.audioContext = new AudioCtx();
     }
     if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume().catch(() => {
-        // Autoplay resume requires user interaction in browsers
-      });
+      try {
+        await Promise.race([
+          this.audioContext.resume(),
+          new Promise<void>((resolve) => setTimeout(resolve, 250)),
+        ]);
+      } catch {
+        // Autoplay resume blocked without user gesture
+      }
     }
     return this.audioContext;
+  }
+
+  /**
+   * Direct high-frequency sampler for R3F `useFrame` (zero React re-renders).
+   */
+  public sampleLipSyncFrame(nowMs?: number): LipSyncMorphWeights {
+    return this.lipSyncEngine.sampleFrame(nowMs);
   }
 
   /**
    * Check if browser speech recognition is supported
    */
   public isRecognitionSupported(): boolean {
-    return typeof window !== 'undefined' && 
-      Boolean((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition);
+    return (
+      typeof window !== 'undefined' &&
+      Boolean((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition)
+    );
   }
 
   /**
@@ -130,14 +159,12 @@ class SpeechService {
       recognition.continuous = true;
       recognition.interimResults = true;
 
-      // Map language
       let chosenLang = 'en-IN';
       if (langCode === 'hi-IN' || langCode === ('hi' as any)) {
         chosenLang = 'hi-IN';
       } else if (langCode === 'en-US') {
         chosenLang = 'en-US';
       } else {
-        // Default to en-IN which handles both Indian English and common Hinglish
         chosenLang = 'en-IN';
       }
       recognition.lang = chosenLang;
@@ -153,7 +180,6 @@ class SpeechService {
         let finalTranscript = '';
         let interimTranscript = '';
 
-        // Scan full results list so earlier finalized phrases in a continuous session are preserved
         for (let i = 0; i < event.results.length; ++i) {
           const piece = event.results[i][0]?.transcript || '';
           if (event.results[i].isFinal) {
@@ -222,45 +248,52 @@ class SpeechService {
   }
 
   /**
-   * Set callback to receive real-time audio volume level (0.0 to 1.0)
-   * used for avatar mouth animation and visualizer
+   * Set throttled UI callback for 2D aura / state indicators (0.0 to 1.0).
+   * Note: 3D avatar lip-sync reads `sampleLipSyncFrame()` directly in `useFrame` at full framerate.
    */
   public setAudioLevelCallback(cb: ((level: number) => void) | null) {
     this.onAudioLevelCallback = cb;
   }
 
   /**
-   * Play base64 WAV audio (from Gemini TTS) with Web Audio Analyser
+   * Play base64 WAV audio (from Gemini TTS) with live Web Audio AnalyserNode + envelope lookahead
    */
   public async playWavAudio(
-    base64Wav: string, 
+    base64Wav: string,
     onEnd?: () => void,
-    onError?: (err: any) => void
+    onError?: (err: any) => void,
+    metadata?: WavPlaybackMetadata
   ): Promise<void> {
     this.stopSpeaking();
     const token = ++this.playbackToken;
 
     try {
-      const ctx = this.initAudioContext();
-      // Decode base64 to arraybuffer
+      const ctx = await this.ensureAudioContextRunning();
+      if (token !== this.playbackToken) return;
+
+      if (ctx.state !== 'running') {
+        throw new Error('AudioContext suspended (awaiting user gesture)');
+      }
+
       const binaryString = atob(base64Wav);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
+      for (let i = 0; i < len; i += 1) {
         bytes[i] = binaryString.charCodeAt(i);
       }
 
-      const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
-
-      // Abort if stopSpeaking() or a newer playback occurred while decoding
+      const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
       if (token !== this.playbackToken) {
         return;
       }
 
-      // Create AnalyserNode for lip-sync and frequency metering
+      const envelope = analyzeAudioBufferEnvelope(audioBuffer);
+
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.6;
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.35;
+      analyser.minDecibels = -85;
+      analyser.maxDecibels = -18;
       this.analyser = analyser;
 
       const source = ctx.createBufferSource();
@@ -271,36 +304,48 @@ class SpeechService {
       this.currentSourceNode = source;
       this.isSpeaking = true;
 
-      // Start lip sync animation loop
-      this.startAnalyserLoop();
+      const startCtxTime = ctx.currentTime;
+      this.lipSyncEngine.startAudioAnalyserSession({
+        token,
+        ctx,
+        analyser,
+        startCtxTime,
+        durationSec: audioBuffer.duration,
+        envelope,
+        text: metadata?.text,
+        rate: metadata?.rate ?? 1.0,
+      });
 
       source.onended = () => {
         if (token !== this.playbackToken) return;
         this.currentSourceNode = null;
-        this.cleanupPlayback();
-        if (onEnd) onEnd();
+        this.cleanupPlayback(token);
+        onEnd?.();
       };
 
       source.start(0);
+      metadata?.onStart?.();
+      this.startUiAudioMeterLoop(token);
     } catch (err: any) {
       if (token !== this.playbackToken) return;
       console.error('Audio playback error:', err);
-      this.cleanupPlayback();
-      if (onError) onError(err);
+      this.cleanupPlayback(token);
+      onError?.(err);
     }
   }
 
   /**
-   * Browser SpeechSynthesis fallback for offline or zero-quota states
+   * Browser SpeechSynthesis fallback synchronized strictly to utterance lifecycle & boundary events
    */
   public speakWithBrowserTTS(
-    text: string, 
-    lang: string, 
-    rate = 1.0, 
-    onEnd?: () => void
+    text: string,
+    lang: string,
+    rate = 1.0,
+    onEnd?: () => void,
+    onStart?: () => void
   ): void {
     if (typeof window === 'undefined' || !window.speechSynthesis || !text.trim()) {
-      if (onEnd) onEnd();
+      onEnd?.();
       return;
     }
 
@@ -308,11 +353,11 @@ class SpeechService {
     const token = ++this.playbackToken;
 
     const normalizedLang = lang === 'hi' || lang === 'hi-IN' ? 'hi-IN' : 'en-IN';
+    const clampedRate = Math.max(0.7, Math.min(1.4, rate));
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = normalizedLang;
-    utterance.rate = Math.max(0.7, Math.min(1.4, rate));
-    
-    // Choose appropriate voice if available
+    utterance.rate = clampedRate;
+
     const voices = window.speechSynthesis.getVoices();
     let matchedVoice = null;
 
@@ -320,38 +365,78 @@ class SpeechService {
       matchedVoice = voices.find((v) => v.lang.startsWith('hi'));
     }
     if (!matchedVoice) {
-      matchedVoice = voices.find((v) => v.lang.startsWith('en-IN') || v.lang.startsWith('en-GB') || v.lang.startsWith('en'));
+      matchedVoice = voices.find(
+        (v) => v.lang.startsWith('en-IN') || v.lang.startsWith('en-GB') || v.lang.startsWith('en')
+      );
     }
     if (matchedVoice) {
       utterance.voice = matchedVoice;
     }
 
     this.isSpeaking = true;
+    this.lipSyncEngine.startSpeechSynthesisSession({
+      token,
+      text,
+      rate: clampedRate,
+    });
 
-    // Simulate mouth movement based on speech cadence
-    this.browserTtsInterval = setInterval(() => {
-      if (!this.isSpeaking || token !== this.playbackToken) {
-        if (this.browserTtsInterval) {
-          clearInterval(this.browserTtsInterval);
-          this.browserTtsInterval = null;
-        }
-        return;
+    let startedNotified = false;
+    const ensureStarted = () => {
+      if (token !== this.playbackToken || startedNotified) return;
+      startedNotified = true;
+      if (this.browserTtsStartWatchdog) {
+        clearTimeout(this.browserTtsStartWatchdog);
+        this.browserTtsStartWatchdog = null;
       }
-      const simulatedLevel = 0.2 + Math.random() * 0.7;
-      if (this.onAudioLevelCallback) {
-        this.onAudioLevelCallback(simulatedLevel);
-      }
-    }, 120);
+      this.lipSyncEngine.markSynthesisStarted(token);
+      onStart?.();
+      this.startUiAudioMeterLoop(token);
+    };
 
     const finalize = () => {
       if (token !== this.playbackToken) return;
-      this.cleanupPlayback();
-      if (onEnd) onEnd();
+      this.cleanupPlayback(token);
+      onEnd?.();
     };
+
+    utterance.onstart = ensureStarted;
+    utterance.onpause = () => {
+      if (token !== this.playbackToken) return;
+      this.lipSyncEngine.markSynthesisPaused(token);
+    };
+    utterance.onresume = () => {
+      if (token !== this.playbackToken) return;
+      this.lipSyncEngine.markSynthesisResumed(token);
+    };
+    utterance.onboundary = (ev: SpeechSynthesisEvent) => {
+      if (token !== this.playbackToken) return;
+      ensureStarted();
+      if (typeof ev.charIndex === 'number') {
+        this.lipSyncEngine.updateSynthesisBoundary(
+          token,
+          ev.charIndex,
+          typeof ev.elapsedTime === 'number' ? ev.elapsedTime : undefined
+        );
+      }
+    };
+    utterance.onend = finalize;
+    utterance.onerror = finalize;
+
+    // Watchdog in case browser silently drops utterance without firing onstart/onend
+    this.browserTtsStartWatchdog = setTimeout(() => {
+      if (token !== this.playbackToken || startedNotified) return;
+      const synth = window.speechSynthesis;
+      if (!synth.speaking && !synth.pending) {
+        finalize();
+      } else {
+        // Browser began audio silently without dispatching onstart
+        ensureStarted();
+      }
+    }, 900);
 
     const estimatedMaxMs = Math.min(
       45000,
-      Math.max(4000, Math.round((text.length * 75) / Math.max(0.7, rate)) + 2500)
+      Math.max(4000, Math.round((text.length * 75) / Math.max(0.7, clampedRate)) + 2500)
     );
     this.browserTtsSafetyTimer = setTimeout(() => {
       if (token !== this.playbackToken) return;
@@ -365,9 +450,6 @@ class SpeechService {
       finalize();
     }, estimatedMaxMs);
 
-    utterance.onend = finalize;
-    utterance.onerror = finalize;
-
     try {
       window.speechSynthesis.speak(utterance);
     } catch {
@@ -377,7 +459,6 @@ class SpeechService {
 
   /**
    * Speaks text while respecting browser autoplay security restrictions.
-   * Never bypasses browser rules or hangs in speaking state if autoplay is blocked.
    */
   public speakWithAutoplaySupport(
     text: string,
@@ -403,9 +484,10 @@ class SpeechService {
 
     return new Promise((resolve) => {
       const normalizedLang = lang === 'hi' || lang === 'hi-IN' ? 'hi-IN' : 'en-IN';
+      const clampedRate = Math.max(0.7, Math.min(1.4, rate));
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = normalizedLang;
-      utterance.rate = Math.max(0.7, Math.min(1.4, rate));
+      utterance.rate = clampedRate;
 
       const voices = window.speechSynthesis.getVoices();
       let matchedVoice =
@@ -422,11 +504,13 @@ class SpeechService {
       }
 
       let settled = false;
+      let startedNotified = false;
+
       const settle = (outcome: SpeechPlaybackOutcome) => {
         if (settled) return;
         settled = true;
         if (token === this.playbackToken) {
-          this.cleanupPlayback();
+          this.cleanupPlayback(token);
         }
         if (outcome === 'autoplay-blocked') {
           callbacks?.onBlocked?.();
@@ -436,23 +520,47 @@ class SpeechService {
         resolve(outcome);
       };
 
-      this.isSpeaking = true;
-      callbacks?.onStart?.();
-
-      this.browserTtsInterval = setInterval(() => {
-        if (!this.isSpeaking || token !== this.playbackToken) {
-          if (this.browserTtsInterval) {
-            clearInterval(this.browserTtsInterval);
-            this.browserTtsInterval = null;
-          }
-          if (!settled && token !== this.playbackToken) {
-            settle('cancelled');
-          }
-          return;
+      const ensureStarted = () => {
+        if (settled || token !== this.playbackToken || startedNotified) return;
+        startedNotified = true;
+        if (this.browserTtsStartWatchdog) {
+          clearTimeout(this.browserTtsStartWatchdog);
+          this.browserTtsStartWatchdog = null;
         }
-        const simulatedLevel = 0.22 + Math.random() * 0.68;
-        this.onAudioLevelCallback?.(simulatedLevel);
-      }, 120);
+        this.lipSyncEngine.markSynthesisStarted(token);
+        callbacks?.onStart?.();
+        this.startUiAudioMeterLoop(token);
+      };
+
+      this.isSpeaking = true;
+      this.lipSyncEngine.startSpeechSynthesisSession({
+        token,
+        text,
+        rate: clampedRate,
+      });
+
+      utterance.onstart = ensureStarted;
+      utterance.onpause = () => {
+        if (token === this.playbackToken) {
+          this.lipSyncEngine.markSynthesisPaused(token);
+        }
+      };
+      utterance.onresume = () => {
+        if (token === this.playbackToken) {
+          this.lipSyncEngine.markSynthesisResumed(token);
+        }
+      };
+      utterance.onboundary = (ev: SpeechSynthesisEvent) => {
+        if (token !== this.playbackToken) return;
+        ensureStarted();
+        if (typeof ev.charIndex === 'number') {
+          this.lipSyncEngine.updateSynthesisBoundary(
+            token,
+            ev.charIndex,
+            typeof ev.elapsedTime === 'number' ? ev.elapsedTime : undefined
+          );
+        }
+      };
 
       utterance.onend = () => {
         if (token !== this.playbackToken) {
@@ -477,9 +585,19 @@ class SpeechService {
         }
       };
 
+      this.browserTtsStartWatchdog = setTimeout(() => {
+        if (settled || token !== this.playbackToken || startedNotified) return;
+        const synth = window.speechSynthesis;
+        if (!synth.speaking && !synth.pending) {
+          settle('played');
+        } else {
+          ensureStarted();
+        }
+      }, 900);
+
       const estimatedMaxMs = Math.min(
         45000,
-        Math.max(4000, Math.round((text.length * 75) / Math.max(0.7, rate)) + 2500)
+        Math.max(4000, Math.round((text.length * 75) / Math.max(0.7, clampedRate)) + 2500)
       );
       this.browserTtsSafetyTimer = setTimeout(() => {
         if (token !== this.playbackToken) return;
@@ -505,10 +623,10 @@ class SpeechService {
    * Interrupt current speech immediately
    */
   public stopSpeaking(): void {
+    const prevToken = this.playbackToken;
     this.playbackToken++;
     this.isSpeaking = false;
-    
-    // Stop Web Audio node
+
     if (this.currentSourceNode) {
       try {
         this.currentSourceNode.onended = null;
@@ -520,7 +638,6 @@ class SpeechService {
       this.currentSourceNode = null;
     }
 
-    // Stop Audio Element if any
     if (this.currentAudioElement) {
       try {
         this.currentAudioElement.pause();
@@ -531,7 +648,6 @@ class SpeechService {
       this.currentAudioElement = null;
     }
 
-    // Stop Browser TTS
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -540,59 +656,75 @@ class SpeechService {
       }
     }
 
-    this.cleanupPlayback();
+    this.cleanupPlayback(prevToken);
   }
 
-  private cleanupPlayback(): void {
+  private cleanupPlayback(expectedToken?: number): void {
     this.isSpeaking = false;
-    if (this.browserTtsInterval) {
-      clearInterval(this.browserTtsInterval);
-      this.browserTtsInterval = null;
+    this.lipSyncEngine.stop(expectedToken);
+
+    if (this.analyser) {
+      try {
+        this.analyser.disconnect();
+      } catch {
+        // ignore
+      }
+      this.analyser = null;
+    }
+
+    if (this.browserTtsStartWatchdog) {
+      clearTimeout(this.browserTtsStartWatchdog);
+      this.browserTtsStartWatchdog = null;
     }
     if (this.browserTtsSafetyTimer) {
       clearTimeout(this.browserTtsSafetyTimer);
       this.browserTtsSafetyTimer = null;
     }
-    if (this.animationFrameId) {
+    if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
+    this.lastUiEmitMs = 0;
+    this.lastUiLevel = -1;
     if (this.onAudioLevelCallback) {
       this.onAudioLevelCallback(0);
     }
   }
 
-  private startAnalyserLoop(): void {
-    if (!this.analyser) return;
+  /**
+   * Throttled (~15Hz) UI meter loop for 2D aura / non-3D fallback displays so React
+   * does not re-render 60 times/second while 3D R3F reads `sampleLipSyncFrame()` directly.
+   */
+  private startUiAudioMeterLoop(token: number): void {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
 
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-
-    const updateLevel = () => {
-      if (!this.isSpeaking || !this.analyser) {
-        if (this.onAudioLevelCallback) this.onAudioLevelCallback(0);
+    const tick = () => {
+      if (!this.isSpeaking || token !== this.playbackToken) {
+        this.animationFrameId = null;
         return;
       }
 
-      this.analyser.getByteFrequencyData(dataArray);
-
-      // Average the human voice frequencies (lower-mid frequencies, roughly bins 2-25)
-      let sum = 0;
-      const count = Math.min(30, dataArray.length);
-      for (let i = 2; i < count; i++) {
-        sum += dataArray[i];
-      }
-      const average = sum / (count - 2);
-      // Normalized between 0.0 and 1.0
-      const normalizedLevel = Math.min(1.0, Math.max(0, average / 140));
-
-      if (this.onAudioLevelCallback) {
-        this.onAudioLevelCallback(normalizedLevel);
+      const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (nowMs - this.lastUiEmitMs >= 66) {
+        const frame = this.lipSyncEngine.sampleFrame(nowMs);
+        const level = frame.overallLevel;
+        if (
+          this.onAudioLevelCallback &&
+          (Math.abs(level - this.lastUiLevel) >= 0.035 || (level === 0 && this.lastUiLevel !== 0))
+        ) {
+          this.lastUiLevel = level;
+          this.onAudioLevelCallback(level);
+        }
+        this.lastUiEmitMs = nowMs;
       }
 
-      this.animationFrameId = requestAnimationFrame(updateLevel);
+      this.animationFrameId = requestAnimationFrame(tick);
     };
 
-    updateLevel();
+    this.animationFrameId = requestAnimationFrame(tick);
   }
 
   public getIsSpeaking(): boolean {
@@ -601,3 +733,4 @@ class SpeechService {
 }
 
 export const speechService = new SpeechService();
+

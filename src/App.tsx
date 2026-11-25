@@ -36,7 +36,7 @@ import {
   CameraPreset,
   useMicrophonePermission,
 } from './components/Avatar/AvatarController';
-import { UnifiedAnimationController } from './components/Avatar/UnifiedAnimationController';
+import { SpeechGesturePlan, UnifiedAnimationController } from './components/Avatar/UnifiedAnimationController';
 import { normalizeAvatarEmotion } from './components/Avatar/expressionRig';
 import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
 import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
@@ -100,6 +100,7 @@ export default function App() {
   );
   const [resetCameraNonce, setResetCameraNonce] = useState<number>(0);
   const [isExpressionsOpen, setIsExpressionsOpen] = useState<boolean>(false);
+  const [speechPlan, setSpeechPlan] = useState<SpeechGesturePlan | null>(null);
 
   // Phase 4: Preserved Drafts & Unsaved Changes Guard
   const [draftsBySession, setDraftsBySession] = useState<Record<string, string>>({});
@@ -142,6 +143,7 @@ export default function App() {
       setEmotionIntensity(snap.emotionIntensity);
       setActiveGesture(snap.activeGesture);
       setGestureNonce(snap.gestureNonce);
+      setSpeechPlan(snap.activeSpeechPlan);
     });
     return unsub;
   }, []);
@@ -230,21 +232,26 @@ export default function App() {
   useEffect(() => {
     speechService.setAudioLevelCallback((level) => {
       setAudioLevel(level);
-      const currentUnified = animControllerRef.current?.getSnapshot().unifiedState;
+      const snap = animControllerRef.current?.getSnapshot();
+      const currentUnified = snap?.unifiedState;
       if (level > 0.05) {
         setIsSpeaking(true);
         if (avatarStateRef.current !== 'speaking' && currentUnified !== 'speaking') {
           animControllerRef.current?.dispatch({
             animationState: 'speaking',
             keepActiveSpeech: true,
-            source: 'voice',
+            source: currentUnified === 'greeting' ? 'app-open' : 'voice',
           });
           setAvatarState('speaking');
         }
       } else if (!speechService.getIsSpeaking()) {
         setIsSpeaking(false);
         if (avatarStateRef.current === 'speaking' || currentUnified === 'speaking') {
-          animControllerRef.current?.returnToIdle();
+          if (currentUnified === 'greeting') {
+            animControllerRef.current?.finishAppOpenSpeech();
+          } else {
+            animControllerRef.current?.returnToIdle();
+          }
           setAvatarState('idle');
         }
       }
@@ -481,6 +488,7 @@ export default function App() {
       speechService.stopSpeaking();
       setIsSpeaking(false);
       if (avatarStateRef.current === 'speaking') {
+        animControllerRef.current?.returnToIdle();
         setAvatarState('idle');
       }
       const updated = { ...settings, autoSpeakResponse: false };
@@ -563,16 +571,7 @@ export default function App() {
         if (isSoundEnabled) {
           const reqId = res.requestId;
           const reqEpoch = turnEpochRef.current;
-          ctrl.dispatch({
-            animationState: 'speaking',
-            emotion: req.emotion,
-            gesture: req.gesture,
-            intensity: req.intensity,
-            force: true,
-            source: 'voice',
-          });
-          setAvatarState('speaking');
-          setIsSpeaking(true);
+          let activeSpeechReqId = reqId;
           speechService.speakWithBrowserTTS(
             req.speechText,
             settings.language === 'hi' ? 'hi-IN' : 'en-IN',
@@ -580,8 +579,29 @@ export default function App() {
             () => {
               if (turnEpochRef.current !== reqEpoch) return;
               setIsSpeaking(false);
-              ctrl.returnToIdle(reqId + 1);
+              ctrl.endSpeechSession();
+              ctrl.returnToIdle(activeSpeechReqId);
               setAvatarState('idle');
+            },
+            () => {
+              if (turnEpochRef.current !== reqEpoch) return;
+              const startRes = ctrl.dispatch({
+                animationState: 'speaking',
+                emotion: req.emotion,
+                gesture: req.gesture,
+                intensity: req.intensity,
+                force: true,
+                source: 'voice',
+              });
+              activeSpeechReqId = startRes.requestId;
+              ctrl.beginSpeechSession({
+                text: req.speechText!,
+                emotion: req.emotion,
+                speechRate: settings.speechRate,
+                requestId: startRes.requestId,
+              });
+              setAvatarState('speaking');
+              setIsSpeaking(true);
             }
           );
         }
@@ -644,7 +664,7 @@ export default function App() {
               onEnd: () => {
                 if (turnEpochRef.current !== epochAtVoice) return;
                 setIsSpeaking(false);
-                ctrl.returnToIdle();
+                ctrl.finishAppOpenSpeech();
                 setAvatarState('idle');
               },
               onBlocked: () => {
@@ -682,7 +702,7 @@ export default function App() {
                       onEnd: () => {
                         if (turnEpochRef.current !== deferredEpoch) return;
                         setIsSpeaking(false);
-                        ctrl.returnToIdle();
+                        ctrl.finishAppOpenSpeech();
                         setAvatarState('idle');
                       },
                     }
@@ -743,15 +763,14 @@ export default function App() {
 
     if (speakLine && isSoundEnabled) {
       const dispatchRes = ctrl?.dispatch({
-        animationState: explicitState ?? 'speaking',
+        animationState: explicitState,
         emotion,
         gesture,
         intensity: 0.78,
         force: true,
         source: 'user-action',
       });
-      setAvatarState('speaking');
-      setIsSpeaking(true);
+      let speechReqId = dispatchRes?.requestId;
       speechService.speakWithBrowserTTS(
         line,
         settings.language === 'hi' ? 'hi-IN' : 'en-IN',
@@ -759,8 +778,31 @@ export default function App() {
         () => {
           if (turnEpochRef.current !== reactionEpoch) return;
           setIsSpeaking(false);
-          ctrl?.returnToIdle(dispatchRes?.requestId);
+          ctrl?.endSpeechSession();
+          ctrl?.returnToIdle(speechReqId);
           setAvatarState('idle');
+        },
+        () => {
+          if (turnEpochRef.current !== reactionEpoch) return;
+          const startRes = ctrl?.dispatch({
+            animationState: explicitState ?? 'speaking',
+            emotion,
+            gesture,
+            intensity: 0.78,
+            force: true,
+            source: 'user-action',
+          });
+          if (startRes?.accepted) {
+            speechReqId = startRes.requestId;
+          }
+          ctrl?.beginSpeechSession({
+            text: line,
+            emotion,
+            speechRate: settings.speechRate,
+            requestId: speechReqId,
+          });
+          setAvatarState('speaking');
+          setIsSpeaking(true);
         }
       );
     } else {
@@ -902,20 +944,42 @@ export default function App() {
       isProcessingRef.current = false;
 
       if (isSoundEnabled) {
-        const speechDispatch = animControllerRef.current?.dispatch({
-          animationState: 'speaking',
+        // Show emotional expression calmly while TTS audio fetches/decodes; switch to 'speaking' only on actual audio start
+        animControllerRef.current?.dispatch({
           emotion: replyEmotion,
           intensity: nextIntensity,
           force: true,
           source: 'conversation',
         });
-        setAvatarState('speaking');
-        setIsSpeaking(true);
+        setAvatarState('idle');
+
+        let speechDispatchId: number | undefined;
+
+        const onPlaybackStart = () => {
+          if (turnEpochRef.current !== myEpoch) return;
+          const speechDispatch = animControllerRef.current?.dispatch({
+            animationState: 'speaking',
+            emotion: replyEmotion,
+            intensity: nextIntensity,
+            force: true,
+            source: 'conversation',
+          });
+          speechDispatchId = speechDispatch?.requestId;
+          animControllerRef.current?.beginSpeechSession({
+            text: replyText,
+            emotion: replyEmotion,
+            speechRate: settings.speechRate,
+            requestId: speechDispatchId,
+          });
+          setAvatarState('speaking');
+          setIsSpeaking(true);
+        };
 
         const onFinish = () => {
           if (turnEpochRef.current !== myEpoch) return;
           setIsSpeaking(false);
-          animControllerRef.current?.returnToIdle(speechDispatch?.requestId);
+          animControllerRef.current?.endSpeechSession();
+          animControllerRef.current?.returnToIdle(speechDispatchId);
           setAvatarState('idle');
 
           if (settings.handsFreeMode && !isMicMuted && activeTab === 'home') {
@@ -942,10 +1006,26 @@ export default function App() {
             }
 
             if (ttsRes.audioBase64) {
-              await speechService.playWavAudio(ttsRes.audioBase64, onFinish, () => {
-                if (turnEpochRef.current !== myEpoch) return;
-                speechService.speakWithBrowserTTS(replyText, settings.language, settings.speechRate, onFinish);
-              });
+              await speechService.playWavAudio(
+                ttsRes.audioBase64,
+                onFinish,
+                () => {
+                  if (turnEpochRef.current !== myEpoch) return;
+                  speechService.speakWithBrowserTTS(
+                    replyText,
+                    settings.language,
+                    settings.speechRate,
+                    onFinish,
+                    onPlaybackStart
+                  );
+                },
+                {
+                  text: replyText,
+                  lang: settings.language,
+                  rate: settings.speechRate,
+                  onStart: onPlaybackStart,
+                }
+              );
               return;
             }
           } catch (e: any) {
@@ -973,7 +1053,8 @@ export default function App() {
           replyText,
           settings.language,
           settings.speechRate,
-          onFinish
+          onFinish,
+          onPlaybackStart
         );
       } else {
         // Sound off: display resolved emotion pose briefly, then return cleanly to idle/neutral
@@ -1231,6 +1312,7 @@ export default function App() {
       previewEmotion,
       activeGesture,
       gestureNonce,
+      speechPlan,
       audioLevel,
       micPermission,
       voiceError,
@@ -1247,6 +1329,7 @@ export default function App() {
       previewEmotion,
       activeGesture,
       gestureNonce,
+      speechPlan,
       audioLevel,
       micPermission,
       voiceError,
