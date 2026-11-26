@@ -1,16 +1,19 @@
 import { 
   AvatarEmotion,
+  AvatarGestureHint,
   CompanionLanguage, 
   CompanionPersonality, 
   ChatMessage, 
   SystemStatus, 
   UserMemory 
 } from '../types/companion';
+import { normalizeStructuredEmotionPayload } from '../components/Avatar/expressionRig';
 
 export interface ChatResponse {
   reply: string;
   emotion?: AvatarEmotion;
   intensity?: number;
+  gesture?: AvatarGestureHint;
   timestamp: string;
   memorySuggestion?: {
     detected: boolean;
@@ -170,7 +173,13 @@ export const api = {
         throw err;
       }
 
-      if (typeof data?.reply !== 'string' || !data.reply.trim()) {
+      const rawReply =
+        typeof data?.reply === 'string'
+          ? data.reply
+          : typeof data?.text === 'string'
+          ? data.text
+          : '';
+      if (!rawReply.trim()) {
         const emptyErr = createApiError(
           'Ātmiya could not form a response right now. Please try sending your message again.',
           {
@@ -185,7 +194,14 @@ export const api = {
         throw emptyErr;
       }
 
-      return data as ChatResponse;
+      const normalized = normalizeStructuredEmotionPayload(data);
+      return {
+        ...data,
+        reply: normalized.text,
+        emotion: normalized.emotion,
+        intensity: normalized.intensity,
+        gesture: normalized.gesture,
+      } as ChatResponse;
     }
 
     throw (

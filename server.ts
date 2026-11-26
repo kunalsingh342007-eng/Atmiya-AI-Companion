@@ -13,6 +13,7 @@ const VALID_EMOTIONS = [
   'happy',
   'smile',
   'laughing',
+  'encouraging',
   'sad',
   'thinking',
   'confused',
@@ -30,15 +31,41 @@ const VALID_EMOTIONS = [
 
 type ServerAvatarEmotion = (typeof VALID_EMOTIONS)[number];
 
+const VALID_GESTURES = [
+  'none',
+  'gentle_nod',
+  'wave',
+  'open_palm',
+  'head_tilt',
+] as const;
+
+type ServerAvatarGesture = (typeof VALID_GESTURES)[number];
+
 function normalizeEmotion(value: unknown): ServerAvatarEmotion {
-  if (typeof value === 'string' && (VALID_EMOTIONS as readonly string[]).includes(value)) {
-    return value as ServerAvatarEmotion;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if ((VALID_EMOTIONS as readonly string[]).includes(normalized)) {
+      return normalized as ServerAvatarEmotion;
+    }
   }
   return 'neutral';
 }
 
+function normalizeGesture(value: unknown): ServerAvatarGesture {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (normalized === 'nod') return 'gentle_nod';
+    if (normalized === 'tilt') return 'head_tilt';
+    if (normalized === 'open_hand') return 'open_palm';
+    if ((VALID_GESTURES as readonly string[]).includes(normalized)) {
+      return normalized as ServerAvatarGesture;
+    }
+  }
+  return 'none';
+}
+
 function clampIntensity(value: unknown, fallback = 0.7): number {
-  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
+  if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) return fallback;
   return Math.max(0, Math.min(1, Number(value.toFixed(2))));
 }
 
@@ -359,8 +386,10 @@ CRITICAL IDENTITY & BEHAVIOR GUIDELINES:
    - Keep answers conversational in length unless the user specifically asks for an essay or detailed lesson.
    - When helping with code (like C++, Python, web), provide clean, modern, well-commented code with concise intuition.
 ${safeUserName ? `5. The user's name is ${safeUserName}. Use it occasionally and warmly, but do not overuse it every sentence.` : ''}
-6. Emotional Expression Selection:
-   - Choose the single most authentic facial "emotion" from the schema enum and an "intensity" from 0.0 to 1.0 that matches your reply.
+6. Emotional Expression & Gesture Cue Selection:
+   - Choose the single most authentic facial "emotion" from the schema enum, a proportional "intensity" from 0.0 to 1.0, and an optional restrained "gesture" ("none" by default).
+   - Infer emotion from the overall conversational meaning and intent — never overreact to isolated punctuation or single keywords when the context calls for something calmer or more specific.
+   - Use "encouraging" with "gentle_nod" when motivating, reassuring, or affirming progress; "curious" with "head_tilt" when asking an inquisitive follow-up; "open_palm" when warmly explaining; and "wave" only for explicit hello/goodbye greetings.
    - Match serious or emotional context responsibly: NEVER pick happy, smile, laughing, excited, or winking when the user shares sadness, stress, grief, failure, worry, or serious struggles — use concerned, empathetic, calm, sad, or worried instead.
 ${languageInstruction}
 ${memoryContext}
@@ -405,6 +434,11 @@ ${memoryContext}
           type: Type.NUMBER,
           description: 'Emotional expression strength between 0.0 and 1.0.',
         },
+        gesture: {
+          type: Type.STRING,
+          enum: [...VALID_GESTURES],
+          description: 'Optional restrained physical gesture cue matching the reply ("none" by default).',
+        },
       },
       required: ['reply', 'emotion', 'intensity'],
     };
@@ -426,7 +460,12 @@ ${memoryContext}
 
     const parseChatPayload = (
       rawText: string
-    ): { replyText: string; emotion: ServerAvatarEmotion; intensity: number } | null => {
+    ): {
+      replyText: string;
+      emotion: ServerAvatarEmotion;
+      intensity: number;
+      gesture: ServerAvatarGesture;
+    } | null => {
       const cleanedRaw = rawText
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
@@ -438,18 +477,25 @@ ${memoryContext}
       if (cleanedRaw.startsWith('{') || cleanedRaw.startsWith('[')) {
         try {
           const parsed = JSON.parse(cleanedRaw);
-          if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
+          const candidateReply =
+            typeof parsed?.reply === 'string'
+              ? parsed.reply
+              : typeof parsed?.text === 'string'
+              ? parsed.text
+              : '';
+          if (parsed && candidateReply.trim()) {
             return {
-              replyText: parsed.reply.trim(),
+              replyText: candidateReply.trim(),
               emotion: normalizeEmotion(parsed.emotion),
               intensity: clampIntensity(parsed.intensity, 0.7),
+              gesture: normalizeGesture(parsed.gesture),
             };
           }
           // JSON returned without a usable reply field — force retry/fallback rather than returning raw JSON
           return null;
         } catch {
           // Malformed JSON fragment — reject if it looks like truncated JSON wrapper
-          if (cleanedRaw.startsWith('{"reply"')) {
+          if (cleanedRaw.startsWith('{"reply"') || cleanedRaw.startsWith('{"text"')) {
             return null;
           }
         }
@@ -459,6 +505,7 @@ ${memoryContext}
         replyText: cleanedRaw,
         emotion: 'neutral',
         intensity: 0.5,
+        gesture: 'none',
       };
     };
 
@@ -486,7 +533,12 @@ ${memoryContext}
       { model: 'gemini-3.1-flash-lite', useJsonSchema: false, delayMs: 400, timeoutMs: 15000 },
     ];
 
-    let parsedPayload: { replyText: string; emotion: ServerAvatarEmotion; intensity: number } | null = null;
+    let parsedPayload: {
+      replyText: string;
+      emotion: ServerAvatarEmotion;
+      intensity: number;
+      gesture: ServerAvatarGesture;
+    } | null = null;
     let lastAttemptError: unknown = null;
 
     for (let i = 0; i < attempts.length; i += 1) {
@@ -560,7 +612,7 @@ ${memoryContext}
       });
     }
 
-    const { replyText, emotion, intensity } = parsedPayload;
+    const { replyText, emotion, intensity, gesture } = parsedPayload;
 
     // Check if message contains memorable user facts that could be suggested for saving
     let memorySuggestion = null;
@@ -586,6 +638,7 @@ ${memoryContext}
       reply: replyText,
       emotion,
       intensity,
+      gesture,
       timestamp: new Date().toISOString(),
       memorySuggestion,
     });

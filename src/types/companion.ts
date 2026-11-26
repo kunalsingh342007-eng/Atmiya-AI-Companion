@@ -21,6 +21,7 @@ export const AVATAR_EMOTIONS = [
   'happy',
   'smile',
   'laughing',
+  'encouraging',
   'sad',
   'thinking',
   'confused',
@@ -38,6 +39,24 @@ export const AVATAR_EMOTIONS = [
 
 export type AvatarEmotion = (typeof AVATAR_EMOTIONS)[number];
 
+export const AVATAR_GESTURE_HINTS = [
+  'none',
+  'gentle_nod',
+  'nod',
+  'wave',
+  'open_palm',
+  'head_tilt',
+] as const;
+
+export type AvatarGestureHint = (typeof AVATAR_GESTURE_HINTS)[number];
+
+export interface StructuredEmotionResponse {
+  text: string;
+  emotion: AvatarEmotion;
+  intensity: number;
+  gesture: AvatarGestureHint;
+}
+
 export const CORE_COMPANION_EMOTIONS = [
   'neutral',
   'happy',
@@ -53,6 +72,9 @@ export const UNIFIED_ANIMATION_STATES = [
   'listening',
   'thinking',
   'speaking',
+  'gesturing',
+  'interrupted',
+  'error',
   'happy',
   'concerned',
   'goodbye',
@@ -64,6 +86,7 @@ export interface AvatarAnimationRequest {
   animationState?: UnifiedAnimationState;
   emotion?: AvatarEmotion;
   gesture?: 'none' | 'wave' | 'nod';
+  gestureHint?: AvatarGestureHint;
   speechText?: string;
   intensity?: number;
   durationMs?: number;
@@ -74,6 +97,7 @@ export const AVATAR_EMOTION_LABELS: Record<AvatarEmotion, string> = {
   happy: 'Happy',
   smile: 'Natural Smile',
   laughing: 'Laughing',
+  encouraging: 'Encouraging',
   sad: 'Sad',
   thinking: 'Thinking',
   confused: 'Confused',
@@ -92,6 +116,7 @@ export const AVATAR_EMOTION_LABELS: Record<AvatarEmotion, string> = {
 export interface EmotionMetadata {
   emotion: AvatarEmotion;
   intensity: number;
+  gesture?: AvatarGestureHint;
 }
 
 export type MemoryCategory =
@@ -120,6 +145,7 @@ export interface ChatMessage {
   detectedLanguage?: string;
   emotion?: AvatarEmotion;
   emotionIntensity?: number;
+  gestureHint?: AvatarGestureHint;
   audioUrl?: string;
   isVoiceInput?: boolean;
 }

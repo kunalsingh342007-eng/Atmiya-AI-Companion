@@ -1,4 +1,4 @@
-import React, { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Component, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, useGLTF } from '@react-three/drei';
@@ -244,6 +244,7 @@ interface GlbModelSceneProps {
   unifiedState?: UnifiedAnimationState;
   emotion: AvatarEmotion;
   emotionIntensity: number;
+  expressionsEnabled: boolean;
   audioLevel: number;
   activeGesture: AvatarGesture;
   gestureNonce: number;
@@ -263,6 +264,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   unifiedState,
   emotion,
   emotionIntensity,
+  expressionsEnabled,
   audioLevel,
   activeGesture,
   gestureNonce,
@@ -293,6 +295,9 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
   // Measure actual GLB bounding box, inspect bones/clips/morphs, and calibrate framing presets
   const modelMetrics = useMemo(() => {
     const sceneRoot = gltf.scene;
+    sceneRoot.position.set(0, 0, 0);
+    sceneRoot.rotation.set(0, 0, 0);
+    sceneRoot.scale.set(1, 1, 1);
     sceneRoot.updateMatrixWorld(true);
 
     const meshes: string[] = [];
@@ -331,8 +336,10 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
     });
 
     const rig = inspectGlbRig(sceneRoot);
+    restoreRigBindPose(rig);
+    sceneRoot.updateMatrixWorld(true);
 
-    // Compute raw bounding box over the actual skinned character geometry
+    // Compute raw bounding box over the actual skinned character geometry in canonical bind pose
     const rawBox = new THREE.Box3().setFromObject(sceneRoot);
     const rawSize = new THREE.Vector3();
     const rawCenter = new THREE.Vector3();
@@ -471,8 +478,25 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
     };
   }, [gltf, modelUrl]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyStaticRelaxedArmPose(modelMetrics.rig);
+    if (rigRuntimeRef.current.armDeltaQuats.size === 0 && rigRuntimeRef.current.armGesture === 'none') {
+      updateArmHandRig({
+        rig: modelMetrics.rig,
+        runtime: rigRuntimeRef.current,
+        prefersReducedMotion,
+        postureMode: 'standing',
+        state: 'idle',
+        elapsed: 0,
+        delta: 10,
+      });
+    }
+    invalidate();
+    // Only snap baseline on mount / model rig change; state transitions are smoothed inside useFrame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelMetrics.rig, rigRuntimeRef, invalidate]);
+
+  useEffect(() => {
     if (import.meta.env.DEV) {
       console.debug('[Ātmiya Rig Inspection]', {
         modelUrl: modelMetrics.report.modelUrl,
@@ -692,6 +716,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       unifiedState,
       emotion,
       emotionIntensity,
+      expressionsEnabled,
       audioLevel,
       lipSyncFrame,
       prefersReducedMotion,
@@ -747,7 +772,8 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
     }
   });
 
-  // Dispose geometries/materials cleanly and restore bind pose + clear runtime/cache on unmount
+  // Restore bind pose, clear morphs, and reset runtime/speech runner cleanly on unmount
+  // (Keep shared useGLTF cache intact so rapid Home <-> Play transitions never dispose active meshes)
   useEffect(() => {
     const runtime = rigRuntimeRef.current;
     const speechRunner = speechRunnerRef.current;
@@ -760,24 +786,13 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       runtime.hipsOffset.set(0, 0, 0);
       clearAllRigMorphs(modelMetrics.rig);
       restoreRigBindPose(modelMetrics.rig);
-      gltf.scene.traverse((obj) => {
-        if ((obj as THREE.Mesh).isMesh) {
-          const mesh = obj as THREE.Mesh;
-          mesh.geometry?.dispose();
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          mats.forEach((m) => m?.dispose());
-        }
-      });
-      useGLTF.clear(modelUrl);
     };
-  }, [gltf.scene, modelUrl, modelMetrics.rig, rigRuntimeRef]);
+  }, [modelMetrics.rig, rigRuntimeRef]);
 
   return (
-    <primitive
-      object={gltf.scene}
-      scale={modelMetrics.normScale}
-      position={modelMetrics.offset}
-    />
+    <group scale={modelMetrics.normScale} position={modelMetrics.offset}>
+      <primitive object={gltf.scene} />
+    </group>
   );
 });
 
@@ -2011,7 +2026,8 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   state={state}
                   unifiedState={unifiedState}
                   emotion={effectiveEmotion}
-                  emotionIntensity={expressionsEnabled ? emotionIntensity : 0.2}
+                  emotionIntensity={emotionIntensity}
+                  expressionsEnabled={expressionsEnabled}
                   audioLevel={audioLevel}
                   activeGesture={activeGesture}
                   gestureNonce={gestureNonce}

@@ -1,6 +1,7 @@
 import {
   AvatarAnimationRequest,
   AvatarEmotion,
+  AvatarGestureHint,
   AvatarState,
   CoreCompanionEmotion,
   UnifiedAnimationState,
@@ -10,6 +11,8 @@ import {
   AvatarGesture,
   mapToCoreEmotion,
   normalizeAvatarEmotion,
+  normalizeAvatarGestureHint,
+  normalizeEmotionIntensity,
 } from './expressionRig';
 
 export const UNIFIED_STATE_PRIORITY: Record<UnifiedAnimationState, number> = {
@@ -18,9 +21,12 @@ export const UNIFIED_STATE_PRIORITY: Record<UnifiedAnimationState, number> = {
   concerned: 1,
   listening: 2,
   thinking: 3,
-  speaking: 4,
-  greeting: 5,
-  goodbye: 5,
+  gesturing: 4,
+  speaking: 5,
+  greeting: 6,
+  goodbye: 6,
+  interrupted: 7,
+  error: 7,
 };
 
 export interface UnifiedControllerSnapshot {
@@ -30,6 +36,7 @@ export interface UnifiedControllerSnapshot {
   coreEmotion: CoreCompanionEmotion;
   emotionIntensity: number;
   activeGesture: AvatarGesture;
+  gestureHint: AvatarGestureHint;
   gestureNonce: number;
   requestId: number;
   speechSessionId: number;
@@ -66,6 +73,7 @@ export interface SpeechGesturePlan {
   sessionId: number;
   requestId: number;
   category: SpeechUtteranceCategory;
+  gestureHint: AvatarGestureHint;
   estimatedDurationSec: number;
   cues: SpeechGestureCue[];
 }
@@ -90,7 +98,7 @@ export function classifySpeechUtterance(
   if (trimmed.includes('?') || emotion === 'curious' || emotion === 'confused') {
     return 'question';
   }
-  if (CONFIRMATION_RE.test(trimmed) || emotion === 'empathetic') {
+  if (CONFIRMATION_RE.test(trimmed) || emotion === 'empathetic' || emotion === 'encouraging') {
     return 'confirmation';
   }
 
@@ -105,6 +113,7 @@ export function classifySpeechUtterance(
 export function planSpeechGestureCues(params: {
   text: string;
   emotion?: AvatarEmotion;
+  gestureHint?: AvatarGestureHint;
   unifiedState?: UnifiedAnimationState;
   activeGesture?: AvatarGesture;
   speechRate?: number;
@@ -121,24 +130,35 @@ export function planSpeechGestureCues(params: {
     requestId,
   } = params;
 
+  const gestureHint = normalizeAvatarGestureHint(params.gestureHint);
   const trimmed = (text || '').trim();
   const clampedRate = Math.max(0.7, Math.min(1.4, speechRate || 1.0));
   const estimatedDurationSec = trimmed
     ? Math.max(1.2, trimmed.length / 13.5 / clampedRate)
     : 0;
-  const category = classifySpeechUtterance(trimmed, emotion);
+  let category = classifySpeechUtterance(trimmed, emotion);
+  const sentenceCount = trimmed.split(/[.!?\n।]+/).filter((s) => s.trim().length > 0).length;
+  if (
+    category === 'confirmation' &&
+    (trimmed.length >= 110 || sentenceCount >= 2 || EXPLANATION_RE.test(trimmed))
+  ) {
+    category = 'explanation';
+  }
 
   // Never inject conversational arm/head cues while greeting/goodbye or wave owns the body
   if (
     !trimmed ||
     unifiedState === 'greeting' ||
     unifiedState === 'goodbye' ||
+    unifiedState === 'interrupted' ||
+    unifiedState === 'error' ||
     activeGesture === 'wave'
   ) {
     return {
       sessionId,
       requestId,
       category,
+      gestureHint,
       estimatedDurationSec,
       cues: [],
     };
@@ -147,10 +167,38 @@ export function planSpeechGestureCues(params: {
   const cues: SpeechGestureCue[] = [];
 
   if (category === 'minimal') {
+    if (gestureHint === 'gentle_nod' || gestureHint === 'nod' || emotion === 'encouraging') {
+      cues.push({
+        id: `${sessionId}:nod-hint`,
+        atSec: 0.14,
+        kind: 'nod',
+        intensity: gestureHint === 'gentle_nod' ? 0.48 : 0.56,
+        durationSec: 0.72,
+      });
+    } else if (gestureHint === 'head_tilt') {
+      cues.push({
+        id: `${sessionId}:tilt-hint`,
+        atSec: 0.16,
+        kind: 'tilt',
+        headPose: 'tilt-right',
+        intensity: 0.46,
+        durationSec: Math.min(1.6, Math.max(0.95, estimatedDurationSec * 0.6)),
+      });
+    } else if (gestureHint === 'open_palm' && estimatedDurationSec >= 1.7) {
+      cues.push({
+        id: `${sessionId}:arm-hint`,
+        atSec: 0.22,
+        kind: 'arm',
+        armGesture: 'open-palm',
+        side: 'right',
+        durationSec: 1.75,
+      });
+    }
     return {
       sessionId,
       requestId,
       category,
+      gestureHint,
       estimatedDurationSec,
       cues,
     };
@@ -169,6 +217,7 @@ export function planSpeechGestureCues(params: {
       sessionId,
       requestId,
       category,
+      gestureHint,
       estimatedDurationSec,
       cues,
     };
@@ -179,15 +228,21 @@ export function planSpeechGestureCues(params: {
       id: `${sessionId}:nod-confirm`,
       atSec: 0.14,
       kind: 'nod',
-      intensity: 0.58,
+      intensity: gestureHint === 'gentle_nod' ? 0.5 : 0.58,
       durationSec: 0.74,
     });
-    if (trimmed.length >= 130 && estimatedDurationSec >= 4.2) {
+    if (
+      gestureHint === 'open_palm' ||
+      (trimmed.length >= 115 && estimatedDurationSec >= 3.8)
+    ) {
       cues.push({
         id: `${sessionId}:arm-confirm`,
-        atSec: 1.25,
+        atSec: 1.15,
         kind: 'arm',
-        armGesture: 'conversational',
+        armGesture:
+          gestureHint === 'open_palm' || emotion === 'encouraging' || emotion === 'empathetic'
+            ? 'open-palm'
+            : 'conversational',
         side: 'right',
         durationSec: 1.85,
       });
@@ -196,6 +251,7 @@ export function planSpeechGestureCues(params: {
       sessionId,
       requestId,
       category,
+      gestureHint,
       estimatedDurationSec,
       cues,
     };
@@ -211,10 +267,13 @@ export function planSpeechGestureCues(params: {
       intensity: 0.48,
       durationSec: tiltDuration,
     });
-    if (trimmed.length >= 135 && estimatedDurationSec >= 4.5) {
+    if (
+      (gestureHint === 'open_palm' && estimatedDurationSec >= 2.2) ||
+      (trimmed.length >= 135 && estimatedDurationSec >= 4.5)
+    ) {
       cues.push({
         id: `${sessionId}:arm-question`,
-        atSec: Math.max(0.95, estimatedDurationSec * 0.34),
+        atSec: Math.max(0.85, estimatedDurationSec * 0.32),
         kind: 'arm',
         armGesture: 'open-palm',
         side: 'right',
@@ -225,17 +284,42 @@ export function planSpeechGestureCues(params: {
       sessionId,
       requestId,
       category,
+      gestureHint,
       estimatedDurationSec,
       cues,
     };
   }
 
-  // Explanation / longer thoughtful response: restrained, well-spaced gestures (min >= 4s apart)
+  // Explanation / longer thoughtful response: restrained, well-spaced gestures (min >= 3.5s apart)
+  if (
+    emotion === 'encouraging' ||
+    gestureHint === 'gentle_nod' ||
+    gestureHint === 'nod'
+  ) {
+    cues.push({
+      id: `${sessionId}:nod-lead`,
+      atSec: 0.16,
+      kind: 'nod',
+      intensity: 0.52,
+      durationSec: 0.72,
+    });
+  } else if (gestureHint === 'head_tilt') {
+    cues.push({
+      id: `${sessionId}:tilt-lead`,
+      atSec: 0.2,
+      kind: 'tilt',
+      headPose: 'tilt-right',
+      intensity: 0.44,
+      durationSec: 1.45,
+    });
+  }
+
   cues.push({
     id: `${sessionId}:arm-explain-1`,
     atSec: 0.45,
     kind: 'arm',
-    armGesture: 'conversational',
+    armGesture:
+      gestureHint === 'open_palm' || emotion === 'encouraging' ? 'open-palm' : 'conversational',
     side: 'right',
     durationSec: 1.85,
   });
@@ -253,13 +337,16 @@ export function planSpeechGestureCues(params: {
       atSec: 4.7,
       kind: 'arm',
       armGesture:
-        emotion === 'happy' || emotion === 'excited' || emotion === 'empathetic'
+        emotion === 'happy' ||
+        emotion === 'excited' ||
+        emotion === 'empathetic' ||
+        emotion === 'encouraging'
           ? 'open-palm'
           : 'conversational',
       side: 'left',
       durationSec: 1.9,
     });
-  } else if (estimatedDurationSec >= 3.2) {
+  } else if (estimatedDurationSec >= 3.2 && !cues.some((c) => c.kind === 'nod')) {
     cues.push({
       id: `${sessionId}:nod-soft`,
       atSec: Math.max(1.9, estimatedDurationSec * 0.56),
@@ -284,6 +371,7 @@ export function planSpeechGestureCues(params: {
     sessionId,
     requestId,
     category,
+    gestureHint,
     estimatedDurationSec,
     cues,
   };
@@ -435,8 +523,13 @@ export function mapUnifiedStateToAvatarState(
       return 'thinking';
     case 'speaking':
       return 'speaking';
+    case 'interrupted':
+      return 'interrupted';
+    case 'error':
+      return 'error';
     case 'idle':
     case 'greeting':
+    case 'gesturing':
     case 'happy':
     case 'concerned':
     case 'goodbye':
@@ -456,6 +549,10 @@ export function mapAvatarStateToUnifiedState(
       return 'thinking';
     case 'speaking':
       return 'speaking';
+    case 'interrupted':
+      return 'interrupted';
+    case 'error':
+      return 'error';
     default: {
       const core = mapToCoreEmotion(emotion);
       if (core === 'happy') return 'happy';
@@ -466,7 +563,7 @@ export function mapAvatarStateToUnifiedState(
 }
 
 /**
- * Pure, framework-agnostic Unified Animation Controller for Phase 5.
+ * Pure, framework-agnostic Unified Animation Controller for Milestone 3.
  * Coordinates body state, facial emotion, priority enforcement, obsolete request
  * cancellation, smooth auto-return to idle, and session-once opening greeting.
  */
@@ -478,6 +575,7 @@ export class UnifiedAnimationController {
     coreEmotion: 'neutral',
     emotionIntensity: 0.7,
     activeGesture: 'none',
+    gestureHint: 'none',
     gestureNonce: 0,
     requestId: 0,
     speechSessionId: 0,
@@ -569,10 +667,26 @@ export class UnifiedAnimationController {
     }
 
     const currentState = this.snapshot.unifiedState;
+    const requestedGestureHint =
+      input.gestureHint !== undefined
+        ? normalizeAvatarGestureHint(input.gestureHint)
+        : undefined;
+
+    const derivedGestureFromHint: AvatarGesture | undefined =
+      input.gesture !== undefined
+        ? input.gesture
+        : requestedGestureHint === 'wave'
+        ? 'wave'
+        : requestedGestureHint === 'gentle_nod' || requestedGestureHint === 'nod'
+        ? 'nod'
+        : undefined;
+
     let nextState: UnifiedAnimationState =
       input.animationState ??
       (input.keepActiveSpeech && currentState === 'speaking'
         ? 'speaking'
+        : derivedGestureFromHint && derivedGestureFromHint !== 'none'
+        ? 'gesturing'
         : input.emotion
         ? mapAvatarStateToUnifiedState('idle', input.emotion)
         : currentState);
@@ -601,8 +715,8 @@ export class UnifiedAnimationController {
             ? mapToCoreEmotion(normalizeAvatarEmotion(input.emotion))
             : this.snapshot.coreEmotion,
         emotionIntensity:
-          typeof input.intensity === 'number' && !Number.isNaN(input.intensity)
-            ? Math.max(0.2, Math.min(1, input.intensity))
+          input.intensity !== undefined
+            ? normalizeEmotionIntensity(input.intensity, this.snapshot.emotionIntensity)
             : this.snapshot.emotionIntensity,
       };
       this.emit();
@@ -615,14 +729,16 @@ export class UnifiedAnimationController {
 
     // Enforce priority unless caller explicitly forces a transition (e.g. interrupt/end/reset)
     if (!input.force && nextState !== currentState && nextPriority < currentPriority) {
-      // Never let low-priority mood/idle transitions interrupt active speaking/greeting/goodbye
+      // Never let low-priority mood/idle transitions interrupt active speaking/greeting/goodbye/interrupted/error
       if (
         currentState === 'speaking' ||
         currentState === 'greeting' ||
-        currentState === 'goodbye'
+        currentState === 'goodbye' ||
+        currentState === 'interrupted' ||
+        currentState === 'error'
       ) {
         // If only emotion was meant to change while speaking, update facial expression cleanly
-        if (input.emotion) {
+        if (input.emotion && currentState === 'speaking') {
           this.updateFacialEmotion(input.emotion, input.intensity);
         }
         return {
@@ -633,8 +749,16 @@ export class UnifiedAnimationController {
       }
     }
 
+    const isNeutralLockState =
+      nextState === 'idle' ||
+      nextState === 'listening' ||
+      nextState === 'interrupted' ||
+      nextState === 'error';
+
     const nextEmotion =
-      input.emotion !== undefined
+      isNeutralLockState && (nextState === 'interrupted' || nextState === 'error')
+        ? 'neutral'
+        : input.emotion !== undefined
         ? normalizeAvatarEmotion(input.emotion)
         : nextState === 'greeting' || nextState === 'happy' || nextState === 'goodbye'
         ? 'happy'
@@ -642,37 +766,48 @@ export class UnifiedAnimationController {
         ? 'concerned'
         : nextState === 'thinking'
         ? 'thinking'
-        : nextState === 'idle' || nextState === 'listening'
+        : isNeutralLockState
         ? 'neutral'
         : this.snapshot.emotion;
 
     const nextIntensity =
-      typeof input.intensity === 'number' && !Number.isNaN(input.intensity)
-        ? Math.max(0.2, Math.min(1, input.intensity))
+      input.intensity !== undefined
+        ? normalizeEmotionIntensity(input.intensity, this.snapshot.emotionIntensity)
         : this.snapshot.emotionIntensity;
 
-    const gestureExplicitlyTriggered =
-      input.gesture !== undefined && input.gesture !== 'none';
-    const enteringGestureState =
-      input.gesture === undefined &&
-      (nextState === 'greeting' || nextState === 'goodbye') &&
-      currentState !== nextState;
+    const nextGestureHint: AvatarGestureHint = isNeutralLockState
+      ? 'none'
+      : requestedGestureHint !== undefined
+      ? requestedGestureHint
+      : this.snapshot.gestureHint;
 
     const preserveWaveDuringSpeech =
       input.gesture === undefined &&
       nextState === 'speaking' &&
       this.snapshot.activeGesture === 'wave';
 
-    const nextGesture: AvatarGesture =
-      input.gesture !== undefined
-        ? input.gesture
-        : preserveWaveDuringSpeech
-        ? 'wave'
-        : nextState === 'greeting' || nextState === 'goodbye'
-        ? 'wave'
-        : nextState === 'idle'
-        ? 'none'
-        : this.snapshot.activeGesture;
+    const nextGesture: AvatarGesture = isNeutralLockState
+      ? 'none'
+      : input.gesture !== undefined
+      ? input.gesture
+      : nextState === 'greeting' || nextState === 'goodbye'
+      ? 'wave'
+      : preserveWaveDuringSpeech
+      ? 'wave'
+      : nextState !== 'speaking' && derivedGestureFromHint !== undefined
+      ? derivedGestureFromHint
+      : this.snapshot.activeGesture;
+
+    const gestureExplicitlyTriggered =
+      nextGesture !== 'none' &&
+      (input.gesture !== undefined ||
+        (nextState !== 'speaking' &&
+          derivedGestureFromHint !== undefined &&
+          derivedGestureFromHint !== 'none'));
+    const enteringGestureState =
+      input.gesture === undefined &&
+      (nextState === 'greeting' || nextState === 'goodbye') &&
+      currentState !== nextState;
 
     const shouldStartNewGesture = gestureExplicitlyTriggered || enteringGestureState;
     let nextGestureNonce = this.snapshot.gestureNonce;
@@ -690,13 +825,18 @@ export class UnifiedAnimationController {
     }
     this.clearAutoReturnTimer();
     this.clearGreetingPendingTimer();
+    if (nextState === 'interrupted' || nextState === 'error' || nextState === 'idle') {
+      this.greetingVoiceActive = false;
+    }
     this.snapshot.requestId += 1;
     const reqId = this.snapshot.requestId;
 
     const shouldClearSpeechPlan =
       nextState === 'idle' ||
       nextState === 'listening' ||
-      nextState === 'thinking';
+      nextState === 'thinking' ||
+      nextState === 'interrupted' ||
+      nextState === 'error';
     const nextSpeechSessionId = shouldClearSpeechPlan
       ? this.snapshot.speechSessionId + 1
       : this.snapshot.speechSessionId;
@@ -710,6 +850,7 @@ export class UnifiedAnimationController {
       coreEmotion: mapToCoreEmotion(nextEmotion),
       emotionIntensity: nextIntensity,
       activeGesture: nextGesture,
+      gestureHint: nextGestureHint,
       gestureNonce: nextGestureNonce,
       requestId: reqId,
       speechSessionId: nextSpeechSessionId,
@@ -727,7 +868,10 @@ export class UnifiedAnimationController {
           activeGesture: 'none',
         };
         this.emit();
-        if (this.snapshot.unifiedState === 'greeting' && !this.greetingVoiceActive && !this.autoReturnTimer) {
+        if (
+          (this.snapshot.unifiedState === 'greeting' && !this.greetingVoiceActive && !this.autoReturnTimer) ||
+          (this.snapshot.unifiedState === 'gesturing' && !this.autoReturnTimer)
+        ) {
           this.returnToIdle(this.snapshot.requestId);
         }
       }, gestureMs);
@@ -737,8 +881,10 @@ export class UnifiedAnimationController {
     const isAutoReturningState =
       nextState === 'greeting' ||
       nextState === 'goodbye' ||
+      nextState === 'gesturing' ||
       nextState === 'happy' ||
-      nextState === 'concerned';
+      nextState === 'concerned' ||
+      nextState === 'interrupted';
 
     if (isAutoReturningState && typeof input.durationMs === 'number' && input.durationMs > 0) {
       this.autoReturnTimer = setTimeout(() => {
@@ -757,6 +903,44 @@ export class UnifiedAnimationController {
   }
 
   /**
+   * Transitions immediately into 'interrupted' (silencing speech & expressions) and
+   * optionally auto-recovers back to 'idle' cleanly via controller-owned timer.
+   */
+  public interrupt(recoverAfterMs = 450): {
+    accepted: boolean;
+    requestId: number;
+    snapshot: UnifiedControllerSnapshot;
+  } {
+    return this.dispatch({
+      animationState: 'interrupted',
+      emotion: 'neutral',
+      gesture: 'none',
+      gestureHint: 'none',
+      durationMs: recoverAfterMs > 0 ? recoverAfterMs : undefined,
+      force: true,
+      source: 'user-action',
+    });
+  }
+
+  /**
+   * Transitions cleanly into 'error' state, clearing active speech and gesture state.
+   */
+  public setError(): {
+    accepted: boolean;
+    requestId: number;
+    snapshot: UnifiedControllerSnapshot;
+  } {
+    return this.dispatch({
+      animationState: 'error',
+      emotion: 'neutral',
+      gesture: 'none',
+      gestureHint: 'none',
+      force: true,
+      source: 'system',
+    });
+  }
+
+  /**
    * Updates ONLY the facial emotion channel (expression + intensity) without altering
    * body state, active speech/lip-sync, or blinking.
    */
@@ -764,8 +948,8 @@ export class UnifiedAnimationController {
     if (this.snapshot.isDisposed) return;
     const normalized = normalizeAvatarEmotion(emotion);
     const nextIntensity =
-      typeof intensity === 'number' && !Number.isNaN(intensity)
-        ? Math.max(0.2, Math.min(1, intensity))
+      intensity !== undefined
+        ? normalizeEmotionIntensity(intensity, this.snapshot.emotionIntensity)
         : this.snapshot.emotionIntensity;
 
     this.snapshot = {
@@ -783,6 +967,7 @@ export class UnifiedAnimationController {
   public beginSpeechSession(params: {
     text: string;
     emotion?: AvatarEmotion;
+    gestureHint?: AvatarGestureHint;
     speechRate?: number;
     requestId?: number;
   }): SpeechGesturePlan {
@@ -791,15 +976,20 @@ export class UnifiedAnimationController {
         sessionId: this.snapshot.speechSessionId,
         requestId: this.snapshot.requestId,
         category: 'minimal',
+        gestureHint: 'none',
         estimatedDurationSec: 0,
         cues: [],
       };
     }
 
     const nextSessionId = this.snapshot.speechSessionId + 1;
+    const resolvedHint = normalizeAvatarGestureHint(
+      params.gestureHint ?? this.snapshot.gestureHint
+    );
     const plan = planSpeechGestureCues({
       text: params.text,
       emotion: params.emotion ?? this.snapshot.emotion,
+      gestureHint: resolvedHint,
       unifiedState: this.snapshot.unifiedState,
       activeGesture: this.snapshot.activeGesture,
       speechRate: params.speechRate ?? 1.0,
@@ -809,6 +999,7 @@ export class UnifiedAnimationController {
 
     this.snapshot = {
       ...this.snapshot,
+      gestureHint: resolvedHint,
       speechSessionId: nextSessionId,
       activeSpeechPlan: plan,
     };
@@ -879,6 +1070,7 @@ export class UnifiedAnimationController {
       coreEmotion: 'neutral',
       emotionIntensity: 0.7,
       activeGesture: 'none',
+      gestureHint: 'none',
       requestId: nextReqId,
       speechSessionId: nextSpeechSessionId,
       activeSpeechPlan: null,

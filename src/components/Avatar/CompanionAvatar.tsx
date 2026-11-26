@@ -96,6 +96,7 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
       case 'happy':
       case 'smile':
       case 'laughing':
+      case 'encouraging':
       case 'excited':
       case 'winking':
         setHeadTilt(2.2 * scale);
@@ -147,6 +148,7 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
           case 'happy':
           case 'smile':
           case 'laughing':
+          case 'encouraging':
           case 'excited':
           case 'winking':
             return 'from-amber-200/30 via-rose-300/25 to-violet-400/20';

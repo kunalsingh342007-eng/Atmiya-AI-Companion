@@ -37,7 +37,11 @@ import {
   useMicrophonePermission,
 } from './components/Avatar/AvatarController';
 import { SpeechGesturePlan, UnifiedAnimationController } from './components/Avatar/UnifiedAnimationController';
-import { normalizeAvatarEmotion } from './components/Avatar/expressionRig';
+import {
+  normalizeAvatarEmotion,
+  normalizeAvatarGestureHint,
+  normalizeEmotionIntensity,
+} from './components/Avatar/expressionRig';
 import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
 import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
 import { ChatDrawer } from './components/Chat/ChatDrawer';
@@ -138,7 +142,7 @@ export default function App() {
     if (!ctrl) return;
     const unsub = ctrl.subscribe((snap) => {
       setUnifiedState(snap.unifiedState);
-      setAvatarState((prev) => (prev === 'interrupted' ? prev : snap.avatarState));
+      setAvatarState(snap.avatarState);
       setCompanionEmotion(snap.emotion);
       setEmotionIntensity(snap.emotionIntensity);
       setActiveGesture(snap.activeGesture);
@@ -228,32 +232,12 @@ export default function App() {
     };
   }, []);
 
-  // 2. Audio Level Sync for avatar mouth/aura animation (without clobbering concurrent emotion)
+  // 2. Audio Level Sync for 2D aura / mouth indicator (state lifecycle owned strictly by playback callbacks)
   useEffect(() => {
     speechService.setAudioLevelCallback((level) => {
       setAudioLevel(level);
-      const snap = animControllerRef.current?.getSnapshot();
-      const currentUnified = snap?.unifiedState;
-      if (level > 0.05) {
-        setIsSpeaking(true);
-        if (avatarStateRef.current !== 'speaking' && currentUnified !== 'speaking') {
-          animControllerRef.current?.dispatch({
-            animationState: 'speaking',
-            keepActiveSpeech: true,
-            source: currentUnified === 'greeting' ? 'app-open' : 'voice',
-          });
-          setAvatarState('speaking');
-        }
-      } else if (!speechService.getIsSpeaking()) {
+      if (level <= 0.05 && !speechService.getIsSpeaking()) {
         setIsSpeaking(false);
-        if (avatarStateRef.current === 'speaking' || currentUnified === 'speaking') {
-          if (currentUnified === 'greeting') {
-            animControllerRef.current?.finishAppOpenSpeech();
-          } else {
-            animControllerRef.current?.returnToIdle();
-          }
-          setAvatarState('idle');
-        }
       }
     });
 
@@ -354,7 +338,7 @@ export default function App() {
     if (!speechService.isRecognitionSupported()) {
       const msg = 'Voice input is not supported in this browser — type your message below.';
       setVoiceError(msg);
-      setAvatarState('error');
+      animControllerRef.current?.setError();
       showToast(msg);
       return;
     }
@@ -417,7 +401,7 @@ export default function App() {
           speechTimeoutRef.current = null;
         }
         setVoiceError(err);
-        setAvatarState('error');
+        animControllerRef.current?.setError();
         showToast(err);
       },
       onEnd: () => {
@@ -432,7 +416,7 @@ export default function App() {
     if (!started) {
       const msg = 'Speech recognition unavailable. You can type below.';
       setVoiceError(msg);
-      setAvatarState('error');
+      animControllerRef.current?.setError();
       showToast(msg);
     }
   };
@@ -466,7 +450,7 @@ export default function App() {
 
   const handleRetryMic = () => {
     setVoiceError(null);
-    setAvatarState('idle');
+    animControllerRef.current?.returnToIdle();
     refreshMicPermission();
     startListeningTurn(true);
   };
@@ -505,19 +489,11 @@ export default function App() {
 
   const handleInterrupt = useCallback(() => {
     cancelActiveTurn();
-    const interruptEpoch = turnEpochRef.current;
     speechService.stopSpeaking();
     speechService.stopRecognition();
-    animControllerRef.current?.returnToIdle();
     setIsSpeaking(false);
-    setAvatarState('interrupted');
-    setCompanionEmotion('neutral');
+    animControllerRef.current?.interrupt(450);
     showToast('Speech stopped');
-
-    setTimeout(() => {
-      if (turnEpochRef.current !== interruptEpoch) return;
-      setAvatarState('idle');
-    }, 450);
   }, [cancelActiveTurn]);
 
   const handleEndCall = () => {
@@ -597,6 +573,7 @@ export default function App() {
               ctrl.beginSpeechSession({
                 text: req.speechText!,
                 emotion: req.emotion,
+                gestureHint: req.gestureHint,
                 speechRate: settings.speechRate,
                 requestId: startRes.requestId,
               });
@@ -914,12 +891,10 @@ export default function App() {
         replyText.length <= 110 ? replyText : `${replyText.slice(0, 107).trim()}...`;
       showSpeechBubble(shortPreview, 5000);
 
-      // Strictly use explicit backend emotion metadata (controlled mapping, neutral fallback — no keyword regex)
+      // Strictly use explicit backend emotion/gesture metadata (controlled mapping, neutral fallback)
       const replyEmotion: AvatarEmotion = normalizeAvatarEmotion(response.emotion);
-      const nextIntensity =
-        typeof response.intensity === 'number' && !Number.isNaN(response.intensity)
-          ? Math.max(0.2, Math.min(1, response.intensity))
-          : 0.7;
+      const nextIntensity = normalizeEmotionIntensity(response.intensity, 0.7);
+      const gestureHint = normalizeAvatarGestureHint(response.gesture);
 
       const aiMessage: ChatMessage = {
         id: 'msg_ai_' + Date.now(),
@@ -927,6 +902,7 @@ export default function App() {
         content: replyText,
         emotion: replyEmotion,
         emotionIntensity: nextIntensity,
+        gestureHint,
         timestamp: Date.now(),
       };
 
@@ -948,10 +924,10 @@ export default function App() {
         animControllerRef.current?.dispatch({
           emotion: replyEmotion,
           intensity: nextIntensity,
+          gestureHint,
           force: true,
           source: 'conversation',
         });
-        setAvatarState('idle');
 
         let speechDispatchId: number | undefined;
 
@@ -961,6 +937,7 @@ export default function App() {
             animationState: 'speaking',
             emotion: replyEmotion,
             intensity: nextIntensity,
+            gestureHint,
             force: true,
             source: 'conversation',
           });
@@ -968,6 +945,7 @@ export default function App() {
           animControllerRef.current?.beginSpeechSession({
             text: replyText,
             emotion: replyEmotion,
+            gestureHint,
             speechRate: settings.speechRate,
             requestId: speechDispatchId,
           });
@@ -1057,15 +1035,22 @@ export default function App() {
           onPlaybackStart
         );
       } else {
-        // Sound off: display resolved emotion pose briefly, then return cleanly to idle/neutral
+        // Sound off: display resolved emotion pose & gesture cue briefly, then return cleanly to idle/neutral
+        const silentGesture: AvatarGesture | undefined =
+          gestureHint === 'wave'
+            ? 'wave'
+            : gestureHint === 'gentle_nod' || gestureHint === 'nod' || replyEmotion === 'encouraging'
+            ? 'nod'
+            : undefined;
         animControllerRef.current?.dispatch({
           emotion: replyEmotion,
           intensity: nextIntensity,
+          gesture: silentGesture,
+          gestureHint,
           durationMs: 2800,
           force: true,
           source: 'conversation',
         });
-        setAvatarState('idle');
       }
     } catch (err: any) {
       if (err?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
@@ -1074,8 +1059,7 @@ export default function App() {
       console.warn('Recoverable chat turn failure:', err?.message || err);
       setIsThinking(false);
       isProcessingRef.current = false;
-      animControllerRef.current?.returnToIdle();
-      setAvatarState('error');
+      animControllerRef.current?.setError();
       const errMsg = err?.message || 'Connection failed. Please check API configuration or retry.';
       lastFailedMessageRef.current = trimmed;
       setChatError(errMsg);
@@ -1096,14 +1080,14 @@ export default function App() {
   const handleDismissChatError = () => {
     setChatError(null);
     if (!isProcessingRef.current && avatarStateRef.current === 'error') {
-      setAvatarState('idle');
+      animControllerRef.current?.returnToIdle();
     }
   };
 
   const handleDismissVoiceError = () => {
     setVoiceError(null);
     if (!isProcessingRef.current && avatarStateRef.current === 'error') {
-      setAvatarState('idle');
+      animControllerRef.current?.returnToIdle();
     }
   };
 

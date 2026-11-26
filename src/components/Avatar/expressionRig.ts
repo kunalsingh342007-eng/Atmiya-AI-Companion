@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import {
   AVATAR_EMOTIONS,
+  AVATAR_GESTURE_HINTS,
   AvatarEmotion,
+  AvatarGestureHint,
   AvatarState,
   CoreCompanionEmotion,
+  StructuredEmotionResponse,
   UnifiedAnimationState,
 } from '../../types/companion';
 import type { LipSyncMorphWeights, LipSyncVisemeName } from './lipSync';
@@ -265,6 +268,8 @@ const SPEECH_CHANNELS: FacialChannel[] = [
   'visemeU',
 ];
 
+const SPEECH_ARTICULATION_CHANNEL_SET = new Set<FacialChannel>(SPEECH_CHANNELS);
+
 const VISEME_CHANNEL_BY_NAME: Record<VisemeMorphName, FacialChannel> = {
   viseme_sil: 'visemeSil',
   viseme_PP: 'visemePP',
@@ -329,6 +334,19 @@ export const EXPRESSION_PRESETS: Record<AvatarEmotion, ExpressionPreset> = {
       browOuterUpRight: 0.22,
     },
   },
+  encouraging: {
+    morphs: {
+      smileLeft: 0.42,
+      smileRight: 0.42,
+      cheekSquintLeft: 0.24,
+      cheekSquintRight: 0.24,
+      eyeSquintLeft: 0.14,
+      eyeSquintRight: 0.14,
+      browOuterUpLeft: 0.18,
+      browOuterUpRight: 0.18,
+      browInnerUp: 0.14,
+    },
+  },
   sad: {
     morphs: {
       frownLeft: 0.62,
@@ -366,13 +384,13 @@ export const EXPRESSION_PRESETS: Record<AvatarEmotion, ExpressionPreset> = {
   },
   surprised: {
     morphs: {
-      browInnerUp: 0.85,
-      browOuterUpLeft: 0.85,
-      browOuterUpRight: 0.85,
-      eyeWideLeft: 0.8,
-      eyeWideRight: 0.8,
-      jawOpen: 0.42,
-      mouthFunnel: 0.25,
+      browInnerUp: 0.78,
+      browOuterUpLeft: 0.82,
+      browOuterUpRight: 0.82,
+      eyeWideLeft: 0.75,
+      eyeWideRight: 0.75,
+      jawOpen: 0.16,
+      mouthFunnel: 0.12,
     },
   },
   curious: {
@@ -546,6 +564,63 @@ export function normalizeAvatarEmotion(value: unknown): AvatarEmotion {
   return 'neutral';
 }
 
+export function normalizeEmotionIntensity(value: unknown, fallback = 0.7): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(1, Number(value.toFixed(2))));
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.min(1, Number(parsed.toFixed(2))));
+    }
+  }
+  return fallback;
+}
+
+export function normalizeAvatarGestureHint(value: unknown): AvatarGestureHint {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (normalized === 'tilt') return 'head_tilt';
+    if (normalized === 'open_hand') return 'open_palm';
+    if ((AVATAR_GESTURE_HINTS as readonly string[]).includes(normalized)) {
+      return normalized as AvatarGestureHint;
+    }
+  }
+  return 'none';
+}
+
+export function normalizeStructuredEmotionPayload(raw: unknown): StructuredEmotionResponse {
+  if (typeof raw === 'string') {
+    return {
+      text: raw.trim(),
+      emotion: 'neutral',
+      intensity: 0.7,
+      gesture: 'none',
+    };
+  }
+  if (!raw || typeof raw !== 'object') {
+    return {
+      text: '',
+      emotion: 'neutral',
+      intensity: 0.7,
+      gesture: 'none',
+    };
+  }
+  const obj = raw as Record<string, unknown>;
+  const rawText =
+    typeof obj.text === 'string'
+      ? obj.text
+      : typeof obj.reply === 'string'
+      ? obj.reply
+      : '';
+  return {
+    text: rawText.trim(),
+    emotion: normalizeAvatarEmotion(obj.emotion),
+    intensity: normalizeEmotionIntensity(obj.intensity, 0.7),
+    gesture: normalizeAvatarGestureHint(obj.gesture),
+  };
+}
+
 /**
  * Maps any supported AvatarEmotion to the 4 canonical Phase 5 core emotions.
  */
@@ -555,6 +630,7 @@ export function mapToCoreEmotion(emotion?: AvatarEmotion | string | null): CoreC
     case 'happy':
     case 'smile':
     case 'laughing':
+    case 'encouraging':
     case 'excited':
     case 'winking':
       return 'happy';
@@ -1544,6 +1620,7 @@ export function updateExpressionRig(params: {
   unifiedState?: UnifiedAnimationState;
   emotion: AvatarEmotion;
   emotionIntensity: number;
+  expressionsEnabled?: boolean;
   audioLevel: number;
   lipSyncFrame?: LipSyncMorphWeights;
   prefersReducedMotion: boolean;
@@ -1557,6 +1634,7 @@ export function updateExpressionRig(params: {
     unifiedState,
     emotion,
     emotionIntensity,
+    expressionsEnabled = true,
     audioLevel,
     lipSyncFrame,
     prefersReducedMotion,
@@ -1564,14 +1642,24 @@ export function updateExpressionRig(params: {
     delta,
   } = params;
 
-  const clampedIntensity = Math.max(0.15, Math.min(1, emotionIntensity));
+  const isInterruptedOrError =
+    state === 'interrupted' ||
+    unifiedState === 'interrupted' ||
+    state === 'error' ||
+    unifiedState === 'error';
+
+  const clampedIntensity = expressionsEnabled && !isInterruptedOrError
+    ? normalizeEmotionIntensity(emotionIntensity, 0.7)
+    : 0;
   const safeEmotion = rig.supportedExpressions[emotion] ? emotion : 'neutral';
   const isSpeakingActive =
-    state === 'speaking' || unifiedState === 'speaking' || Boolean(lipSyncFrame?.isActive);
+    !isInterruptedOrError &&
+    (state === 'speaking' || unifiedState === 'speaking' || Boolean(lipSyncFrame?.isActive));
 
   // Effective expression: coordinate unifiedState with explicit emotion without overwriting speech
-  let activeEmotion: AvatarEmotion = safeEmotion;
-  if (safeEmotion === 'neutral') {
+  let activeEmotion: AvatarEmotion =
+    !expressionsEnabled || isInterruptedOrError ? 'neutral' : safeEmotion;
+  if (expressionsEnabled && !isInterruptedOrError && safeEmotion === 'neutral') {
     if (unifiedState === 'greeting' || unifiedState === 'happy' || unifiedState === 'goodbye') {
       activeEmotion = rig.supportedExpressions.happy ? 'happy' : 'neutral';
     } else if (unifiedState === 'concerned') {
@@ -1626,12 +1714,23 @@ export function updateExpressionRig(params: {
     _desiredChannels[ALL_CHANNELS[i]] = 0;
   }
 
-  const presetMorphs = preset.morphs;
-  for (const ch in presetMorphs) {
-    const channel = ch as FacialChannel;
-    if (channel === 'jawOpen' && (state === 'listening' || state === 'interrupted')) continue;
-    const base = presetMorphs[channel] ?? 0;
-    _desiredChannels[channel] = Math.min(1, base * clampedIntensity);
+  // Speech/lip-sync exclusively owns all mouth/jaw articulation channels during speech, listening, or interruption
+  const suppressPresetSpeechChannels =
+    isSpeakingActive ||
+    isInterruptedOrError ||
+    state === 'listening' ||
+    unifiedState === 'listening';
+
+  if (expressionsEnabled && !isInterruptedOrError) {
+    const presetMorphs = preset.morphs;
+    for (const ch in presetMorphs) {
+      const channel = ch as FacialChannel;
+      if (suppressPresetSpeechChannels && SPEECH_ARTICULATION_CHANNEL_SET.has(channel)) {
+        continue;
+      }
+      const base = presetMorphs[channel] ?? 0;
+      _desiredChannels[channel] = Math.min(1, base * clampedIntensity);
+    }
   }
 
   if (blinkWeight > 0) {
@@ -1684,7 +1783,7 @@ export function updateExpressionRig(params: {
   let speechUpperUpWeight = 0;
   let speechLowerDownWeight = 0;
 
-  if (lipSyncFrame && lipSyncFrame.isActive) {
+  if (!isInterruptedOrError && lipSyncFrame && lipSyncFrame.isActive) {
     const motionScale = prefersReducedMotion ? 0.65 : 1.0;
 
     if (rig.capabilities.hasVisemeMorphs) {
@@ -1707,12 +1806,12 @@ export function updateExpressionRig(params: {
     speechUpperUpWeight = lipSyncFrame.mouthUpperUp * motionScale;
     speechLowerDownWeight = lipSyncFrame.mouthLowerDown * motionScale;
 
-    if (lipSyncFrame.roundingAttenuation > 0.02) {
+    if (expressionsEnabled && lipSyncFrame.roundingAttenuation > 0.02) {
       const smileKeep = Math.max(0.28, 1 - lipSyncFrame.roundingAttenuation * 0.7);
       _desiredChannels.smileLeft = (_desiredChannels.smileLeft ?? 0) * smileKeep;
       _desiredChannels.smileRight = (_desiredChannels.smileRight ?? 0) * smileKeep;
     }
-  } else if (isSpeakingActive && state === 'speaking') {
+  } else if (!isInterruptedOrError && isSpeakingActive && state === 'speaking') {
     // Minimal scalar fallback only if external caller passes audioLevel without LipSyncEngine
     const effectiveAudio = Math.max(0, Math.min(1, audioLevel));
     if (effectiveAudio > 0.03) {
@@ -1945,7 +2044,14 @@ export function updateHeadNeckRig(params: {
     !runtime.nodActive &&
     runtime.headPose === 'neutral'
   ) {
-    if (state === 'listening' || unifiedState === 'listening') {
+    if (
+      state === 'interrupted' ||
+      unifiedState === 'interrupted' ||
+      state === 'error' ||
+      unifiedState === 'error'
+    ) {
+      targetIdleBlend = 0.25; // Calm, settled posture on interruption/error
+    } else if (state === 'listening' || unifiedState === 'listening') {
       targetIdleBlend = 0.4; // Attentive, calm stillness
     } else if (isSpeaking) {
       targetIdleBlend = 0.45 * runtime.speechPauseDamp; // Subtle presence; calm during pauses

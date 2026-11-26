@@ -58,6 +58,8 @@ export function getCompanionMoodLabel(
 ): string {
   if (unifiedState === 'greeting') return 'Greeting';
   if (unifiedState === 'goodbye') return 'Saying Goodbye';
+  if (unifiedState === 'interrupted') return 'Paused';
+  if (unifiedState === 'error') return 'Needs Attention';
   switch (state) {
     case 'listening':
       return 'Listening';
@@ -74,6 +76,7 @@ export function getCompanionMoodLabel(
     default:
       if (unifiedState === 'concerned' && emotion === 'neutral') return 'Concerned';
       if (unifiedState === 'happy' && emotion === 'neutral') return 'Happy';
+      if (unifiedState === 'gesturing' && emotion === 'neutral') return 'Responding';
       return emotion === 'neutral' ? 'Calm & Present' : AVATAR_EMOTION_LABELS[emotion];
   }
 }
