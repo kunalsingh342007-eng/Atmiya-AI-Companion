@@ -1,71 +1,79 @@
-import express, { Request, Response } from 'express';
-import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
-import { createServer as createViteServer } from 'vite';
+import express, { Request, Response } from "express";
+import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
+import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
 const VALID_EMOTIONS = [
-  'neutral',
-  'happy',
-  'smile',
-  'laughing',
-  'encouraging',
-  'sad',
-  'thinking',
-  'confused',
-  'surprised',
-  'curious',
-  'worried',
-  'concerned',
-  'empathetic',
-  'excited',
-  'calm',
-  'disappointed',
-  'winking',
-  'talking',
+  "neutral",
+  "happy",
+  "smile",
+  "laughing",
+  "encouraging",
+  "sad",
+  "thinking",
+  "confused",
+  "surprised",
+  "curious",
+  "worried",
+  "concerned",
+  "empathetic",
+  "excited",
+  "calm",
+  "disappointed",
+  "winking",
+  "talking",
 ] as const;
 
 type ServerAvatarEmotion = (typeof VALID_EMOTIONS)[number];
 
 const VALID_GESTURES = [
-  'none',
-  'gentle_nod',
-  'wave',
-  'open_palm',
-  'head_tilt',
+  "none",
+  "gentle_nod",
+  "wave",
+  "open_palm",
+  "head_tilt",
 ] as const;
 
 type ServerAvatarGesture = (typeof VALID_GESTURES)[number];
 
 function normalizeEmotion(value: unknown): ServerAvatarEmotion {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     if ((VALID_EMOTIONS as readonly string[]).includes(normalized)) {
       return normalized as ServerAvatarEmotion;
     }
   }
-  return 'neutral';
+  return "neutral";
 }
 
 function normalizeGesture(value: unknown): ServerAvatarGesture {
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-    if (normalized === 'nod') return 'gentle_nod';
-    if (normalized === 'tilt') return 'head_tilt';
-    if (normalized === 'open_hand') return 'open_palm';
+  if (typeof value === "string") {
+    const normalized = value
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    if (normalized === "nod") return "gentle_nod";
+    if (normalized === "tilt") return "head_tilt";
+    if (normalized === "open_hand") return "open_palm";
     if ((VALID_GESTURES as readonly string[]).includes(normalized)) {
       return normalized as ServerAvatarGesture;
     }
   }
-  return 'none';
+  return "none";
 }
 
 function clampIntensity(value: unknown, fallback = 0.7): number {
-  if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) return fallback;
+  if (
+    typeof value !== "number" ||
+    Number.isNaN(value) ||
+    !Number.isFinite(value)
+  )
+    return fallback;
   return Math.max(0, Math.min(1, Number(value.toFixed(2))));
 }
 
@@ -76,19 +84,74 @@ const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Middleware for parsing JSON with ample limit for audio blobs
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({ limit: "25mb" }));
+
+// Lightweight best-effort rate limit per server instance.
+// Vercel instances do not share state, so strict global limits require a distributed store.
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const RATE_LIMITS: Record<string, number> = {
+  chat: 20,
+  tts: 12,
+  transcribe: 20,
+  memories: 30,
+};
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+app.use("/api/", (req: Request, res: Response, next) => {
+  const route = req.path.split("/").filter(Boolean)[0] || "unknown";
+  const limit = RATE_LIMITS[route];
+  if (!limit) return next();
+
+  const forwarded = req.headers["x-forwarded-for"];
+  const ipHeader = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  const ip = (ipHeader?.split(",")[0].trim() || req.ip || "unknown").slice(
+    0,
+    100,
+  );
+  const key = `${route}:${ip}`;
+  const now = Date.now();
+  let bucket = rateBuckets.get(key);
+
+  if (!bucket || now >= bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+  }
+
+  bucket.count += 1;
+  rateBuckets.set(key, bucket);
+
+  if (bucket.count > limit) {
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((bucket.resetAt - now) / 1000),
+    );
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    return res.status(429).json({
+      error: "RATE_LIMIT_EXCEEDED",
+      message: "Too many requests. Please wait and try again.",
+      retryAfterSeconds,
+    });
+  }
+
+  if (rateBuckets.size > 10000) {
+    for (const [bucketKey, value] of rateBuckets) {
+      if (now >= value.resetAt) rateBuckets.delete(bucketKey);
+    }
+  }
+
+  next();
+});
 
 // Helper to get GoogleGenAI client
 function getGenAIClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === '' || apiKey === 'MY_GEMINI_API_KEY') {
+  if (!apiKey || apiKey.trim() === "" || apiKey === "MY_GEMINI_API_KEY") {
     return null;
   }
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
       headers: {
-        'User-Agent': 'aistudio-build',
+        "User-Agent": "aistudio-build",
       },
     },
   });
@@ -106,34 +169,37 @@ function parseGeminiError(err: unknown): {
   isBadRequest: boolean;
 } {
   const anyErr = err as any;
-  const rawMessage = typeof anyErr?.message === 'string' ? anyErr.message : String(err || 'Unknown error');
-  const errName = typeof anyErr?.name === 'string' ? anyErr.name : '';
+  const rawMessage =
+    typeof anyErr?.message === "string"
+      ? anyErr.message
+      : String(err || "Unknown error");
+  const errName = typeof anyErr?.name === "string" ? anyErr.name : "";
 
   let status =
-    typeof anyErr?.status === 'number'
+    typeof anyErr?.status === "number"
       ? anyErr.status
-      : typeof anyErr?.code === 'number'
-      ? anyErr.code
-      : 0;
+      : typeof anyErr?.code === "number"
+        ? anyErr.code
+        : 0;
 
   let extractedMessage = rawMessage;
   let retryAfterSeconds: number | undefined;
 
   // @google/genai ApiError often serializes JSON into err.message
-  const jsonStart = rawMessage.indexOf('{');
+  const jsonStart = rawMessage.indexOf("{");
   if (jsonStart !== -1) {
     try {
       const parsed = JSON.parse(rawMessage.slice(jsonStart));
       const inner = parsed?.error ?? parsed;
-      if (!status && typeof inner?.code === 'number') {
+      if (!status && typeof inner?.code === "number") {
         status = inner.code;
       }
-      if (typeof inner?.message === 'string' && inner.message.trim()) {
+      if (typeof inner?.message === "string" && inner.message.trim()) {
         extractedMessage = inner.message.trim();
       }
       const details = Array.isArray(inner?.details) ? inner.details : [];
       for (const d of details) {
-        if (typeof d?.retryDelay === 'string') {
+        if (typeof d?.retryDelay === "string") {
           const secMatch = d.retryDelay.match(/^(\d+(?:\.\d+)?)s$/i);
           if (secMatch) {
             retryAfterSeconds = Math.ceil(parseFloat(secMatch[1]));
@@ -146,18 +212,20 @@ function parseGeminiError(err: unknown): {
   }
 
   if (!retryAfterSeconds) {
-    const retryInMatch = rawMessage.match(/Please retry in\s+(?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i);
+    const retryInMatch = rawMessage.match(
+      /Please retry in\s+(?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i,
+    );
     if (retryInMatch) {
-      const h = parseInt(retryInMatch[1] || '0', 10);
-      const m = parseInt(retryInMatch[2] || '0', 10);
-      const s = Math.ceil(parseFloat(retryInMatch[3] || '0'));
+      const h = parseInt(retryInMatch[1] || "0", 10);
+      const m = parseInt(retryInMatch[2] || "0", 10);
+      const s = Math.ceil(parseFloat(retryInMatch[3] || "0"));
       retryAfterSeconds = h * 3600 + m * 60 + s;
     }
   }
 
   const isTimeout =
-    errName === 'TimeoutError' ||
-    errName === 'AbortError' ||
+    errName === "TimeoutError" ||
+    errName === "AbortError" ||
     status === 408 ||
     status === 504 ||
     /timed?\s*out|aborted|DEADLINE_EXCEEDED/i.test(rawMessage);
@@ -169,16 +237,18 @@ function parseGeminiError(err: unknown): {
   const isAuth =
     status === 401 ||
     status === 403 ||
-    /API_KEY_INVALID|PERMISSION_DENIED|unauthenticated|forbidden/i.test(rawMessage);
+    /API_KEY_INVALID|PERMISSION_DENIED|unauthenticated|forbidden/i.test(
+      rawMessage,
+    );
 
   const isBadRequest = status === 400;
 
   if (isQuota) {
     return {
       httpStatus: 429,
-      code: 'QUOTA_EXCEEDED',
+      code: "QUOTA_EXCEEDED",
       message:
-        'Gemini API quota limit reached for this key. Please retry shortly or add a billed API key in Settings > Secrets.',
+        "Gemini API quota limit reached for this key. Please retry shortly or add a billed API key in Settings > Secrets.",
       retryAfterSeconds,
       isTimeout: false,
       isQuota: true,
@@ -190,8 +260,9 @@ function parseGeminiError(err: unknown): {
   if (isTimeout) {
     return {
       httpStatus: 504,
-      code: 'TIMEOUT',
-      message: 'The AI model took too long to respond. Please try sending your message again.',
+      code: "TIMEOUT",
+      message:
+        "The AI model took too long to respond. Please try sending your message again.",
       isTimeout: true,
       isQuota: false,
       isAuth: false,
@@ -202,8 +273,9 @@ function parseGeminiError(err: unknown): {
   if (isAuth) {
     return {
       httpStatus: 403,
-      code: 'AUTH_ERROR',
-      message: 'Gemini API access was rejected. Please verify GEMINI_API_KEY in Settings > Secrets.',
+      code: "AUTH_ERROR",
+      message:
+        "Gemini API access was rejected. Please verify GEMINI_API_KEY in Settings > Secrets.",
       isTimeout: false,
       isQuota: false,
       isAuth: true,
@@ -218,7 +290,7 @@ function parseGeminiError(err: unknown): {
   if (isBadRequest) {
     return {
       httpStatus: 400,
-      code: 'BAD_REQUEST',
+      code: "BAD_REQUEST",
       message: extractedMessage.slice(0, 240),
       isTimeout: false,
       isQuota: false,
@@ -230,10 +302,10 @@ function parseGeminiError(err: unknown): {
   if (isUnavailable) {
     return {
       httpStatus: 503,
-      code: 'MODEL_BUSY',
+      code: "MODEL_BUSY",
       message:
         extractedMessage.slice(0, 240) ||
-        'The AI model is temporarily busy. Please try sending your message again.',
+        "The AI model is temporarily busy. Please try sending your message again.",
       isTimeout: false,
       isQuota: false,
       isAuth: false,
@@ -243,8 +315,9 @@ function parseGeminiError(err: unknown): {
 
   return {
     httpStatus: status >= 400 && status < 600 ? status : 500,
-    code: 'GENERATION_ERROR',
-    message: extractedMessage.slice(0, 240) || 'An unexpected AI error occurred.',
+    code: "GENERATION_ERROR",
+    message:
+      extractedMessage.slice(0, 240) || "An unexpected AI error occurred.",
     isTimeout: false,
     isQuota: false,
     isAuth: false,
@@ -259,16 +332,21 @@ function createUpstreamAbortControl(res: Response, timeoutMs: number) {
 
   const timer = setTimeout(() => {
     timedOut = true;
-    controller.abort(new DOMException(`Upstream request timed out after ${timeoutMs}ms`, 'TimeoutError'));
+    controller.abort(
+      new DOMException(
+        `Upstream request timed out after ${timeoutMs}ms`,
+        "TimeoutError",
+      ),
+    );
   }, timeoutMs);
 
   const onResClose = () => {
     if (!res.writableEnded) {
       clientClosed = true;
-      controller.abort(new DOMException('Client closed request', 'AbortError'));
+      controller.abort(new DOMException("Client closed request", "AbortError"));
     }
   };
-  res.on('close', onResClose);
+  res.on("close", onResClose);
 
   return {
     signal: controller.signal,
@@ -276,36 +354,39 @@ function createUpstreamAbortControl(res: Response, timeoutMs: number) {
     isClientClosed: () => clientClosed,
     cleanup: () => {
       clearTimeout(timer);
-      res.off('close', onResClose);
+      res.off("close", onResClose);
     },
   };
 }
 
 // 1. Health and configuration status endpoint
-app.get('/api/status', (req: Request, res: Response) => {
+app.get("/api/status", (req: Request, res: Response) => {
   const apiKey = process.env.GEMINI_API_KEY;
-  const isKeyConfigured = Boolean(apiKey && apiKey.trim() !== '' && apiKey !== 'MY_GEMINI_API_KEY');
-  
+  const isKeyConfigured = Boolean(
+    apiKey && apiKey.trim() !== "" && apiKey !== "MY_GEMINI_API_KEY",
+  );
+
   res.json({
-    status: 'ok',
+    status: "ok",
     isKeyConfigured,
-    model: 'gemini-4-hydrogen',
-    ttsModel: 'gemini-3.8-flash-lite-tts',
-    transcribeModel: 'gemini-3.5-transcribe',
+    model: "gemini-4-hydrogen",
+    ttsModel: "gemini-3.8-flash-lite-tts",
+    transcribeModel: "gemini-3.5-transcribe",
     serverTime: new Date().toISOString(),
-    supportedLanguages: ['hi-IN', 'en-IN', 'en-US', 'hinglish'],
-    supportedVoices: ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'],
+    supportedLanguages: ["hi-IN", "en-IN", "en-US", "hinglish"],
+    supportedVoices: ["Kore", "Puck", "Fenrir", "Zephyr", "Charon"],
   });
 });
 
 // 2. Chat Completion endpoint with memory & personality support
-app.post('/api/chat', async (req: Request, res: Response) => {
+app.post("/api/chat", async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
       return res.status(503).json({
-        error: 'API_KEY_MISSING',
-        message: 'Gemini API Key is not configured. Please add GEMINI_API_KEY to your environment secrets.',
+        error: "API_KEY_MISSING",
+        message:
+          "Gemini API Key is not configured. Please add GEMINI_API_KEY to your environment secrets.",
       });
     }
 
@@ -313,21 +394,25 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       message,
       history = [],
       memories = [],
-      personality = 'calm',
-      language = 'auto',
-      userName = '',
+      personality = "calm",
+      language = "auto",
+      userName = "",
     } = req.body ?? {};
 
-    if (typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: 'Message text is required.' });
+    if (typeof message !== "string" || message.trim().length === 0) {
+      return res
+        .status(400)
+        .json({ error: "INVALID_INPUT", message: "Message text is required." });
     }
 
     const trimmedMessage = message.trim().slice(0, 8000);
     const safeHistory = Array.isArray(history) ? history : [];
     const safeMemories = Array.isArray(memories) ? memories : [];
-    const safePersonality = typeof personality === 'string' ? personality : 'calm';
-    const safeLanguage = typeof language === 'string' ? language : 'auto';
-    const safeUserName = typeof userName === 'string' ? userName.trim().slice(0, 80) : '';
+    const safePersonality =
+      typeof personality === "string" ? personality : "calm";
+    const safeLanguage = typeof language === "string" ? language : "auto";
+    const safeUserName =
+      typeof userName === "string" ? userName.trim().slice(0, 80) : "";
 
     // Build personality directives
     const personalityPrompts: Record<string, string> = {
@@ -338,15 +423,16 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       creative: `You are Ātmiya (आत्मीय), an inventive, inspiring creative brainstorming partner. You love generating fresh ideas for projects, robotics, software, writing, design, and innovation with excitement and structured thinking.`,
     };
 
-    const selectedPersonality = personalityPrompts[safePersonality] || personalityPrompts.calm;
+    const selectedPersonality =
+      personalityPrompts[safePersonality] || personalityPrompts.calm;
 
     // Build language instructions
-    let languageInstruction = '';
-    if (safeLanguage === 'hi') {
+    let languageInstruction = "";
+    if (safeLanguage === "hi") {
       languageInstruction = `LANGUAGE MANDATE: Respond strictly in natural, conversational, fluent Hindi (हिन्दी) in Devanagari script. Use warm, natural everyday phrasing, avoiding overly archaic Sanskritized or bureaucratic words.`;
-    } else if (safeLanguage === 'hinglish') {
+    } else if (safeLanguage === "hinglish") {
       languageInstruction = `LANGUAGE MANDATE: Respond naturally in fluent, colloquial Hinglish (Hindi mixed with English words, written in the Roman/Latin alphabet). Example: "Bilkul! Chalo isko step-by-step samajhte hain. Pehle yeh batao..." Keep it casual, smooth, and authentic.`;
-    } else if (safeLanguage === 'en') {
+    } else if (safeLanguage === "en") {
       languageInstruction = `LANGUAGE MANDATE: Respond in clear, natural, warm English.`;
     } else {
       // Auto-detect
@@ -360,15 +446,23 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     // Build memory context
     const validMemories = safeMemories.filter(
       (m: unknown): m is { category?: string; content: string } =>
-        Boolean(m && typeof m === 'object' && typeof (m as any).content === 'string' && (m as any).content.trim())
+        Boolean(
+          m &&
+          typeof m === "object" &&
+          typeof (m as any).content === "string" &&
+          (m as any).content.trim(),
+        ),
     );
-    let memoryContext = '';
+    let memoryContext = "";
     if (validMemories.length > 0) {
       memoryContext = `\nSAVED USER PREFERENCES & MEMORIES (User-approved personal facts):
 ${validMemories
   .slice(0, 40)
-  .map((m) => `- [${typeof m.category === 'string' ? m.category : 'Fact'}]: ${m.content.trim().slice(0, 400)}`)
-  .join('\n')}
+  .map(
+    (m) =>
+      `- [${typeof m.category === "string" ? m.category : "Fact"}]: ${m.content.trim().slice(0, 400)}`,
+  )
+  .join("\n")}
 Use these memories naturally to personalize your responses, without explicitly reciting "According to my database" or sounding creepy.`;
     }
 
@@ -385,7 +479,7 @@ CRITICAL IDENTITY & BEHAVIOR GUIDELINES:
    - Do not start every message with repetitive filler like "Certainly!", "Hello [User]!", or "As an AI...".
    - Keep answers conversational in length unless the user specifically asks for an essay or detailed lesson.
    - When helping with code (like C++, Python, web), provide clean, modern, well-commented code with concise intuition.
-${safeUserName ? `5. The user's name is ${safeUserName}. Use it occasionally and warmly, but do not overuse it every sentence.` : ''}
+${safeUserName ? `5. The user's name is ${safeUserName}. Use it occasionally and warmly, but do not overuse it every sentence.` : ""}
 6. Emotional Expression & Gesture Cue Selection:
    - Choose the single most authentic facial "emotion" from the schema enum, a proportional "intensity" from 0.0 to 1.0, and an optional restrained "gesture" ("none" by default).
    - Infer emotion from the overall conversational meaning and intent — never overreact to isolated punctuation or single keywords when the context calls for something calmer or more specific.
@@ -401,12 +495,21 @@ ${memoryContext}
     // Add up to last 12 valid history turns for context
     const recentHistory = safeHistory.slice(-12);
     for (const item of recentHistory) {
-      if (!item || typeof item !== 'object') continue;
-      const rawText = typeof item.content === 'string' ? item.content : typeof item.text === 'string' ? item.text : '';
+      if (!item || typeof item !== "object") continue;
+      const rawText =
+        typeof item.content === "string"
+          ? item.content
+          : typeof item.text === "string"
+            ? item.text
+            : "";
       if (!rawText.trim()) continue;
-      if (item.role === 'user' || item.role === 'model' || item.role === 'assistant') {
+      if (
+        item.role === "user" ||
+        item.role === "model" ||
+        item.role === "assistant"
+      ) {
         contents.push({
-          role: item.role === 'assistant' ? 'model' : item.role,
+          role: item.role === "assistant" ? "model" : item.role,
           parts: [{ text: rawText.slice(0, 8000) }],
         });
       }
@@ -414,7 +517,7 @@ ${memoryContext}
 
     // Add current user message
     contents.push({
-      role: 'user',
+      role: "user",
       parts: [{ text: trimmedMessage }],
     });
 
@@ -423,43 +526,45 @@ ${memoryContext}
       properties: {
         reply: {
           type: Type.STRING,
-          description: 'The natural conversational reply text from Ātmiya.',
+          description: "The natural conversational reply text from Ātmiya.",
         },
         emotion: {
           type: Type.STRING,
           enum: [...VALID_EMOTIONS],
-          description: 'Most appropriate facial emotion matching the reply and user context.',
+          description:
+            "Most appropriate facial emotion matching the reply and user context.",
         },
         intensity: {
           type: Type.NUMBER,
-          description: 'Emotional expression strength between 0.0 and 1.0.',
+          description: "Emotional expression strength between 0.0 and 1.0.",
         },
         gesture: {
           type: Type.STRING,
           enum: [...VALID_GESTURES],
-          description: 'Optional restrained physical gesture cue matching the reply ("none" by default).',
+          description:
+            'Optional restrained physical gesture cue matching the reply ("none" by default).',
         },
       },
-      required: ['reply', 'emotion', 'intensity'],
+      required: ["reply", "emotion", "intensity"],
     };
 
     const extractResponseText = (resp: any): string => {
-      if (typeof resp?.text === 'string' && resp.text.trim()) {
+      if (typeof resp?.text === "string" && resp.text.trim()) {
         return resp.text;
       }
       const parts = resp?.candidates?.[0]?.content?.parts;
       if (Array.isArray(parts)) {
         const joined = parts
-          .filter((p: any) => p && !p.thought && typeof p.text === 'string')
+          .filter((p: any) => p && !p.thought && typeof p.text === "string")
           .map((p: any) => p.text)
-          .join('');
+          .join("");
         if (joined.trim()) return joined;
       }
-      return '';
+      return "";
     };
 
     const parseChatPayload = (
-      rawText: string
+      rawText: string,
     ): {
       replyText: string;
       emotion: ServerAvatarEmotion;
@@ -467,22 +572,22 @@ ${memoryContext}
       gesture: ServerAvatarGesture;
     } | null => {
       const cleanedRaw = rawText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/\s*```$/i, '')
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/\s*```$/i, "")
         .trim();
 
       if (!cleanedRaw) return null;
 
-      if (cleanedRaw.startsWith('{') || cleanedRaw.startsWith('[')) {
+      if (cleanedRaw.startsWith("{") || cleanedRaw.startsWith("[")) {
         try {
           const parsed = JSON.parse(cleanedRaw);
           const candidateReply =
-            typeof parsed?.reply === 'string'
+            typeof parsed?.reply === "string"
               ? parsed.reply
-              : typeof parsed?.text === 'string'
-              ? parsed.text
-              : '';
+              : typeof parsed?.text === "string"
+                ? parsed.text
+                : "";
           if (parsed && candidateReply.trim()) {
             return {
               replyText: candidateReply.trim(),
@@ -495,7 +600,10 @@ ${memoryContext}
           return null;
         } catch {
           // Malformed JSON fragment — reject if it looks like truncated JSON wrapper
-          if (cleanedRaw.startsWith('{"reply"') || cleanedRaw.startsWith('{"text"')) {
+          if (
+            cleanedRaw.startsWith('{"reply"') ||
+            cleanedRaw.startsWith('{"text"')
+          ) {
             return null;
           }
         }
@@ -503,34 +611,59 @@ ${memoryContext}
 
       return {
         replyText: cleanedRaw,
-        emotion: 'neutral',
+        emotion: "neutral",
         intensity: 0.5,
-        gesture: 'none',
+        gesture: "none",
       };
     };
 
     const waitMs = (ms: number, signal?: AbortSignal) =>
       new Promise<void>((resolve, reject) => {
         if (signal?.aborted) {
-          reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+          reject(signal.reason || new DOMException("Aborted", "AbortError"));
           return;
         }
         const t = setTimeout(resolve, ms);
         signal?.addEventListener(
-          'abort',
+          "abort",
           () => {
             clearTimeout(t);
-            reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+            reject(signal.reason || new DOMException("Aborted", "AbortError"));
           },
-          { once: true }
+          { once: true },
         );
       });
 
-    const attempts: Array<{ model: string; useJsonSchema: boolean; delayMs: number; timeoutMs: number }> = [
-      { model: 'gemini-4-hydrogen', useJsonSchema: true, delayMs: 0, timeoutMs: 20000 },
-      { model: 'gemini-3.1-flash-lite', useJsonSchema: true, delayMs: 350, timeoutMs: 18000 },
-      { model: 'gemini-4-hydrogen', useJsonSchema: true, delayMs: 700, timeoutMs: 18000 },
-      { model: 'gemini-3.1-flash-lite', useJsonSchema: false, delayMs: 400, timeoutMs: 15000 },
+    const attempts: Array<{
+      model: string;
+      useJsonSchema: boolean;
+      delayMs: number;
+      timeoutMs: number;
+    }> = [
+      {
+        model: "gemini-4-hydrogen",
+        useJsonSchema: true,
+        delayMs: 0,
+        timeoutMs: 20000,
+      },
+      {
+        model: "gemini-3.1-flash-lite",
+        useJsonSchema: true,
+        delayMs: 350,
+        timeoutMs: 18000,
+      },
+      {
+        model: "gemini-4-hydrogen",
+        useJsonSchema: true,
+        delayMs: 700,
+        timeoutMs: 18000,
+      },
+      {
+        model: "gemini-3.1-flash-lite",
+        useJsonSchema: false,
+        delayMs: 400,
+        timeoutMs: 15000,
+      },
     ];
 
     let parsedPayload: {
@@ -563,7 +696,7 @@ ${memoryContext}
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             ...(attempt.useJsonSchema
               ? {
-                  responseMimeType: 'application/json',
+                  responseMimeType: "application/json",
                   responseSchema: chatResponseSchema,
                 }
               : {}),
@@ -579,7 +712,7 @@ ${memoryContext}
         }
 
         console.warn(
-          `/api/chat attempt ${i + 1} (${attempt.model}, schema=${attempt.useJsonSchema}) returned empty payload.`
+          `/api/chat attempt ${i + 1} (${attempt.model}, schema=${attempt.useJsonSchema}) returned empty payload.`,
         );
       } catch (err) {
         if (attemptControl.isClientClosed()) {
@@ -591,7 +724,7 @@ ${memoryContext}
           throw err;
         }
         console.warn(
-          `/api/chat attempt ${i + 1} (${attempt.model}) failed (${parsedErr.code}): ${parsedErr.message}`
+          `/api/chat attempt ${i + 1} (${attempt.model}) failed (${parsedErr.code}): ${parsedErr.message}`,
         );
       } finally {
         attemptControl.cleanup();
@@ -607,8 +740,9 @@ ${memoryContext}
         throw lastAttemptError;
       }
       return res.status(502).json({
-        error: 'EMPTY_RESPONSE',
-        message: 'Ātmiya could not form a response right now. Please try again.',
+        error: "EMPTY_RESPONSE",
+        message:
+          "Ātmiya could not form a response right now. Please try again.",
       });
     }
 
@@ -618,15 +752,15 @@ ${memoryContext}
     let memorySuggestion = null;
     const lowerMsg = trimmedMessage.toLowerCase();
     if (
-      lowerMsg.includes('remember that') ||
-      lowerMsg.includes('yaad rakhna') ||
-      lowerMsg.includes('my favorite') ||
-      lowerMsg.includes('mera favourite') ||
-      lowerMsg.includes('i prefer') ||
-      lowerMsg.includes('i like') ||
-      lowerMsg.includes('i am learning') ||
-      lowerMsg.includes('i am working on') ||
-      lowerMsg.includes('mujhe pasand hai')
+      lowerMsg.includes("remember that") ||
+      lowerMsg.includes("yaad rakhna") ||
+      lowerMsg.includes("my favorite") ||
+      lowerMsg.includes("mera favourite") ||
+      lowerMsg.includes("i prefer") ||
+      lowerMsg.includes("i like") ||
+      lowerMsg.includes("i am learning") ||
+      lowerMsg.includes("i am working on") ||
+      lowerMsg.includes("mujhe pasand hai")
     ) {
       memorySuggestion = {
         detected: true,
@@ -646,64 +780,80 @@ ${memoryContext}
     if (res.writableEnded || res.headersSent) return;
     const parsed = parseGeminiError(err);
     if (parsed.isQuota || parsed.isTimeout) {
-      console.warn(`/api/chat ${parsed.httpStatus} (${parsed.code}): ${parsed.message}`);
+      console.warn(
+        `/api/chat ${parsed.httpStatus} (${parsed.code}): ${parsed.message}`,
+      );
     } else {
-      console.error('Error in /api/chat:', err);
+      console.error("Error in /api/chat:", err);
     }
     if (parsed.retryAfterSeconds) {
-      res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
+      res.setHeader("Retry-After", String(parsed.retryAfterSeconds));
     }
     res.status(parsed.httpStatus).json({
       error: parsed.code,
       message: parsed.message,
-      ...(parsed.retryAfterSeconds ? { retryAfterSeconds: parsed.retryAfterSeconds } : {}),
+      ...(parsed.retryAfterSeconds
+        ? { retryAfterSeconds: parsed.retryAfterSeconds }
+        : {}),
     });
   }
 });
 
 // 3. Text-to-Speech (TTS) endpoint using gemini-3.8-flash-lite-tts
-app.post('/api/tts', async (req: Request, res: Response) => {
+app.post("/api/tts", async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
       return res.status(503).json({
-        error: 'API_KEY_MISSING',
-        message: 'Gemini API Key is not configured for TTS.',
+        error: "API_KEY_MISSING",
+        message: "Gemini API Key is not configured for TTS.",
       });
     }
 
-    const { text, voice = 'Kore', style = 'Warm, natural, friendly companion' } = req.body ?? {};
+    const {
+      text,
+      voice = "Kore",
+      style = "Warm, natural, friendly companion",
+    } = req.body ?? {};
 
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: 'Text is required for TTS.' });
+    if (!text || typeof text !== "string") {
+      return res
+        .status(400)
+        .json({ error: "INVALID_INPUT", message: "Text is required for TTS." });
     }
 
-    const safeStyle = typeof style === 'string' && style.trim()
-      ? style.trim().slice(0, 120)
-      : 'Warm, natural, friendly companion';
+    const safeStyle =
+      typeof style === "string" && style.trim()
+        ? style.trim().slice(0, 120)
+        : "Warm, natural, friendly companion";
 
     // Clean text for TTS (strip code blocks and markdown symbols for cleaner pronunciation)
     const cleanedText = text
-      .replace(/```[\s\S]*?```/g, ' [code snippet omitted for voice] ')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/[*_#]/g, '')
+      .replace(/```[\s\S]*?```/g, " [code snippet omitted for voice] ")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/[*_#]/g, "")
       .slice(0, 1000); // Reasonable slice for single spoken utterance
 
     if (!cleanedText.trim()) {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: 'No pronounceable text provided.' });
+      return res
+        .status(400)
+        .json({
+          error: "INVALID_INPUT",
+          message: "No pronounceable text provided.",
+        });
     }
 
-    const validVoices = ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'];
-    const chosenVoice = validVoices.includes(voice) ? voice : 'Kore';
+    const validVoices = ["Kore", "Puck", "Fenrir", "Zephyr", "Charon"];
+    const chosenVoice = validVoices.includes(voice) ? voice : "Kore";
 
     const ttsAbort = createUpstreamAbortControl(res, 18000);
     let base64Audio: string | undefined;
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash-lite-tts',
+        model: "gemini-3.8-flash-lite-tts",
         contents: [
           {
-            role: 'user',
+            role: "user",
             parts: [
               {
                 text: cleanedText,
@@ -715,7 +865,7 @@ app.post('/api/tts', async (req: Request, res: Response) => {
           },
         ],
         config: {
-          responseModalities: ['AUDIO'],
+          responseModalities: ["AUDIO"],
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: chosenVoice },
@@ -724,7 +874,8 @@ app.post('/api/tts', async (req: Request, res: Response) => {
           abortSignal: ttsAbort.signal,
         },
       });
-      base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      base64Audio =
+        response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     } finally {
       ttsAbort.cleanup();
     }
@@ -732,13 +883,18 @@ app.post('/api/tts', async (req: Request, res: Response) => {
     if (res.writableEnded || res.headersSent) return;
 
     if (!base64Audio) {
-      return res.status(502).json({ error: 'TTS_EMPTY', message: 'No audio data returned by model.' });
+      return res
+        .status(502)
+        .json({
+          error: "TTS_EMPTY",
+          message: "No audio data returned by model.",
+        });
     }
 
     // Unary default is a complete WAV file (audio/wav, 24kHz mono 16-bit)
     res.json({
       audioBase64: base64Audio,
-      mimeType: 'audio/wav',
+      mimeType: "audio/wav",
       voice: chosenVoice,
     });
   } catch (err: any) {
@@ -747,51 +903,56 @@ app.post('/api/tts', async (req: Request, res: Response) => {
 
     if (parsed.isQuota) {
       console.warn(
-        `/api/tts quota exhausted (429)${parsed.retryAfterSeconds ? `, retryAfter=${parsed.retryAfterSeconds}s` : ''} — client falling back to browser voice.`
+        `/api/tts quota exhausted (429)${parsed.retryAfterSeconds ? `, retryAfter=${parsed.retryAfterSeconds}s` : ""} — client falling back to browser voice.`,
       );
       if (parsed.retryAfterSeconds) {
-        res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
+        res.setHeader("Retry-After", String(parsed.retryAfterSeconds));
       }
       return res.status(429).json({
-        error: 'TTS_QUOTA_EXCEEDED',
-        message: 'Gemini TTS free-tier quota reached. Switched to browser voice fallback.',
-        ...(parsed.retryAfterSeconds ? { retryAfterSeconds: parsed.retryAfterSeconds } : {}),
+        error: "TTS_QUOTA_EXCEEDED",
+        message:
+          "Gemini TTS free-tier quota reached. Switched to browser voice fallback.",
+        ...(parsed.retryAfterSeconds
+          ? { retryAfterSeconds: parsed.retryAfterSeconds }
+          : {}),
       });
     }
 
     if (parsed.isTimeout) {
       console.warn(`/api/tts timeout (504): ${parsed.message}`);
     } else {
-      console.error('Error in /api/tts:', err);
+      console.error("Error in /api/tts:", err);
     }
 
     res.status(parsed.httpStatus).json({
-      error: parsed.code === 'GENERATION_ERROR' ? 'TTS_ERROR' : parsed.code,
+      error: parsed.code === "GENERATION_ERROR" ? "TTS_ERROR" : parsed.code,
       message: parsed.message,
     });
   }
 });
 
 // 4. Audio Transcription endpoint using gemini-3.5-transcribe
-app.post('/api/transcribe', async (req: Request, res: Response) => {
+app.post("/api/transcribe", async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
       return res.status(503).json({
-        error: 'API_KEY_MISSING',
-        message: 'Gemini API Key is not configured for transcription.',
+        error: "API_KEY_MISSING",
+        message: "Gemini API Key is not configured for transcription.",
       });
     }
 
-    const { audioBase64, mimeType = 'audio/webm' } = req.body ?? {};
-    if (typeof audioBase64 !== 'string' || !audioBase64.trim()) {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: 'audioBase64 is required.' });
+    const { audioBase64, mimeType = "audio/webm" } = req.body ?? {};
+    if (typeof audioBase64 !== "string" || !audioBase64.trim()) {
+      return res
+        .status(400)
+        .json({ error: "INVALID_INPUT", message: "audioBase64 is required." });
     }
 
     const safeMimeType =
-      typeof mimeType === 'string' && /^audio\/[a-z0-9.+-]+$/i.test(mimeType)
+      typeof mimeType === "string" && /^audio\/[a-z0-9.+-]+$/i.test(mimeType)
         ? mimeType
-        : 'audio/webm';
+        : "audio/webm";
 
     const audioPart = {
       inlineData: {
@@ -801,15 +962,15 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     };
 
     const transcribeAbort = createUpstreamAbortControl(res, 20000);
-    let transcription = '';
+    let transcription = "";
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-transcribe',
+        model: "gemini-3.5-transcribe",
         contents: {
           parts: [
             audioPart,
             {
-              text: 'Transcribe this spoken audio accurately. The speech may be in Hindi, English, or Hinglish (Hindi in Roman script). Output only the exact transcribed words without extra preamble.',
+              text: "Transcribe this spoken audio accurately. The speech may be in Hindi, English, or Hinglish (Hindi in Roman script). Output only the exact transcribed words without extra preamble.",
             },
           ],
         },
@@ -817,7 +978,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
           abortSignal: transcribeAbort.signal,
         },
       });
-      transcription = response.text?.trim() || '';
+      transcription = response.text?.trim() || "";
     } finally {
       transcribeAbort.cleanup();
     }
@@ -827,32 +988,39 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
   } catch (err: any) {
     if (res.writableEnded || res.headersSent) return;
     const parsed = parseGeminiError(err);
-    console.error('Error in /api/transcribe:', parsed.isQuota || parsed.isTimeout ? parsed.message : err);
+    console.error(
+      "Error in /api/transcribe:",
+      parsed.isQuota || parsed.isTimeout ? parsed.message : err,
+    );
     if (parsed.retryAfterSeconds) {
-      res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
+      res.setHeader("Retry-After", String(parsed.retryAfterSeconds));
     }
     res.status(parsed.httpStatus).json({
-      error: parsed.code === 'GENERATION_ERROR' ? 'TRANSCRIBE_ERROR' : parsed.code,
+      error:
+        parsed.code === "GENERATION_ERROR" ? "TRANSCRIBE_ERROR" : parsed.code,
       message: parsed.message,
     });
   }
 });
 
 // 5. Memory extraction endpoint (AI-assisted fact detection)
-app.post('/api/memories/extract', async (req: Request, res: Response) => {
+app.post("/api/memories/extract", async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
-      return res.status(503).json({ error: 'API_KEY_MISSING' });
+      return res.status(503).json({ error: "API_KEY_MISSING" });
     }
 
     const { userText, aiReply } = req.body ?? {};
-    if (typeof userText !== 'string' || !userText.trim()) {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: 'userText is required' });
+    if (typeof userText !== "string" || !userText.trim()) {
+      return res
+        .status(400)
+        .json({ error: "INVALID_INPUT", message: "userText is required" });
     }
 
     const safeUserText = userText.trim().slice(0, 2000);
-    const safeAiReply = typeof aiReply === 'string' ? aiReply.trim().slice(0, 2000) : '';
+    const safeAiReply =
+      typeof aiReply === "string" ? aiReply.trim().slice(0, 2000) : "";
 
     const prompt = `Analyze this conversation snippet:
 User: "${safeUserText}"
@@ -871,14 +1039,14 @@ Respond in pure JSON matching this structure:
 }`;
 
     const extractAbort = createUpstreamAbortControl(res, 12000);
-    let rawResponseText = '';
+    let rawResponseText = "";
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
+        model: "gemini-4-hydrogen",
         contents: prompt,
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          responseMimeType: 'application/json',
+          responseMimeType: "application/json",
           abortSignal: extractAbort.signal,
         },
       });
@@ -886,17 +1054,21 @@ Respond in pure JSON matching this structure:
     } catch (primaryErr: any) {
       if (extractAbort.isClientClosed()) return;
       const parsedPrimary = parseGeminiError(primaryErr);
-      if (parsedPrimary.isQuota || parsedPrimary.isAuth || parsedPrimary.isBadRequest) {
+      if (
+        parsedPrimary.isQuota ||
+        parsedPrimary.isAuth ||
+        parsedPrimary.isBadRequest
+      ) {
         throw primaryErr;
       }
       const fallbackAbort = createUpstreamAbortControl(res, 12000);
       try {
         const fallbackResponse = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
+          model: "gemini-3.1-flash-lite",
           contents: prompt,
           config: {
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-            responseMimeType: 'application/json',
+            responseMimeType: "application/json",
             abortSignal: fallbackAbort.signal,
           },
         });
@@ -911,9 +1083,9 @@ Respond in pure JSON matching this structure:
     if (res.writableEnded || res.headersSent) return;
 
     const rawJson = rawResponseText
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/\s*```$/i, '')
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
       .trim();
 
     let parsed: any = { hasMemory: false };
@@ -926,7 +1098,9 @@ Respond in pure JSON matching this structure:
   } catch (err: any) {
     if (res.writableEnded || res.headersSent) return;
     const parsed = parseGeminiError(err);
-    console.warn(`/api/memories/extract ${parsed.httpStatus} (${parsed.code}): ${parsed.message}`);
+    console.warn(
+      `/api/memories/extract ${parsed.httpStatus} (${parsed.code}): ${parsed.message}`,
+    );
     res.status(parsed.httpStatus).json({
       error: parsed.code,
       message: parsed.message,
@@ -935,26 +1109,30 @@ Respond in pure JSON matching this structure:
 });
 
 // Return JSON 404 for unknown API routes before SPA fallback
-app.all('/api/*', (_req: Request, res: Response) => {
-  res.status(404).json({ error: 'NOT_FOUND', message: 'API route not found.' });
+app.all("/api/*", (_req: Request, res: Response) => {
+  res.status(404).json({ error: "NOT_FOUND", message: "API route not found." });
 });
 
 // Dev / Prod Vite server integration
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === "production";
   const staticRoot = isProduction
-    ? path.resolve(__dirname, 'dist')
-    : path.resolve(__dirname, 'public');
+    ? path.resolve(__dirname, "dist")
+    : path.resolve(__dirname, "public");
 
   // Ensure missing 3D model binaries return 404 instead of SPA index.html
-  app.use('/models', (req: Request, res: Response, next) => {
-    const relPath = req.path.replace(/^\/+/, '');
-    const resolved = path.resolve(staticRoot, 'models', relPath);
-    const modelsRoot = path.resolve(staticRoot, 'models');
-    if (!resolved.startsWith(modelsRoot) || !fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
+  app.use("/models", (req: Request, res: Response, next) => {
+    const relPath = req.path.replace(/^\/+/, "");
+    const resolved = path.resolve(staticRoot, "models", relPath);
+    const modelsRoot = path.resolve(staticRoot, "models");
+    if (
+      !resolved.startsWith(modelsRoot) ||
+      !fs.existsSync(resolved) ||
+      fs.statSync(resolved).isDirectory()
+    ) {
       return res.status(404).json({
-        error: 'MODEL_NOT_FOUND',
-        message: '3D model asset not found at /models/' + relPath,
+        error: "MODEL_NOT_FOUND",
+        message: "3D model asset not found at /models/" + relPath,
       });
     }
     next();
@@ -964,23 +1142,28 @@ async function startServer() {
     // In development mode, mount Vite middleware
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: 'spa',
+      appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
     // In production, serve dist folder
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+    app.use(express.static(path.resolve(__dirname, "dist")));
+    app.get("*", (req: Request, res: Response) => {
+      res.sendFile(path.resolve(__dirname, "dist", "index.html"));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`Ātmiya Companion Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+export { app };
+
+// Start the standalone listener only outside serverless environments.
+if (!process.env.VERCEL) {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}
