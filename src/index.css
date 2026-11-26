@@ -8,20 +8,20 @@
   --border-hairline: rgba(15, 23, 42, 0.1);
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --accent-primary: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.1);
+  --accent-primary: #4f46e5;
+  --accent-soft: rgba(79, 70, 229, 0.1);
   color-scheme: light;
 }
 
 .dark {
-  --bg-canvas: #050a14;
-  --bg-surface: #081020;
-  --bg-elevated: #0d182e;
-  --border-hairline: rgba(56, 189, 248, 0.16);
+  --bg-canvas: #060b1c;
+  --bg-surface: #0b132b;
+  --bg-elevated: #111b38;
+  --border-hairline: rgba(148, 163, 184, 0.16);
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
-  --accent-primary: #38bdf8;
-  --accent-soft: rgba(56, 189, 248, 0.14);
+  --accent-primary: #818cf8;
+  --accent-soft: rgba(129, 140, 248, 0.16);
   color-scheme: dark;
 }
 
@@ -32,6 +32,15 @@
     color: var(--text-primary);
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
   }
 }
 
@@ -51,11 +60,11 @@
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.3);
+  background: rgba(99, 102, 241, 0.32);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(37, 99, 235, 0.5);
+  background: rgba(79, 70, 229, 0.5);
 }
 
 @keyframes fadeIn {

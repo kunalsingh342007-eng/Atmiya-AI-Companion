@@ -162,11 +162,21 @@ export interface ConversationSession {
 
 export type ActiveNavTab =
   | 'home'
+  | 'history'
   | 'play'
   | 'learning'
   | 'wardrobe'
   | 'memories'
   | 'settings';
+
+export interface UserProfile {
+  displayName: string;
+  avatarDataUrl?: string;
+  bio?: string;
+  onboardingCompleted: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
 
 export type RoomEnvironmentId =
   | 'sunlit-study'

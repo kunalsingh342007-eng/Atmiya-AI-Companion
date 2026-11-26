@@ -6,9 +6,11 @@ import {
   GameProgress,
   RoomEnvironmentId,
   UserMemory,
+  UserProfile,
 } from '../types/companion';
 
 const SETTINGS_KEY = 'atmiya_companion_settings_v1';
+const PROFILE_KEY = 'atmiya_user_profile_v1';
 const CONVERSATIONS_KEY = 'atmiya_conversations_v1';
 const MEMORIES_KEY = 'atmiya_user_memories_v1';
 const ACTIVE_CONV_ID_KEY = 'atmiya_active_conv_id_v1';
@@ -179,6 +181,80 @@ export const storage = {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (e) {
       console.error('Failed to save settings:', e);
+    }
+  },
+
+  getProfile(): UserProfile {
+    const now = Date.now();
+    try {
+      const raw = localStorage.getItem(PROFILE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return {
+            displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
+            avatarDataUrl:
+              typeof parsed.avatarDataUrl === 'string' && parsed.avatarDataUrl.trim()
+                ? parsed.avatarDataUrl.trim()
+                : undefined,
+            bio: typeof parsed.bio === 'string' ? parsed.bio : '',
+            onboardingCompleted: Boolean(parsed.onboardingCompleted),
+            createdAt: typeof parsed.createdAt === 'number' ? parsed.createdAt : now,
+            updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : now,
+          };
+        }
+      }
+
+      // Migrate returning pre-v1 users who already configured a name or saved conversations
+      const existingSettings = this.getSettings();
+      const existingConvs = this.getConversations();
+      const hasPriorUsage =
+        Boolean(existingSettings.userName?.trim()) ||
+        existingConvs.some((c) => Array.isArray(c.messages) && c.messages.length > 0);
+
+      if (hasPriorUsage) {
+        const migrated: UserProfile = {
+          displayName: existingSettings.userName?.trim() || '',
+          bio: '',
+          onboardingCompleted: true,
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.saveProfile(migrated);
+        return migrated;
+      }
+    } catch {
+      // fall through to clean default
+    }
+
+    return {
+      displayName: '',
+      bio: '',
+      onboardingCompleted: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+  },
+
+  saveProfile(profile: UserProfile): { ok: boolean; error?: string } {
+    try {
+      const sanitized: UserProfile = {
+        ...profile,
+        displayName: profile.displayName.trim().slice(0, 80),
+        bio: profile.bio ? profile.bio.trim().slice(0, 240) : '',
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(sanitized));
+      return { ok: true };
+    } catch (e: any) {
+      console.error('Failed to save user profile:', e);
+      return {
+        ok: false,
+        error:
+          e?.name === 'QuotaExceededError'
+            ? 'Browser storage is full. Try removing or using a smaller profile image.'
+            : 'Could not save profile to browser storage.',
+      };
     }
   },
 
@@ -497,9 +573,10 @@ export const storage = {
 
   exportAllData(): string {
     const exportObject = {
-      appName: 'Ātmiya Companion',
-      version: '1.1',
+      appName: 'Ātmiya AI Companion',
+      version: '1.0.0',
       exportedAt: new Date().toISOString(),
+      profile: this.getProfile(),
       settings: this.getSettings(),
       memories: this.getMemories(),
       conversations: this.getConversations(),
@@ -516,6 +593,18 @@ export const storage = {
       }
 
       let importedAny = false;
+      if (data.profile && typeof data.profile === 'object' && !Array.isArray(data.profile)) {
+        this.saveProfile({
+          displayName: typeof data.profile.displayName === 'string' ? data.profile.displayName : '',
+          avatarDataUrl:
+            typeof data.profile.avatarDataUrl === 'string' ? data.profile.avatarDataUrl : undefined,
+          bio: typeof data.profile.bio === 'string' ? data.profile.bio : '',
+          onboardingCompleted: Boolean(data.profile.onboardingCompleted),
+          createdAt: typeof data.profile.createdAt === 'number' ? data.profile.createdAt : Date.now(),
+          updatedAt: Date.now(),
+        });
+        importedAny = true;
+      }
       if (data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings)) {
         const mergedSettings: CompanionSettings = {
           ...DEFAULT_SETTINGS,
