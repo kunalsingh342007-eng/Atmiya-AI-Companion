@@ -230,19 +230,19 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
 
       {/* Foreground Portrait Stage with Wardrobe Accent Rim */}
       <div
-        className={`relative ${frameSizeClasses} transition-all duration-300 border-2 shadow-2xl backdrop-blur-sm`}
+        className={`relative ${frameSizeClasses} transition-all duration-300 border-2 shadow-xl backdrop-blur-sm`}
         style={{
           transform: `scale(${acousticFrameScale})`,
           borderColor: outfitBorderColor,
-          background: `linear-gradient(180deg, rgba(255,255,255,0.22) 0%, ${outfitBorderColor}44 100%)`,
+          background: `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, ${outfitBorderColor}38 100%)`,
           boxShadow:
             state === 'speaking'
-              ? `0 18px 48px rgba(15, 23, 42, 0.55), 0 0 ${22 + audioLevel * 32}px rgba(139, 92, 246, ${0.42 + audioLevel * 0.35})`
+              ? `0 16px 38px rgba(15, 23, 42, 0.45), 0 0 ${14 + audioLevel * 18}px rgba(99, 102, 241, ${0.28 + audioLevel * 0.25})`
               : state === 'listening'
-              ? '0 18px 48px rgba(15, 23, 42, 0.55), 0 0 28px rgba(56, 189, 248, 0.4)'
+              ? '0 16px 38px rgba(15, 23, 42, 0.45), 0 0 18px rgba(56, 189, 248, 0.28)'
               : state === 'thinking'
-              ? '0 18px 48px rgba(15, 23, 42, 0.55), 0 0 26px rgba(251, 146, 60, 0.35)'
-              : '0 22px 54px rgba(15, 23, 42, 0.58)',
+              ? '0 16px 38px rgba(15, 23, 42, 0.45), 0 0 16px rgba(251, 146, 60, 0.24)'
+              : '0 18px 42px rgba(15, 23, 42, 0.45)',
         }}
       >
         <div
@@ -361,7 +361,7 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
             </div>
           ) : (
             <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 text-xs font-medium">
-              <span>{emotion !== 'neutral' ? AVATAR_EMOTION_LABELS[emotion] : 'Online'}</span>
+              <span>{emotion !== 'neutral' ? AVATAR_EMOTION_LABELS[emotion] : 'Calm & Present'}</span>
             </div>
           )}
         </div>

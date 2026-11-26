@@ -18,7 +18,6 @@ import {
   Calendar,
   Edit3,
   Gamepad2,
-  MessageSquareOff,
   Plus,
   Search,
   ShieldCheck,
@@ -31,14 +30,12 @@ import {
 interface MemoriesScreenProps {
   memories: UserMemory[];
   memoryEnabled: boolean;
-  conversationsCount: number;
   conversations?: ConversationSession[];
   onToggleMemoryEnabled: (enabled: boolean) => void;
   onAddMemory: (memory: Omit<UserMemory, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateMemory: (id: string, updates: Partial<UserMemory>) => void;
   onDeleteMemory: (id: string) => void;
   onClearAllMemories: () => void;
-  onClearAllConversations: () => void;
   onUnsavedChange?: (hasUnsaved: boolean) => void;
 }
 
@@ -159,14 +156,12 @@ const MemoryVisualArtwork: React.FC<{
 export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
   memories,
   memoryEnabled,
-  conversationsCount,
   conversations = [],
   onToggleMemoryEnabled,
   onAddMemory,
   onUpdateMemory,
   onDeleteMemory,
   onClearAllMemories,
-  onClearAllConversations,
   onUnsavedChange,
 }) => {
   const [viewMode, setViewMode] = useState<'highlights' | 'all'>('highlights');
@@ -183,7 +178,6 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [showClearChatsConfirm, setShowClearChatsConfirm] = useState(false);
 
   const hasUnsavedDraft =
     (isAdding && newContent.trim().length > 0) ||
@@ -392,7 +386,7 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                         setViewMode('all');
                       }
                     }}
-                    className={`group rounded-2xl p-2.5 bg-white dark:bg-[#091332]/88 border border-slate-200 ${card.borderGlow} shadow-xs dark:shadow-[0_16px_38px_rgba(3,8,28,0.58)] hover:shadow-lg transition text-left cursor-pointer flex flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
+                    className={`group rounded-2xl p-2.5 bg-white dark:bg-[#091332]/88 border border-slate-200 ${card.borderGlow} shadow-xs dark:shadow-lg hover:shadow-md transition text-left cursor-pointer flex flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
                   >
                     <MemoryVisualArtwork variant={card.variant} />
                     <div className="px-2 pt-3 pb-2 space-y-1">
@@ -433,12 +427,12 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
               </div>
             )}
 
-            {/* Centered Purple View All Memories CTA */}
+            {/* Centered View All Memories CTA */}
             <div className="flex justify-center pt-1">
               <button
                 type="button"
                 onClick={() => setViewMode('all')}
-                className="h-11 px-7 rounded-full bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 hover:from-indigo-500 hover:via-violet-500 hover:to-purple-500 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-[0_10px_28px_rgba(99,102,241,0.45)] transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                className="h-11 px-7 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-md transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
               >
                 <span>View All Memories</span>
                 <ArrowRight className="w-4 h-4" />
@@ -463,7 +457,7 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsAdding(true)}
-                    className="h-10 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-semibold text-white inline-flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                    className="h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white inline-flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Fact</span>
@@ -477,16 +471,6 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Clear All Memories</span>
-                  </button>
-                )}
-                {conversationsCount > 0 && !showClearChatsConfirm && (
-                  <button
-                    type="button"
-                    onClick={() => setShowClearChatsConfirm(true)}
-                    className="h-10 px-4 rounded-xl bg-white dark:bg-[#091332] hover:bg-rose-50 dark:hover:bg-rose-950/60 border border-slate-200 dark:border-indigo-400/25 hover:border-rose-300 dark:hover:border-rose-500/40 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-200 inline-flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <MessageSquareOff className="w-3.5 h-3.5" />
-                    <span>Clear Chats</span>
                   </button>
                 )}
               </div>
@@ -555,34 +539,6 @@ export const MemoriesScreen: React.FC<MemoriesScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowClearConfirm(false)}
-                    className="h-9 px-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {showClearChatsConfirm && (
-              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-700/70 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-800 dark:text-rose-100">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-500 dark:text-rose-300 shrink-0" />
-                  <span>Clear all saved conversation transcripts on this browser?</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClearAllConversations();
-                      setShowClearChatsConfirm(false);
-                    }}
-                    className="h-9 px-3.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold cursor-pointer"
-                  >
-                    Yes, Clear Chats
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowClearChatsConfirm(false)}
                     className="h-9 px-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg cursor-pointer"
                   >
                     Cancel

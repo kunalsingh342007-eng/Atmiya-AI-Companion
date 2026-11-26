@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ActiveNavTab,
-  AvatarAnimationRequest,
   AvatarAppearanceConfig,
   AvatarEmotion,
   AvatarState,
@@ -49,8 +48,10 @@ import {
 import type { GlbInspectionReport } from './components/Avatar/RealisticAvatar';
 import { ConversationSidebar } from './components/Sidebar/ConversationSidebar';
 import { ChatDrawer } from './components/Chat/ChatDrawer';
-
-import { AlertTriangle, Check } from 'lucide-react';
+import { ToastBanner } from './components/Layout/ToastBanner';
+import { UnsavedChangesDialog } from './components/Layout/UnsavedChangesDialog';
+import { useSystemPreferences } from './hooks/useSystemPreferences';
+import { useToast } from './hooks/useToast';
 
 export default function App() {
   // Navigation & Game Progression State
@@ -102,10 +103,10 @@ export default function App() {
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [suggestedMemory, setSuggestedMemory] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, showToast } = useToast();
+  const prefersReducedMotion = useSystemPreferences(settings.theme, themePreviewOverride);
   const [glbInspection, setGlbInspection] = useState<GlbInspectionReport | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [activeGesture, setActiveGesture] = useState<AvatarGesture>('none');
   const [gestureNonce, setGestureNonce] = useState<number>(0);
   const [cameraPreset, setCameraPreset] = useState<CameraPreset>(
@@ -129,7 +130,6 @@ export default function App() {
   const [micPermission, refreshMicPermission, markMicDenied] = useMicrophonePermission();
 
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingGreetingAudioCleanupRef = useRef<(() => void) | null>(null);
   const isProcessingRef = useRef<boolean>(false);
@@ -159,39 +159,6 @@ export default function App() {
       setSpeechPlan(snap.activeSpeechPlan);
     });
     return unsub;
-  }, []);
-
-  useEffect(() => {
-    const activeTheme = themePreviewOverride ?? settings.theme;
-    const applyResolvedTheme = (prefersDark: boolean) => {
-      const isDark =
-        activeTheme === 'dark' || (activeTheme === 'auto' && prefersDark);
-      document.documentElement.classList.toggle('dark', isDark);
-      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
-    };
-
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      applyResolvedTheme(mq.matches);
-      if (activeTheme === 'auto') {
-        const listener = (e: MediaQueryListEvent) => applyResolvedTheme(e.matches);
-        mq.addEventListener('change', listener);
-        return () => mq.removeEventListener('change', listener);
-      }
-      return;
-    }
-
-    applyResolvedTheme(activeTheme !== 'light');
-  }, [settings.theme, themePreviewOverride]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-      setPrefersReducedMotion(mq.matches);
-      const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
-      mq.addEventListener('change', listener);
-      return () => mq.removeEventListener('change', listener);
-    }
   }, []);
 
   const cancelPendingGreetingAudio = useCallback(() => {
@@ -253,7 +220,6 @@ export default function App() {
       speechService.stopSpeaking();
       speechService.stopRecognition();
       animControllerRef.current?.dispose();
-      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       if (bubbleTimeoutRef.current) clearTimeout(bubbleTimeoutRef.current);
     };
   }, []);
@@ -274,17 +240,6 @@ export default function App() {
 
   const currentConversation = conversations.find((c) => c.id === activeConvId);
   const messages = currentConversation?.messages || [];
-
-  const showToast = (msg: string) => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    setToastMessage(msg);
-    toastTimeoutRef.current = setTimeout(() => {
-      setToastMessage(null);
-      toastTimeoutRef.current = null;
-    }, 3200);
-  };
 
   const showSpeechBubble = (text: string, durationMs = 4500) => {
     if (bubbleTimeoutRef.current) {
@@ -551,67 +506,6 @@ export default function App() {
       animControllerRef.current?.returnToIdle();
     }
   }, []);
-
-  /**
-   * Typed request entrypoint for coordinating emotion, animation state/gesture, and optional speech.
-   */
-  const requestCompanionBehavior = useCallback(
-    (req: AvatarAnimationRequest & { durationMs?: number }) => {
-      const ctrl = animControllerRef.current;
-      if (!ctrl) return;
-      const res = ctrl.dispatch({
-        ...req,
-        force: true,
-        source: 'user-action',
-      });
-      if (!res.accepted) return;
-
-      if (req.speechText) {
-        setAiSpokenText(req.speechText);
-        showSpeechBubble(req.speechText, req.durationMs ?? 4500);
-
-        if (isSoundEnabled) {
-          const reqId = res.requestId;
-          const reqEpoch = turnEpochRef.current;
-          let activeSpeechReqId = reqId;
-          speechService.speakWithBrowserTTS(
-            req.speechText,
-            settings.language === 'hi' ? 'hi-IN' : 'en-IN',
-            settings.speechRate,
-            () => {
-              if (turnEpochRef.current !== reqEpoch) return;
-              setIsSpeaking(false);
-              ctrl.endSpeechSession();
-              ctrl.returnToIdle(activeSpeechReqId);
-              setAvatarState('idle');
-            },
-            () => {
-              if (turnEpochRef.current !== reqEpoch) return;
-              const startRes = ctrl.dispatch({
-                animationState: 'speaking',
-                emotion: req.emotion,
-                gesture: req.gesture,
-                intensity: req.intensity,
-                force: true,
-                source: 'voice',
-              });
-              activeSpeechReqId = startRes.requestId;
-              ctrl.beginSpeechSession({
-                text: req.speechText!,
-                emotion: req.emotion,
-                gestureHint: req.gestureHint,
-                speechRate: settings.speechRate,
-                requestId: startRes.requestId,
-              });
-              setAvatarState('speaking');
-              setIsSpeaking(true);
-            }
-          );
-        }
-      }
-    },
-    [isSoundEnabled, settings.language, settings.speechRate]
-  );
 
   // Phase 5: Session-once App-Open Greeting when app is ready & 3D avatar finishes loading
   const avatarType = settings.avatarConfig.avatarType ?? '3d-glb';
@@ -1475,22 +1369,10 @@ export default function App() {
     ]
   );
 
-  // Preserve reference to requestCompanionBehavior for external/future hooks cleanly
-  void requestCompanionBehavior;
-
   if (showOnboarding) {
     return (
       <>
-        {toastMessage && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="fixed top-4 right-4 sm:right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 dark:bg-[#0b1528]/95 border border-slate-200 dark:border-blue-400/30 text-slate-900 dark:text-white text-xs font-medium shadow-2xl backdrop-blur-md animate-fadeIn max-w-[90vw]"
-          >
-            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="truncate">{toastMessage}</span>
-          </div>
-        )}
+        <ToastBanner message={toastMessage} topOffsetClass="top-4" />
         <OnboardingFlow
           initialProfile={profile}
           initialSettings={settings}
@@ -1519,16 +1401,7 @@ export default function App() {
       userName={settings.userName}
     >
       {/* Toast Notification */}
-      {toastMessage && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed top-16 right-4 sm:right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 dark:bg-[#0b1528]/95 border border-slate-200 dark:border-blue-400/30 text-slate-900 dark:text-white text-xs font-medium shadow-2xl backdrop-blur-md animate-fadeIn max-w-[90vw]"
-        >
-          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span className="truncate">{toastMessage}</span>
-        </div>
-      )}
+      <ToastBanner message={toastMessage} topOffsetClass="top-16" />
 
       {/* Session History Slide-Over Drawer */}
       <ConversationSidebar
@@ -1699,14 +1572,12 @@ export default function App() {
         <MemoriesScreen
           memories={memories}
           memoryEnabled={settings.memoryEnabled}
-          conversationsCount={conversations.filter((c) => c.messages.length > 0).length}
           conversations={conversations}
           onToggleMemoryEnabled={handleToggleMemoryEnabled}
           onAddMemory={handleAddMemory}
           onUpdateMemory={handleUpdateMemory}
           onDeleteMemory={handleDeleteMemory}
           onClearAllMemories={handleClearAllMemories}
-          onClearAllConversations={handleClearAllConversations}
           onUnsavedChange={setHasUnsavedMemoryDraft}
         />
       )}
@@ -1731,79 +1602,40 @@ export default function App() {
       )}
 
       {/* Unsaved Changes Confirmation Dialog */}
-      {pendingNavTab && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="unsaved-dialog-title"
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
-        >
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-500/35 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <h2
-                  id="unsaved-dialog-title"
-                  className="text-sm font-bold text-slate-900 dark:text-white"
-                >
-                  {activeTab === 'wardrobe'
-                    ? 'Unsaved customization changes'
-                    : 'Unsaved memory draft'}
-                </h2>
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {activeTab === 'wardrobe'
-                    ? 'You have unapplied changes in Customize. Would you like to apply them before leaving, or discard them?'
-                    : 'You have an unsubmitted memory draft open. Leaving now will discard the unsaved text.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setPendingNavTab(null)}
-                className="h-9 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
-              >
-                Stay Here
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const target = pendingNavTab;
-                  setPendingNavTab(null);
-                  if (activeTab === 'wardrobe') {
-                    setWardrobeDraftAvatar(settings.avatarConfig);
-                    setWardrobeDraftRoom(savedRoomConfig);
-                  }
-                  if (activeTab === 'memories') {
-                    setHasUnsavedMemoryDraft(false);
-                  }
-                  executeSelectTab(target);
-                }}
-                className="h-9 px-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/70 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-500/40 text-xs font-semibold text-rose-700 dark:text-rose-200 cursor-pointer"
-              >
-                Discard &amp; Leave
-              </button>
-              {activeTab === 'wardrobe' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = pendingNavTab;
-                    setPendingNavTab(null);
-                    handleApplyWardrobe(wardrobeDraftAvatar, wardrobeDraftRoom);
-                    executeSelectTab(target);
-                  }}
-                  className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white cursor-pointer"
-                >
-                  Apply &amp; Leave
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <UnsavedChangesDialog
+        kind={
+          pendingNavTab
+            ? activeTab === 'wardrobe'
+              ? 'wardrobe'
+              : 'memories'
+            : null
+        }
+        onStay={() => setPendingNavTab(null)}
+        onDiscard={() => {
+          if (!pendingNavTab) return;
+          const target = pendingNavTab;
+          setPendingNavTab(null);
+          if (activeTab === 'wardrobe') {
+            setWardrobeDraftAvatar(settings.avatarConfig);
+            setWardrobeDraftRoom(savedRoomConfig);
+          }
+          if (activeTab === 'memories') {
+            setHasUnsavedMemoryDraft(false);
+          }
+          executeSelectTab(target);
+        }}
+        onApplyAndLeave={
+          activeTab === 'wardrobe'
+            ? () => {
+                if (!pendingNavTab) return;
+                const target = pendingNavTab;
+                setPendingNavTab(null);
+                handleApplyWardrobe(wardrobeDraftAvatar, wardrobeDraftRoom);
+                executeSelectTab(target);
+              }
+            : undefined
+        }
+      />
 
       {/* Slide-Over Full Scrollable Chat & Code Notes Drawer (Mobile/Tablet) */}
       <ChatDrawer

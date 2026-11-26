@@ -267,15 +267,15 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
             </div>
           )}
 
-          {/* Prominent Rounded Voice + Text Pill Bar */}
-          <div className="flex items-center gap-2 rounded-full bg-white/92 dark:bg-gradient-to-r dark:from-[#091230]/88 dark:via-[#0c163a]/88 dark:to-[#111942]/88 border border-slate-200 dark:border-indigo-400/35 focus-within:border-blue-500 dark:focus-within:border-sky-400/70 p-1.5 backdrop-blur-xl shadow-[0_12px_36px_rgba(2,6,23,0.5),0_0_26px_rgba(59,130,246,0.16)] transition-colors">
+          {/* Voice + Text Composer Bar */}
+          <div className="flex items-center gap-2 rounded-full bg-white/94 dark:bg-[#0b1433]/90 border border-slate-200 dark:border-indigo-400/30 focus-within:border-blue-500 dark:focus-within:border-sky-400/65 p-1.5 backdrop-blur-xl shadow-lg transition-colors">
             {isSpeaking ? (
               <button
                 type="button"
                 onClick={onInterrupt}
                 aria-label="Stop speaking"
                 title="Stop response speech"
-                className="h-11 w-11 rounded-full bg-rose-600 hover:bg-rose-500 text-white inline-flex items-center justify-center transition cursor-pointer shrink-0 shadow-[0_0_16px_rgba(244,63,94,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                className="h-11 w-11 rounded-full bg-rose-600 hover:bg-rose-500 text-white inline-flex items-center justify-center transition cursor-pointer shrink-0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
               >
                 <PauseCircle className="w-5 h-5" />
               </button>
@@ -305,10 +305,10 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
                 }
                 className={`h-11 w-11 rounded-full inline-flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${
                   isListening
-                    ? 'bg-gradient-to-br from-cyan-400 to-blue-500 text-white shadow-[0_0_24px_rgba(34,211,238,0.65)] ring-2 ring-cyan-200/70'
+                    ? 'bg-sky-500 hover:bg-sky-400 text-white shadow-md ring-2 ring-sky-300/65'
                     : isMicDenied || isMicMuted
                     ? 'bg-amber-50 dark:bg-amber-950/75 hover:bg-amber-100 dark:hover:bg-amber-900 border border-amber-300 dark:border-amber-500/45 text-amber-700 dark:text-amber-200'
-                    : 'bg-gradient-to-br from-blue-600 via-blue-500 to-sky-400 hover:from-blue-500 hover:to-sky-300 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)]'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
                 }`}
               >
                 {isMicMuted || isMicDenied || isMicUnsupported ? (
@@ -382,7 +382,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
                 disabled={!draftText.trim() || isThinking}
                 aria-label={isThinking ? 'Sending message' : 'Send message'}
                 title={isThinking ? 'Waiting for reply' : 'Send message'}
-                className="h-11 w-11 rounded-full bg-gradient-to-br from-violet-600 via-purple-500 to-indigo-500 hover:from-violet-500 hover:to-purple-400 disabled:bg-slate-200 dark:disabled:bg-slate-800/80 disabled:bg-none disabled:text-slate-400 dark:disabled:text-slate-500 text-white inline-flex items-center justify-center transition cursor-pointer shrink-0 shadow-[0_0_18px_rgba(139,92,246,0.48)] disabled:shadow-none disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                className="h-11 w-11 rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 dark:disabled:bg-slate-800/80 disabled:text-slate-400 dark:disabled:text-slate-500 text-white inline-flex items-center justify-center transition cursor-pointer shrink-0 shadow-sm disabled:shadow-none disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
               >
                 {isThinking ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

@@ -115,15 +115,15 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         {/* Top Branding / Header */}
         <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#0f2347] to-blue-600 flex items-center justify-center shadow-sm font-serif font-bold text-white text-base">
-              आ
-            </div>
+            <img
+              src="/assets/branding/atmiya-logo.png"
+              alt=""
+              aria-hidden="true"
+              className="w-8 h-8 rounded-xl object-contain bg-[#0b132b] p-0.5 border border-indigo-400/25 shrink-0"
+            />
             <div>
               <span className="font-semibold text-sm tracking-tight text-slate-900 dark:text-white block">
-                Sessions{' '}
-                <span className="font-normal text-xs text-blue-600 dark:text-sky-400 font-serif">
-                  बातचीत
-                </span>
+                Sessions
               </span>
               <span className="text-[11px] text-slate-500 dark:text-slate-400 block -mt-0.5 tabular-nums">
                 {conversations.length} saved locally
@@ -153,7 +153,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
             className="w-full min-h-[42px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-sm transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
           >
             <Plus className="w-4 h-4" />
-            <span>New Conversation (नई बातचीत)</span>
+            <span>New Conversation</span>
           </button>
         </div>
 
@@ -390,7 +390,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                 className="w-full min-h-[36px] flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer"
               >
                 <Trash2 className="w-3 h-3" />
-                <span>Clear History (इतिहास साफ करें)</span>
+                <span>Clear All Sessions</span>
               </button>
             )
           )}

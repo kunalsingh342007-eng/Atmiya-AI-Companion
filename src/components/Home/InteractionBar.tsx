@@ -85,7 +85,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
   }, [isMoreOpen]);
 
   const secondaryPill =
-    'h-10 px-3.5 sm:px-5 rounded-full bg-white/92 dark:bg-[#0d1636]/82 hover:bg-white dark:hover:bg-[#152252] border border-slate-200/90 dark:border-indigo-400/35 hover:dark:border-sky-400/50 backdrop-blur-xl text-slate-800 dark:text-slate-100 text-xs sm:text-[13px] font-medium inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(4,9,28,0.28)] disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
+    'h-10 px-3.5 sm:px-5 rounded-full bg-white/92 dark:bg-[#0d1636]/86 hover:bg-white dark:hover:bg-[#152252] border border-slate-200/90 dark:border-indigo-400/30 hover:dark:border-sky-400/45 backdrop-blur-lg text-slate-800 dark:text-slate-100 text-xs sm:text-[13px] font-medium inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 shadow-md disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
 
   return (
     <div className="relative z-20 w-full max-w-3xl mx-auto px-3 sm:px-5 pb-2 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 pointer-events-auto shrink-0">
@@ -97,8 +97,8 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
         aria-pressed={isListening}
         className={`h-10 px-4 sm:px-6 rounded-full text-xs sm:text-[13px] font-semibold inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-55 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${
           isListening
-            ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-[0_0_24px_rgba(34,211,238,0.55)] ring-2 ring-cyan-300/60'
-            : 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-white border border-sky-300/40 shadow-[0_6px_22px_rgba(37,99,235,0.5)]'
+            ? 'bg-sky-500 hover:bg-sky-400 text-white shadow-md ring-2 ring-sky-300/60'
+            : 'bg-blue-600 hover:bg-blue-500 text-white border border-sky-300/35 shadow-md'
         }`}
       >
         <Mic className="w-4 h-4" />

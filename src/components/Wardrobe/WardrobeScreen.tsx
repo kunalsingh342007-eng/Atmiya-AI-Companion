@@ -14,6 +14,7 @@ import { DEFAULT_AVATAR_CONFIG, DEFAULT_ROOM_CONFIG } from '../../services/stora
 import { CompanionAvatar } from '../Avatar/CompanionAvatar';
 import { CompanionRoom } from '../Room/CompanionRoom';
 import type { GlbInspectionReport } from '../Avatar/RealisticAvatar';
+import { PageHeading, SubpageBackdrop } from '../Layout/CompanionPagePrimitives';
 import {
   Award,
   Box,
@@ -178,26 +179,17 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
   };
 
   const activeType = draftAvatar.avatarType || '3d-glb';
-  const defaultCamera = draftAvatar.defaultCameraPreset || activeCameraPreset || 'upper-body';
+  const defaultCamera = draftAvatar.defaultCameraPreset || activeCameraPreset || 'close-up';
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-slate-50 dark:bg-gradient-to-b dark:from-[#070d1a] dark:via-[#0b162d] dark:to-[#070d1a] px-4 sm:px-6 py-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <SubpageBackdrop>
+      <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
         {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/35 text-blue-600 dark:text-sky-300 flex items-center justify-center shrink-0">
-              <Palette className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Customize Ātmiya
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-                Avatar appearance, camera framing, expressions, and room atmosphere.
-              </p>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <PageHeading
+            title="Customize Ātmiya"
+            subtitle="Avatar appearance, camera framing, expressions, and room atmosphere."
+          />
 
           <div className="flex flex-wrap items-center gap-2">
             {hasChanges && (
@@ -234,7 +226,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
               <span>{hasChanges ? 'Apply Changes' : 'Applied'}</span>
             </button>
           </div>
-        </header>
+        </div>
 
         {/* Unsaved Indicator Banner */}
         {hasChanges && (
@@ -791,6 +783,6 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </SubpageBackdrop>
   );
 };
