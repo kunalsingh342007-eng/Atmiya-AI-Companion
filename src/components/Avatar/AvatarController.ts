@@ -84,7 +84,7 @@ export function getCompanionMoodLabel(
 export function useMicrophonePermission(): [
   MicPermissionStatus,
   () => void,
-  () => void
+  () => void,
 ] {
   const [status, setStatus] = useState<MicPermissionStatus>(() => {
     if (typeof window === 'undefined' || !speechService.isRecognitionSupported()) {
@@ -92,6 +92,43 @@ export function useMicrophonePermission(): [
     }
     return 'unknown';
   });
+
+  useEffect(() => {
+    let mounted = true;
+    let permObj: PermissionStatus | null = null;
+
+    const queryPerm = () => {
+      if (typeof window === 'undefined' || !speechService.isRecognitionSupported()) {
+        if (mounted) setStatus('unsupported');
+        return;
+      }
+      if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+        navigator.permissions
+          .query({ name: 'microphone' as PermissionName })
+          .then((perm) => {
+            if (!mounted) return;
+            permObj = perm;
+            setStatus(perm.state as MicPermissionStatus);
+            perm.onchange = () => {
+              if (mounted) setStatus(perm.state as MicPermissionStatus);
+            };
+          })
+          .catch(() => {
+            if (mounted) setStatus('prompt');
+          });
+      } else {
+        setStatus('prompt');
+      }
+    };
+
+    queryPerm();
+    return () => {
+      mounted = false;
+      if (permObj) {
+        permObj.onchange = null;
+      }
+    };
+  }, []);
 
   const refreshPermission = () => {
     if (typeof window === 'undefined' || !speechService.isRecognitionSupported()) {
@@ -103,9 +140,6 @@ export function useMicrophonePermission(): [
         .query({ name: 'microphone' as PermissionName })
         .then((perm) => {
           setStatus(perm.state as MicPermissionStatus);
-          perm.onchange = () => {
-            setStatus(perm.state as MicPermissionStatus);
-          };
         })
         .catch(() => {
           setStatus('prompt');
@@ -118,10 +152,6 @@ export function useMicrophonePermission(): [
   const markDenied = () => {
     setStatus('denied');
   };
-
-  useEffect(() => {
-    refreshPermission();
-  }, []);
 
   return [status, refreshPermission, markDenied];
 }

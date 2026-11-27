@@ -1626,7 +1626,7 @@ export function updateExpressionRig(params: {
   prefersReducedMotion: boolean;
   elapsed: number;
   delta: number;
-}) {
+}): { isAnimating: boolean } {
   const {
     rig,
     runtime,
@@ -1899,6 +1899,7 @@ export function updateExpressionRig(params: {
   }
 
   // 5. Single unified damping pass over pre-resolved morph target slots (zero allocations)
+  let morphsDamping = false;
   if (rig.uniqueMorphSlots.length > 0) {
     _slotTargetWeights.clear();
     for (let i = 0; i < ALL_CHANNELS.length; i += 1) {
@@ -1917,27 +1918,40 @@ export function updateExpressionRig(params: {
     for (let i = 0; i < rig.uniqueMorphSlots.length; i += 1) {
       const slot = rig.uniqueMorphSlots[i];
       const targetWeight = _slotTargetWeights.get(slot) ?? 0;
-      slot.influences[slot.index] = THREE.MathUtils.damp(
+      const nextWeight = THREE.MathUtils.damp(
         slot.influences[slot.index] || 0,
         targetWeight,
         slot.speed,
         delta
       );
+      slot.influences[slot.index] = nextWeight;
+      if (Math.abs(nextWeight - targetWeight) > 1e-3) {
+        morphsDamping = true;
+      }
     }
   }
 
   // 6. Jaw bone fallback ONLY when no jawOpen morph target exists
+  let jawDamping = false;
   if (rig.bones.jaw && !rig.capabilities.hasSpeechMorphs) {
     const init = rig.boneInitialRotations.get(rig.bones.jaw);
     if (init) {
+      const jawTarget = init.x + speechJawWeight * 0.28;
       rig.bones.jaw.rotation.x = THREE.MathUtils.damp(
         rig.bones.jaw.rotation.x,
-        init.x + speechJawWeight * 0.28,
+        jawTarget,
         16,
         delta
       );
+      if (Math.abs(rig.bones.jaw.rotation.x - jawTarget) > 1e-3) {
+        jawDamping = true;
+      }
     }
   }
+
+  return {
+    isAnimating: runtime.blinkProgress >= 0 || morphsDamping || jawDamping,
+  };
 }
 
 // Pre-allocated scratch helpers for zero-GC head/neck quaternion updates

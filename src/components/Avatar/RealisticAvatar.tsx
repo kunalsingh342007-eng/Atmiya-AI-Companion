@@ -709,7 +709,7 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       }
     }
 
-    updateExpressionRig({
+    const exprStatus = updateExpressionRig({
       rig: modelMetrics.rig,
       runtime: rigRuntimeRef.current,
       state,
@@ -767,7 +767,12 @@ const GlbModelScene: React.FC<GlbModelSceneProps> = React.memo(({
       onArmGestureStateChange?.(armStatus.activeGesture);
     }
 
-    if (headStatus.isAnimating || armStatus.isAnimating || bodyStatus.isAnimating) {
+    if (
+      exprStatus.isAnimating ||
+      headStatus.isAnimating ||
+      armStatus.isAnimating ||
+      bodyStatus.isAnimating
+    ) {
       frameState.invalidate();
     }
   });
@@ -1667,22 +1672,48 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
     setAssetStatus('checking');
     setErrorReason('');
 
-    fetch(modelUrl, { method: 'GET', headers: { Range: 'bytes=0-3' } })
+    const abortController = new AbortController();
+
+    fetch(modelUrl, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-3' },
+      signal: abortController.signal,
+    })
       .then(async (res) => {
         if (cancelled) return;
         const contentType = res.headers.get('content-type') || '';
         if (!res.ok || contentType.includes('text/html')) {
+          void res.body?.cancel();
           setAssetStatus('missing');
-          setErrorReason(
-            `3D GLB not found at ${modelUrl}.`
-          );
+          setErrorReason(`3D GLB not found at ${modelUrl}.`);
           return;
         }
-        const buf = await res.arrayBuffer();
+
+        let headerBytes: Uint8Array | null = null;
+        if (res.body && typeof res.body.getReader === 'function') {
+          const reader = res.body.getReader();
+          const collected = new Uint8Array(4);
+          let offset = 0;
+          try {
+            while (offset < 4) {
+              const { value, done } = await reader.read();
+              if (done || !value) break;
+              const take = Math.min(4 - offset, value.byteLength);
+              collected.set(value.subarray(0, take), offset);
+              offset += take;
+            }
+          } finally {
+            void reader.cancel();
+          }
+          headerBytes = collected.subarray(0, offset);
+        } else {
+          const buf = await res.arrayBuffer();
+          headerBytes = new Uint8Array(buf.slice(0, 4));
+        }
+
         if (cancelled) return;
-        const header = new Uint8Array(buf.slice(0, 4));
-        const magic = String.fromCharCode(...header);
-        if (buf.byteLength >= 4 && magic !== 'glTF') {
+        const magic = headerBytes ? String.fromCharCode(...headerBytes) : '';
+        if (headerBytes && headerBytes.byteLength >= 4 && magic !== 'glTF') {
           setAssetStatus('error');
           setErrorReason(`File at ${modelUrl} is not a valid binary .glb asset.`);
           return;
@@ -1690,13 +1721,14 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         setAssetStatus('ready');
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (cancelled || err?.name === 'AbortError') return;
         setAssetStatus('error');
         setErrorReason(err?.message || `Unable to fetch ${modelUrl}`);
       });
 
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [modelUrl, retryCounter, webglProbe.supported]);
 

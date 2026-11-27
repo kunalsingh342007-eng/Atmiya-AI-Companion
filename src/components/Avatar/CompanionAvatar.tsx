@@ -37,7 +37,7 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
     outfitStyleLabel: 'Navy Classic',
     accessory: 'none',
     avatarType: 'custom-image',
-    customImagePath: '/avatars/atmiya.png',
+    customImagePath: '',
   },
   onInterrupt: _onInterrupt,
   onTapAvatar,
@@ -171,7 +171,13 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
     return 1;
   }, [state, audioLevel, tapBounce]);
 
-  const avatarSrc = config.customImagePath || '';
+  const rawAvatarSrc = config.customImagePath?.trim() || '';
+  const avatarSrc = rawAvatarSrc === '/avatars/atmiya.png' ? '' : rawAvatarSrc;
+
+  useEffect(() => {
+    setImgLoadFailed(false);
+  }, [avatarSrc]);
+
   const showCustomImage =
     config.avatarType === 'custom-image' && Boolean(avatarSrc) && !imgLoadFailed;
   const outfitBorderColor = config.outfitColor || '#1e3a5f';

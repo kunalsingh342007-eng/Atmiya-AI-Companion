@@ -128,6 +128,8 @@ export default function App() {
   const [micPermission, refreshMicPermission, markMicDenied] = useMicrophonePermission();
 
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRecognizedTranscriptRef = useRef<string>('');
+  const manualStopListeningRef = useRef<boolean>(false);
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingGreetingAudioCleanupRef = useRef<(() => void) | null>(null);
   const isProcessingRef = useRef<boolean>(false);
@@ -278,6 +280,8 @@ export default function App() {
   const executeSelectTab = useCallback(
     (tab: ActiveNavTab) => {
       if (tab !== 'home' && avatarStateRef.current === 'listening') {
+        manualStopListeningRef.current = true;
+        latestRecognizedTranscriptRef.current = '';
         if (speechTimeoutRef.current) {
           clearTimeout(speechTimeoutRef.current);
           speechTimeoutRef.current = null;
@@ -350,6 +354,8 @@ export default function App() {
     const started = speechService.startRecognition(langLocale, {
       onStart: () => {
         if (turnEpochRef.current !== epochAtStart) return;
+        manualStopListeningRef.current = false;
+        latestRecognizedTranscriptRef.current = '';
         setVoiceError(null);
         refreshMicPermission();
         animControllerRef.current?.dispatch({
@@ -360,22 +366,36 @@ export default function App() {
         });
         setAvatarState('listening');
       },
-      onResult: (transcript, _isFinal) => {
+      onResult: (transcript, isFinal) => {
         if (turnEpochRef.current !== epochAtStart) return;
+        const cleanTranscript = transcript.trim();
+        latestRecognizedTranscriptRef.current = cleanTranscript;
         setUserTranscript(transcript);
 
         if (speechTimeoutRef.current) {
           clearTimeout(speechTimeoutRef.current);
+          speechTimeoutRef.current = null;
         }
 
+        if (!cleanTranscript) return;
+        const debounceMs = isFinal ? 450 : 1300;
         speechTimeoutRef.current = setTimeout(() => {
-          if (turnEpochRef.current === epochAtStart && transcript.trim() && !isProcessingRef.current) {
-            handleSendMessage(transcript.trim());
+          speechTimeoutRef.current = null;
+          const pending = latestRecognizedTranscriptRef.current.trim();
+          if (
+            turnEpochRef.current === epochAtStart &&
+            pending &&
+            !manualStopListeningRef.current &&
+            !isProcessingRef.current
+          ) {
+            latestRecognizedTranscriptRef.current = '';
+            handleSendMessage(pending);
           }
-        }, 1300);
+        }, debounceMs);
       },
       onError: (err) => {
         if (turnEpochRef.current !== epochAtStart) return;
+        latestRecognizedTranscriptRef.current = '';
         if (/denied|not-allowed|allow microphone/i.test(err)) {
           markMicDenied();
         } else {
@@ -391,6 +411,21 @@ export default function App() {
       },
       onEnd: () => {
         if (turnEpochRef.current !== epochAtStart) return;
+        const pending = latestRecognizedTranscriptRef.current.trim();
+        if (
+          pending &&
+          !manualStopListeningRef.current &&
+          !isProcessingRef.current &&
+          !speechService.getIsSpeaking()
+        ) {
+          if (speechTimeoutRef.current) {
+            clearTimeout(speechTimeoutRef.current);
+            speechTimeoutRef.current = null;
+          }
+          latestRecognizedTranscriptRef.current = '';
+          handleSendMessage(pending);
+          return;
+        }
         if (!isProcessingRef.current && !speechService.getIsSpeaking() && avatarStateRef.current === 'listening') {
           animControllerRef.current?.returnToIdle();
           setAvatarState('idle');
@@ -407,6 +442,8 @@ export default function App() {
   };
 
   const stopListeningTurn = () => {
+    manualStopListeningRef.current = true;
+    latestRecognizedTranscriptRef.current = '';
     if (speechTimeoutRef.current) {
       clearTimeout(speechTimeoutRef.current);
       speechTimeoutRef.current = null;
@@ -423,12 +460,19 @@ export default function App() {
       setIsSpeaking(false);
     }
     if (avatarState === 'listening') {
-      if (userTranscript.trim()) {
-        handleSendMessage(userTranscript.trim());
+      const pending = (latestRecognizedTranscriptRef.current || userTranscript).trim();
+      if (pending) {
+        if (speechTimeoutRef.current) {
+          clearTimeout(speechTimeoutRef.current);
+          speechTimeoutRef.current = null;
+        }
+        latestRecognizedTranscriptRef.current = '';
+        handleSendMessage(pending);
       } else {
         stopListeningTurn();
       }
     } else {
+      manualStopListeningRef.current = false;
       startListeningTurn(true);
     }
   };
@@ -437,6 +481,7 @@ export default function App() {
     setVoiceError(null);
     animControllerRef.current?.returnToIdle();
     refreshMicPermission();
+    manualStopListeningRef.current = false;
     startListeningTurn(true);
   };
 
@@ -1013,18 +1058,42 @@ export default function App() {
     }
   };
 
-  // Desktop keyboard shortcuts on Home
+  // Desktop keyboard shortcuts on Home (latest state/callbacks via ref to prevent listener churn)
+  const keyboardShortcutsRef = useRef<{
+    activeTab: ActiveNavTab;
+    pendingNavTab: ActiveNavTab | null;
+    isChatDrawerOpen: boolean;
+    isSidebarOpen: boolean;
+    isSpeaking: boolean;
+    handleInterrupt: () => void;
+    handleToggleListen: () => void;
+    handleTapAvatar: () => void;
+  } | null>(null);
+  keyboardShortcutsRef.current = {
+    activeTab,
+    pendingNavTab,
+    isChatDrawerOpen,
+    isSidebarOpen,
+    isSpeaking,
+    handleInterrupt,
+    handleToggleListen,
+    handleTapAvatar,
+  };
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const ctx = keyboardShortcutsRef.current;
+      if (!ctx) return;
+
       if (e.key === 'Escape') {
-        if (pendingNavTab) setPendingNavTab(null);
-        else if (isChatDrawerOpen) setIsChatDrawerOpen(false);
-        else if (isSidebarOpen) setIsSidebarOpen(false);
-        else if (isSpeaking) handleInterrupt();
+        if (ctx.pendingNavTab) setPendingNavTab(null);
+        else if (ctx.isChatDrawerOpen) setIsChatDrawerOpen(false);
+        else if (ctx.isSidebarOpen) setIsSidebarOpen(false);
+        else if (ctx.isSpeaking) ctx.handleInterrupt();
         return;
       }
 
-      if (activeTab !== 'home') return;
+      if (ctx.activeTab !== 'home') return;
 
       const target = e.target as HTMLElement | null;
       const isTypingField =
@@ -1033,24 +1102,24 @@ export default function App() {
           target.tagName === 'TEXTAREA' ||
           target.tagName === 'SELECT' ||
           target.isContentEditable);
-      if (isTypingField || e.metaKey || e.ctrlKey || e.altKey || isSidebarOpen) return;
+      if (isTypingField || e.metaKey || e.ctrlKey || e.altKey || ctx.isSidebarOpen) return;
 
       const key = e.key.toLowerCase();
       if (key === 't') {
         e.preventDefault();
-        handleToggleListen();
+        ctx.handleToggleListen();
       } else if (key === 'c') {
         e.preventDefault();
         setIsChatDrawerOpen((prev) => !prev);
       } else if (key === 'g') {
         e.preventDefault();
-        handleTapAvatar();
+        ctx.handleTapAvatar();
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  });
+  }, []);
 
   // Conversation & Settings Handlers
   const handleClearAllConversations = () => {

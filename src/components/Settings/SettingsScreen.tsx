@@ -190,17 +190,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   }, [profile, settings.userName]);
 
   useEffect(() => {
+    let mounted = true;
+    let permObj: PermissionStatus | null = null;
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions
         .query({ name: 'microphone' as PermissionName })
         .then((status) => {
+          if (!mounted) return;
+          permObj = status;
           setMicPermissionState(status.state);
-          status.onchange = () => setMicPermissionState(status.state);
+          status.onchange = () => {
+            if (mounted) setMicPermissionState(status.state);
+          };
         })
-        .catch(() => setMicPermissionState('prompt'));
+        .catch(() => {
+          if (mounted) setMicPermissionState('prompt');
+        });
     } else {
       setMicPermissionState('unknown');
     }
+    return () => {
+      mounted = false;
+      if (permObj) {
+        permObj.onchange = null;
+      }
+    };
   }, []);
 
   const hasUnsavedSettings = JSON.stringify(draftSettings) !== JSON.stringify(settings);

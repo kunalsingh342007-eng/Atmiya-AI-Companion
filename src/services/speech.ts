@@ -26,6 +26,12 @@ export interface WavPlaybackMetadata {
   onStart?: () => void;
 }
 
+function resolveSpeechSynthesisLang(lang: string, text: string): 'hi-IN' | 'en-IN' {
+  if (lang === 'hi' || lang === 'hi-IN') return 'hi-IN';
+  if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
+  return 'en-IN';
+}
+
 class SpeechService {
   private recognition: any = null;
   private isListening = false;
@@ -317,6 +323,11 @@ class SpeechService {
       });
 
       source.onended = () => {
+        try {
+          source.disconnect();
+        } catch {
+          // ignore
+        }
         if (token !== this.playbackToken) return;
         this.currentSourceNode = null;
         this.cleanupPlayback(token);
@@ -352,7 +363,7 @@ class SpeechService {
     this.stopSpeaking();
     const token = ++this.playbackToken;
 
-    const normalizedLang = lang === 'hi' || lang === 'hi-IN' ? 'hi-IN' : 'en-IN';
+    const normalizedLang = resolveSpeechSynthesisLang(lang, text);
     const clampedRate = Math.max(0.7, Math.min(1.4, rate));
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = normalizedLang;
@@ -483,7 +494,7 @@ class SpeechService {
     const token = ++this.playbackToken;
 
     return new Promise((resolve) => {
-      const normalizedLang = lang === 'hi' || lang === 'hi-IN' ? 'hi-IN' : 'en-IN';
+      const normalizedLang = resolveSpeechSynthesisLang(lang, text);
       const clampedRate = Math.max(0.7, Math.min(1.4, rate));
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = normalizedLang;

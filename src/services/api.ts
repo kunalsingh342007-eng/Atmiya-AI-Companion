@@ -8,6 +8,12 @@ import {
 } from '../types/companion';
 import { normalizeStructuredEmotionPayload } from '../components/Avatar/expressionRig';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
+function apiUrl(path: string): string {
+  return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+}
+
 export interface ChatResponse {
   reply: string;
   emotion?: AvatarEmotion;
@@ -95,9 +101,10 @@ export const api = {
 
   async getStatus(): Promise<SystemStatus> {
     try {
-      const res = await fetchWithTimeout('/api/status', { timeoutMs: 8000 });
-      if (!res.ok) {
-        throw new Error(`Status check failed: ${res.statusText}`);
+      const res = await fetchWithTimeout(apiUrl('/api/status'), { timeoutMs: 8000 });
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error(`Status check failed: ${res.status} ${res.statusText}`);
       }
       return await res.json();
     } catch (err: any) {
@@ -144,7 +151,7 @@ export const api = {
         });
       }
 
-      const res = await fetchWithTimeout('/api/chat', {
+      const res = await fetchWithTimeout(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -222,7 +229,7 @@ export const api = {
       });
     }
 
-    const res = await fetchWithTimeout('/api/tts', {
+    const res = await fetchWithTimeout(apiUrl('/api/tts'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -251,7 +258,7 @@ export const api = {
     mimeType = 'audio/webm',
     signal?: AbortSignal
   ): Promise<string> {
-    const res = await fetchWithTimeout('/api/transcribe', {
+    const res = await fetchWithTimeout(apiUrl('/api/transcribe'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audioBase64, mimeType }),

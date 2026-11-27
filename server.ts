@@ -1,10 +1,9 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
-import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
@@ -72,20 +71,50 @@ function clampIntensity(value: unknown, fallback = 0.7): number {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// Optional explicit CORS allowlist for split-origin deployments (no wildcard)
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ALLOWED_ORIGIN || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+);
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+  }
+  next();
+});
 
 // Middleware for parsing JSON with ample limit for audio blobs
 app.use(express.json({ limit: '25mb' }));
 
+function isValidGeminiApiKey(apiKey: string | undefined): apiKey is string {
+  if (!apiKey) return false;
+  const trimmed = apiKey.trim();
+  if (!trimmed) return false;
+  const placeholders = new Set(['MY_GEMINI_API_KEY', 'YOUR_GEMINI_API_KEY', 'REPLACE_ME']);
+  return !placeholders.has(trimmed);
+}
+
 // Helper to get GoogleGenAI client
 function getGenAIClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === '' || apiKey === 'MY_GEMINI_API_KEY') {
+  if (!isValidGeminiApiKey(apiKey)) {
     return null;
   }
   return new GoogleGenAI({
-    apiKey,
+    apiKey: apiKey.trim(),
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
@@ -178,7 +207,7 @@ function parseGeminiError(err: unknown): {
       httpStatus: 429,
       code: 'QUOTA_EXCEEDED',
       message:
-        'Gemini API quota limit reached for this key. Please retry shortly or add a billed API key in Settings > Secrets.',
+        'Gemini API quota limit reached for this key. Please retry shortly or check billing/quota for GEMINI_API_KEY in your server environment variables.',
       retryAfterSeconds,
       isTimeout: false,
       isQuota: true,
@@ -203,7 +232,8 @@ function parseGeminiError(err: unknown): {
     return {
       httpStatus: 403,
       code: 'AUTH_ERROR',
-      message: 'Gemini API access was rejected. Please verify GEMINI_API_KEY in Settings > Secrets.',
+      message:
+        'Gemini API access was rejected. Please verify GEMINI_API_KEY in your server environment variables.',
       isTimeout: false,
       isQuota: false,
       isAuth: true,
@@ -282,9 +312,8 @@ function createUpstreamAbortControl(res: Response, timeoutMs: number) {
 }
 
 // 1. Health and configuration status endpoint
-app.get('/api/status', (req: Request, res: Response) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const isKeyConfigured = Boolean(apiKey && apiKey.trim() !== '' && apiKey !== 'MY_GEMINI_API_KEY');
+app.get('/api/status', (_req: Request, res: Response) => {
+  const isKeyConfigured = isValidGeminiApiKey(process.env.GEMINI_API_KEY);
   
   res.json({
     status: 'ok',
@@ -372,7 +401,7 @@ Return a JSON object with:
 - "reply": your conversational message to the user.
 - "emotion": one of [${VALID_EMOTIONS.join(', ')}] matching the emotional tone of your reply.
 - "intensity": number from 0.0 to 1.0 indicating expression strength (use 0.25-0.65 for natural conversation, higher only for genuine strong moments).
-- "gesture": one of [${VALID_GESTURES.join(', ')}] ("none" for normal turns, or a subtle physical cue like "gentle_nod", "tilt_curious", "open_hand_explain", "calm_breathe", or "wave_greet" for greetings).
+- "gesture": one of [${VALID_GESTURES.join(', ')}] ("none" for normal turns, or a subtle physical cue like "gentle_nod", "head_tilt", "open_palm", or "wave" for greetings).
 
 ${languageInstruction}
 `;
@@ -749,6 +778,13 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'INVALID_INPUT', message: 'audioBase64 is required.' });
     }
 
+    if (audioBase64.length > 18 * 1024 * 1024) {
+      return res.status(413).json({
+        error: 'PAYLOAD_TOO_LARGE',
+        message: 'Audio recording is too large for a single transcription request.',
+      });
+    }
+
     const safeMimeType =
       typeof mimeType === 'string' && /^audio\/[a-z0-9.+-]+$/i.test(mimeType)
         ? mimeType
@@ -828,14 +864,15 @@ async function startServer() {
   });
 
   if (!isProduction) {
-    // In development mode, mount Vite middleware
+    // Dynamically import Vite only in local development so serverless bundles do not pull Vite
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    // In production, serve dist folder
+    // In production standalone mode, serve dist folder
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
@@ -847,7 +884,15 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+const isServerlessRuntime = Boolean(
+  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION
+);
+
+if (!isServerlessRuntime && process.env.NODE_ENV !== 'test') {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}
+
+export default app;
