@@ -5,14 +5,12 @@ import {
   GameId,
   GameProgress,
   RoomEnvironmentId,
-  UserMemory,
   UserProfile,
 } from '../types/companion';
 
 const SETTINGS_KEY = 'atmiya_companion_settings_v1';
 const PROFILE_KEY = 'atmiya_user_profile_v1';
 const CONVERSATIONS_KEY = 'atmiya_conversations_v1';
-const MEMORIES_KEY = 'atmiya_user_memories_v1';
 const ACTIVE_CONV_ID_KEY = 'atmiya_active_conv_id_v1';
 const PROGRESS_KEY = 'atmiya_game_progress_v1';
 const HOME_HINT_KEY = 'atmiya_home_hint_dismissed_v1';
@@ -51,7 +49,6 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   speechRate: 1.0,
   autoSpeakResponse: true,
   handsFreeMode: false,
-  memoryEnabled: true,
   theme: 'dark',
   expressionsEnabled: true,
   darkNavyDefaultMigrated: true,
@@ -67,25 +64,6 @@ export const DEFAULT_PROGRESS: GameProgress = {
   unlockedRoomIds: ['sunlit-study', 'evening-lounge'],
   interactionHistory: [],
 };
-
-export const INITIAL_MEMORIES: UserMemory[] = [
-  {
-    id: 'sample-mem-1',
-    category: 'preference',
-    content: 'Prefers conversational, warm explanations with intuitive examples.',
-    createdAt: Date.now() - 86400000,
-    updatedAt: Date.now() - 86400000,
-    approvedByUser: true,
-  },
-  {
-    id: 'sample-mem-2',
-    category: 'language',
-    content: 'Enjoys switching seamlessly between Hindi, Hinglish, and English.',
-    createdAt: Date.now() - 43200000,
-    updatedAt: Date.now() - 43200000,
-    approvedByUser: true,
-  },
-];
 
 function computeUnlockedRooms(xp: number, existing: RoomEnvironmentId[]): RoomEnvironmentId[] {
   const unlocked = new Set<RoomEnvironmentId>(['sunlit-study', 'evening-lounge', ...existing]);
@@ -427,63 +405,6 @@ export const storage = {
     }
   },
 
-  getMemories(): UserMemory[] {
-    try {
-      const data = localStorage.getItem(MEMORIES_KEY);
-      if (!data) {
-        this.saveMemories(INITIAL_MEMORIES);
-        return INITIAL_MEMORIES;
-      }
-      const parsed = JSON.parse(data);
-      if (!Array.isArray(parsed)) {
-        return INITIAL_MEMORIES;
-      }
-      return parsed.filter(
-        (m): m is UserMemory =>
-          Boolean(m && typeof m === 'object' && typeof m.id === 'string' && typeof m.content === 'string')
-      );
-    } catch {
-      return INITIAL_MEMORIES;
-    }
-  },
-
-  saveMemories(memories: UserMemory[]): void {
-    try {
-      localStorage.setItem(MEMORIES_KEY, JSON.stringify(memories));
-    } catch (e) {
-      console.error('Failed to save memories:', e);
-    }
-  },
-
-  addMemory(memory: Omit<UserMemory, 'id' | 'createdAt' | 'updatedAt'>): UserMemory {
-    const list = this.getMemories();
-    const newEntry: UserMemory = {
-      ...memory,
-      id: 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    list.unshift(newEntry);
-    this.saveMemories(list);
-    return newEntry;
-  },
-
-  updateMemory(id: string, updates: Partial<UserMemory>): void {
-    const list = this.getMemories().map((m) =>
-      m.id === id ? { ...m, ...updates, updatedAt: Date.now() } : m
-    );
-    this.saveMemories(list);
-  },
-
-  deleteMemory(id: string): void {
-    const list = this.getMemories().filter((m) => m.id !== id);
-    this.saveMemories(list);
-  },
-
-  clearAllMemories(): void {
-    this.saveMemories([]);
-  },
-
   getConversations(): ConversationSession[] {
     try {
       const data = localStorage.getItem(CONVERSATIONS_KEY);
@@ -578,7 +499,6 @@ export const storage = {
       exportedAt: new Date().toISOString(),
       profile: this.getProfile(),
       settings: this.getSettings(),
-      memories: this.getMemories(),
       conversations: this.getConversations(),
       progress: this.getProgress(),
     };
@@ -631,14 +551,6 @@ export const storage = {
           },
         };
         this.saveSettings(mergedSettings);
-        importedAny = true;
-      }
-      if (Array.isArray(data.memories)) {
-        const validMemories = data.memories.filter(
-          (m: any): m is UserMemory =>
-            Boolean(m && typeof m === 'object' && typeof m.id === 'string' && typeof m.content === 'string')
-        );
-        this.saveMemories(validMemories);
         importedAny = true;
       }
       if (Array.isArray(data.conversations)) {

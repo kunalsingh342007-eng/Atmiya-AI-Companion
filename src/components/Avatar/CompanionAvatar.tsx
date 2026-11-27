@@ -221,8 +221,8 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
       {/* Respectful Interactive Greeting Popup on Tap */}
       {tapReaction && (
         <div className="absolute -top-3 z-30 pointer-events-none flex items-center gap-1.5 animate-fadeIn">
-          <div className="px-3.5 py-1.5 rounded-xl bg-slate-950/92 text-amber-100 text-xs font-medium shadow-xl border border-indigo-300/30 flex items-center gap-2 backdrop-blur-md">
-            <Heart className="w-3.5 h-3.5 text-rose-300" />
+          <div className="px-3.5 py-1.5 rounded-xl bg-white/95 dark:bg-slate-950/92 text-slate-900 dark:text-amber-100 text-xs font-medium shadow-xl border border-indigo-200 dark:border-indigo-300/30 flex items-center gap-2 backdrop-blur-md">
+            <Heart className="w-3.5 h-3.5 text-rose-500 dark:text-rose-300" />
             <span>"Namaste! I'm right here."</span>
           </div>
         </div>
@@ -340,27 +340,27 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
       {!isImmersive && !compactPreview && (
         <div className="mt-4 flex flex-col items-center gap-1.5">
           {state === 'listening' ? (
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-950/85 border border-sky-400/50 text-sky-200 text-xs font-medium shadow-lg">
-              <Mic className="w-3.5 h-3.5 text-sky-400" />
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-50 dark:bg-sky-950/85 border border-sky-300 dark:border-sky-400/50 text-sky-800 dark:text-sky-200 text-xs font-medium shadow-sm dark:shadow-lg">
+              <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
               <span>Listening to you...</span>
             </div>
           ) : state === 'thinking' ? (
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-950/85 border border-amber-500/50 text-amber-200 text-xs font-medium shadow-lg">
-              <Sparkles className={`w-3.5 h-3.5 text-amber-400 ${prefersReducedMotion ? '' : 'animate-spin'}`} />
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/85 border border-amber-300 dark:border-amber-500/50 text-amber-800 dark:text-amber-200 text-xs font-medium shadow-sm dark:shadow-lg">
+              <Sparkles className={`w-3.5 h-3.5 text-amber-600 dark:text-amber-400 ${prefersReducedMotion ? '' : 'animate-spin'}`} />
               <span>Ātmiya is thinking...</span>
             </div>
           ) : state === 'speaking' ? (
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-950/85 border border-violet-500/50 text-violet-200 text-xs font-medium shadow-lg">
-              <Volume2 className="w-3.5 h-3.5 text-violet-400" />
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-50 dark:bg-violet-950/85 border border-violet-300 dark:border-violet-500/50 text-violet-800 dark:text-violet-200 text-xs font-medium shadow-sm dark:shadow-lg">
+              <Volume2 className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
               <span>Ātmiya is speaking...</span>
             </div>
           ) : state === 'error' ? (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-medium">
-              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-500/50 text-rose-800 dark:text-rose-200 text-xs font-medium">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
               <span>Needs attention</span>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 text-xs font-medium">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/90 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium">
               <span>{emotion !== 'neutral' ? AVATAR_EMOTION_LABELS[emotion] : 'Calm & Present'}</span>
             </div>
           )}

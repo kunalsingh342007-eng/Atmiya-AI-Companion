@@ -7,7 +7,6 @@ import {
   VolumeX,
   Sparkles,
   User,
-  Brain,
   Terminal,
 } from 'lucide-react';
 import { speechService } from '../../services/speech';
@@ -17,18 +16,12 @@ interface MessageListProps {
   messages: ChatMessage[];
   isThinking: boolean;
   settings: CompanionSettings;
-  onSaveSuggestedMemory?: (memoryText: string) => void;
-  suggestedMemory?: string | null;
-  onDismissMemorySuggestion?: () => void;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   isThinking,
   settings,
-  onSaveSuggestedMemory,
-  suggestedMemory,
-  onDismissMemorySuggestion,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
@@ -144,37 +137,6 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   return (
     <div className="space-y-4 pb-2">
-      {/* Memory Suggestion Banner */}
-      {suggestedMemory && (
-        <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/40 flex flex-col gap-2.5 text-xs text-slate-800 dark:text-slate-100 animate-fadeIn">
-          <div className="flex items-start gap-2">
-            <Brain className="w-4 h-4 text-blue-600 dark:text-sky-400 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold block">
-                Save this personal detail to memory?
-              </span>
-              <span className="text-slate-600 dark:text-slate-300 italic">"{suggestedMemory}"</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onDismissMemorySuggestion}
-              className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer"
-            >
-              Dismiss
-            </button>
-            <button
-              type="button"
-              onClick={() => onSaveSuggestedMemory?.(suggestedMemory)}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition cursor-pointer"
-            >
-              Save Memory
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Message Items */}
       {messages.map((msg) => {
         const isUser = msg.role === 'user';
@@ -189,8 +151,8 @@ export const MessageList: React.FC<MessageListProps> = ({
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-semibold mt-0.5 ${
                 isUser
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-[#0f2347] dark:bg-blue-900/80 border border-blue-500/30 text-sky-200'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200'
               }`}
             >
               {isUser ? (
@@ -281,7 +243,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       {/* Thinking Indicator */}
       {isThinking && (
         <div className="flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-[#0f2347] dark:bg-blue-900/80 border border-blue-500/30 text-sky-200 flex items-center justify-center font-serif text-[11px]">
+          <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200 flex items-center justify-center font-serif text-[11px]">
             आ
           </div>
           <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-[#101c36] border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-xs flex items-center gap-2">

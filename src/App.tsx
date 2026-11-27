@@ -12,7 +12,6 @@ import {
   RoomConfig,
   SystemStatus,
   UnifiedAnimationState,
-  UserMemory,
   UserProfile,
 } from './types/companion';
 import { DEFAULT_ROOM_CONFIG, storage } from './services/storage';
@@ -20,16 +19,13 @@ import { api } from './services/api';
 import { speechService } from './services/speech';
 import { playGameSound } from './services/gameAudio';
 
-// Shell, Onboarding & Primary Screens
+// Shell, Onboarding & Primary Screens (4 Primary Navigation Sections)
 import { GameShell } from './components/Game/GameShell';
 import { OnboardingFlow } from './components/Onboarding/OnboardingFlow';
 import { HomeScreen } from './components/Home/HomeScreen';
 import { HistoryScreen } from './components/History/HistoryScreen';
-import { LearningScreen } from './components/Learning/LearningScreen';
 import { GameHub } from './components/Play/GameHub';
-import { WardrobeScreen } from './components/Wardrobe/WardrobeScreen';
-import { MemoriesScreen } from './components/Memory/MemoriesScreen';
-import { SettingsScreen } from './components/Settings/SettingsScreen';
+import { SettingsScreen, SettingsSectionId } from './components/Settings/SettingsScreen';
 
 // Companion Controllers & Drawers
 import {
@@ -71,7 +67,6 @@ export default function App() {
   const [themePreviewOverride, setThemePreviewOverride] = useState<'auto' | 'dark' | 'light' | null>(null);
   const [conversations, setConversations] = useState<ConversationSession[]>(storage.getConversations());
   const [activeConvId, setActiveConvId] = useState<string | null>(storage.getActiveConversationId());
-  const [memories, setMemories] = useState<UserMemory[]>(storage.getMemories());
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     isKeyConfigured: false,
     model: 'gemini-4-hydrogen',
@@ -102,7 +97,6 @@ export default function App() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [suggestedMemory, setSuggestedMemory] = useState<string | null>(null);
   const { toastMessage, showToast } = useToast();
   const prefersReducedMotion = useSystemPreferences(settings.theme, themePreviewOverride);
   const [glbInspection, setGlbInspection] = useState<GlbInspectionReport | null>(null);
@@ -116,7 +110,7 @@ export default function App() {
   const [isExpressionsOpen, setIsExpressionsOpen] = useState<boolean>(false);
   const [speechPlan, setSpeechPlan] = useState<SpeechGesturePlan | null>(null);
 
-  // Phase 4: Preserved Drafts & Unsaved Changes Guard
+  // Preserved Drafts, Settings Deep-Link & Unsaved Changes Guard
   const [draftsBySession, setDraftsBySession] = useState<Record<string, string>>({});
   const [wardrobeDraftAvatar, setWardrobeDraftAvatar] = useState<AvatarAppearanceConfig>(
     settings.avatarConfig
@@ -124,7 +118,11 @@ export default function App() {
   const [wardrobeDraftRoom, setWardrobeDraftRoom] = useState<RoomConfig>(
     settings.roomConfig ?? DEFAULT_ROOM_CONFIG
   );
-  const [hasUnsavedMemoryDraft, setHasUnsavedMemoryDraft] = useState(false);
+  const [settingsNavRequest, setSettingsNavRequest] = useState<{
+    section: SettingsSectionId;
+    openCustomizer?: boolean;
+    nonce: number;
+  } | null>(null);
   const [pendingNavTab, setPendingNavTab] = useState<ActiveNavTab | null>(null);
 
   const [micPermission, refreshMicPermission, markMicDenied] = useMicrophonePermission();
@@ -299,14 +297,20 @@ export default function App() {
 
   const handleSelectTab = (tab: ActiveNavTab) => {
     if (tab === activeTab) return;
-    if (
-      (activeTab === 'wardrobe' && hasUnsavedWardrobeChanges) ||
-      (activeTab === 'memories' && hasUnsavedMemoryDraft)
-    ) {
+    if (activeTab === 'settings' && hasUnsavedWardrobeChanges) {
       setPendingNavTab(tab);
       return;
     }
     executeSelectTab(tab);
+  };
+
+  const openSettingsSection = (section: SettingsSectionId, openCustomizer = false) => {
+    setSettingsNavRequest((prev) => ({
+      section,
+      openCustomizer,
+      nonce: (prev?.nonce ?? 0) + 1,
+    }));
+    executeSelectTab('settings');
   };
 
   const startListeningTurn = (allowAutoUnmute = false) => {
@@ -655,7 +659,7 @@ export default function App() {
     const { progress: nextProg, newlyUnlockedRooms } = storage.recordInteraction(activityLabel, 5);
     setProgress(nextProg);
     if (newlyUnlockedRooms.length > 0) {
-      showToast('New room theme unlocked in Wardrobe!');
+      showToast('New room theme unlocked in Settings → Appearance!');
     }
 
     const ctrl = animControllerRef.current;
@@ -793,7 +797,6 @@ export default function App() {
         {
           message: trimmed,
           history: currentMsgs,
-          memories: settings.memoryEnabled ? memories : [],
           personality: settings.personality,
           language: settings.language,
           userName: settings.userName,
@@ -834,10 +837,6 @@ export default function App() {
         messages: updatedMsgs,
       });
       setConversations(storage.getConversations());
-
-      if (response.memorySuggestion?.detected && settings.memoryEnabled) {
-        setSuggestedMemory(response.memorySuggestion.candidateText);
-      }
 
       setIsThinking(false);
       isProcessingRef.current = false;
@@ -1053,30 +1052,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  // Memory & Settings Handlers
-  const handleAddMemory = (mem: Omit<UserMemory, 'id' | 'createdAt' | 'updatedAt'>) => {
-    storage.addMemory(mem);
-    setMemories(storage.getMemories());
-    showToast('Memory saved');
-  };
-
-  const handleUpdateMemory = (id: string, updates: Partial<UserMemory>) => {
-    storage.updateMemory(id, updates);
-    setMemories(storage.getMemories());
-  };
-
-  const handleDeleteMemory = (id: string) => {
-    storage.deleteMemory(id);
-    setMemories(storage.getMemories());
-    showToast('Memory removed');
-  };
-
-  const handleClearAllMemories = () => {
-    storage.clearAllMemories();
-    setMemories([]);
-    showToast('All memories cleared');
-  };
-
+  // Conversation & Settings Handlers
   const handleClearAllConversations = () => {
     cancelActiveTurn();
     speechService.stopSpeaking();
@@ -1090,13 +1066,6 @@ export default function App() {
     setUserTranscript('');
     setAvatarState('idle');
     showToast('Conversation history cleared');
-  };
-
-  const handleToggleMemoryEnabled = (enabled: boolean) => {
-    const updated = { ...settings, memoryEnabled: enabled };
-    setSettings(updated);
-    storage.saveSettings(updated);
-    showToast(enabled ? 'Memory enabled' : 'Memory disabled');
   };
 
   const handleSaveSettings = (newSettings: CompanionSettings, toastText = 'Settings saved') => {
@@ -1155,7 +1124,7 @@ export default function App() {
     const updated: CompanionSettings = { ...settings, theme: nextTheme };
     handleSaveSettings(
       updated,
-      nextTheme === 'light' ? 'Switched to Light theme' : 'Switched to Dark theme'
+      nextTheme === 'light' ? 'Switched to Light theme' : 'Switched to Dark / Night theme'
     );
   };
 
@@ -1165,7 +1134,6 @@ export default function App() {
     setActiveConvId(newConv.id);
     handleEndCall();
     setAiSpokenText('');
-    setSuggestedMemory(null);
     showToast('New session started');
   };
 
@@ -1177,7 +1145,6 @@ export default function App() {
     speechService.stopRecognition();
     setIsSpeaking(false);
     setAvatarState('idle');
-    setSuggestedMemory(null);
     setChatError(null);
     const selected = conversations.find((c) => c.id === id);
     const lastModel = selected?.messages
@@ -1256,7 +1223,7 @@ export default function App() {
     setProgress(nextProg);
 
     if (newlyUnlockedRooms.length > 0) {
-      showToast(`+${params.xpReward} XP! New room theme unlocked in Customize`);
+      showToast(`+${params.xpReward} XP! New room theme unlocked in Settings → Appearance`);
     } else if (newAchievements.length > 0) {
       showToast(`+${params.xpReward} XP! Badge unlocked: ${newAchievements[0].title}`);
     } else {
@@ -1275,7 +1242,6 @@ export default function App() {
       setCameraPreset(restoredSettings.avatarConfig.defaultCameraPreset);
       setResetCameraNonce((n) => n + 1);
     }
-    setMemories(storage.getMemories());
     setProgress(storage.getProgress());
     const reloadedConvs = storage.getConversations();
     setConversations(reloadedConvs);
@@ -1396,7 +1362,6 @@ export default function App() {
     <GameShell
       activeTab={activeTab}
       onSelectTab={handleSelectTab}
-      memoriesCount={memories.length}
       profile={profile}
       userName={settings.userName}
     >
@@ -1442,7 +1407,6 @@ export default function App() {
           isChatDrawerOpen={isChatDrawerOpen}
           sessionTitle={currentConversation?.title || 'New Conversation'}
           messages={messages}
-          suggestedMemory={suggestedMemory}
           onDismissBubble={() => setSpeechBubbleText(null)}
           onDismissHint={dismissHint}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -1454,10 +1418,10 @@ export default function App() {
           onToggleSound={handleToggleSound}
           onToggleTheme={handleToggleTheme}
           onChangeLanguage={(lang) => handleSaveSettings({ ...settings, language: lang })}
-          onOpenSettings={() => handleSelectTab('settings')}
+          onOpenSettings={() => openSettingsSection('profile')}
           onRevisitOnboarding={() => setShowOnboarding(true)}
           onNavigatePlay={() => handleSelectTab('play')}
-          onNavigateWardrobe={() => handleSelectTab('wardrobe')}
+          onNavigateWardrobe={() => openSettingsSection('appearance', true)}
           onSendMessage={handleSendMessage}
           onRetryLastMessage={handleRetryLastMessage}
           onDismissChatError={handleDismissChatError}
@@ -1468,16 +1432,6 @@ export default function App() {
           onEndCall={handleEndCall}
           onRetryMic={handleRetryMic}
           onToggleChatDrawer={() => setIsChatDrawerOpen((prev) => !prev)}
-          onSaveSuggestedMemory={(candidateText) => {
-            handleAddMemory({
-              content: candidateText,
-              category: 'preference',
-              approvedByUser: true,
-              sourceText: candidateText,
-            });
-            setSuggestedMemory(null);
-          }}
-          onDismissMemorySuggestion={() => setSuggestedMemory(null)}
           onQuickReaction={(emotion, label, line, gesture) =>
             triggerCompanionReaction(
               emotion,
@@ -1511,49 +1465,38 @@ export default function App() {
         />
       )}
 
-      {activeTab === 'learning' && (
-        <LearningScreen
-          settings={settings}
-          memories={memories}
-          onBackToHome={() => handleSelectTab('home')}
-          onRecordLearningXp={(label, xpReward = 10) => {
-            const { progress: nextProg } = storage.recordInteraction(label, xpReward);
-            setProgress(nextProg);
-            showToast(`+${xpReward} XP · ${label}`);
-          }}
-          onOpenChatWithPrompt={(prompt) => {
-            handleSelectTab('home');
-            void handleSendMessage(prompt);
-          }}
-        />
-      )}
-
       {activeTab === 'play' && (
         <GameHub
           progress={progress}
           soundEnabled={isSoundEnabled}
           prefersReducedMotion={prefersReducedMotion}
-          avatarConfig={settings.avatarConfig}
-          expressionsEnabled={settings.expressionsEnabled ?? true}
           onCompleteGame={handleCompleteGame}
           onReturnHome={() => handleSelectTab('home')}
         />
       )}
 
-      {activeTab === 'wardrobe' && (
-        <WardrobeScreen
-          config={settings.avatarConfig}
-          roomConfig={settings.roomConfig}
-          draftAvatar={wardrobeDraftAvatar}
-          draftRoom={wardrobeDraftRoom}
-          onDraftChange={(nextAvatar, nextRoom) => {
-            setWardrobeDraftAvatar(nextAvatar);
-            setWardrobeDraftRoom(nextRoom);
-          }}
+      {activeTab === 'settings' && (
+        <SettingsScreen
+          settings={settings}
+          profile={profile}
+          conversationsCount={conversations.filter((c) => c.messages.length > 0).length}
+          systemStatus={systemStatus}
+          onSaveSettings={handleSaveSettings}
+          onSaveProfile={handleSaveProfile}
+          onDataRestored={handleRestoreData}
+          onClearAllConversations={handleClearAllConversations}
+          onRevisitOnboarding={() => setShowOnboarding(true)}
+          isApiKeyConfigured={systemStatus.isKeyConfigured}
           progress={progress}
           glbInspection={glbInspection}
           previewEmotion={previewEmotion}
           activeCameraPreset={cameraPreset}
+          draftAvatar={wardrobeDraftAvatar}
+          draftRoom={wardrobeDraftRoom}
+          onDraftWardrobeChange={(nextAvatar, nextRoom) => {
+            setWardrobeDraftAvatar(nextAvatar);
+            setWardrobeDraftRoom(nextRoom);
+          }}
           onSelectPreviewEmotion={setPreviewEmotion}
           onChangeCameraPreset={handleChangeCameraPreset}
           onResetCamera={handleResetCamera}
@@ -1565,67 +1508,24 @@ export default function App() {
           }}
           onApplyWardrobe={handleApplyWardrobe}
           onNavigatePlay={() => handleSelectTab('play')}
-        />
-      )}
-
-      {activeTab === 'memories' && (
-        <MemoriesScreen
-          memories={memories}
-          memoryEnabled={settings.memoryEnabled}
-          conversations={conversations}
-          onToggleMemoryEnabled={handleToggleMemoryEnabled}
-          onAddMemory={handleAddMemory}
-          onUpdateMemory={handleUpdateMemory}
-          onDeleteMemory={handleDeleteMemory}
-          onClearAllMemories={handleClearAllMemories}
-          onUnsavedChange={setHasUnsavedMemoryDraft}
-        />
-      )}
-
-      {activeTab === 'settings' && (
-        <SettingsScreen
-          settings={settings}
-          profile={profile}
-          memoriesCount={memories.length}
-          conversationsCount={conversations.filter((c) => c.messages.length > 0).length}
-          systemStatus={systemStatus}
-          onSaveSettings={handleSaveSettings}
-          onSaveProfile={handleSaveProfile}
-          onDataRestored={handleRestoreData}
-          onClearAllConversations={handleClearAllConversations}
-          onClearAllMemories={handleClearAllMemories}
-          onOpenCustomize={() => handleSelectTab('wardrobe')}
-          onOpenMemories={() => handleSelectTab('memories')}
-          onRevisitOnboarding={() => setShowOnboarding(true)}
-          isApiKeyConfigured={systemStatus.isKeyConfigured}
+          requestedSection={settingsNavRequest}
         />
       )}
 
       {/* Unsaved Changes Confirmation Dialog */}
       <UnsavedChangesDialog
-        kind={
-          pendingNavTab
-            ? activeTab === 'wardrobe'
-              ? 'wardrobe'
-              : 'memories'
-            : null
-        }
+        kind={pendingNavTab && activeTab === 'settings' ? 'wardrobe' : null}
         onStay={() => setPendingNavTab(null)}
         onDiscard={() => {
           if (!pendingNavTab) return;
           const target = pendingNavTab;
           setPendingNavTab(null);
-          if (activeTab === 'wardrobe') {
-            setWardrobeDraftAvatar(settings.avatarConfig);
-            setWardrobeDraftRoom(savedRoomConfig);
-          }
-          if (activeTab === 'memories') {
-            setHasUnsavedMemoryDraft(false);
-          }
+          setWardrobeDraftAvatar(settings.avatarConfig);
+          setWardrobeDraftRoom(savedRoomConfig);
           executeSelectTab(target);
         }}
         onApplyAndLeave={
-          activeTab === 'wardrobe'
+          activeTab === 'settings'
             ? () => {
                 if (!pendingNavTab) return;
                 const target = pendingNavTab;
@@ -1651,17 +1551,6 @@ export default function App() {
         settings={settings}
         onSendMessage={handleSendMessage}
         onChangeLanguage={(lang) => handleSaveSettings({ ...settings, language: lang })}
-        onSaveSuggestedMemory={(candidateText) => {
-          handleAddMemory({
-            content: candidateText,
-            category: 'preference',
-            approvedByUser: true,
-            sourceText: candidateText,
-          });
-          setSuggestedMemory(null);
-        }}
-        suggestedMemory={suggestedMemory}
-        onDismissMemorySuggestion={() => setSuggestedMemory(null)}
         draftText={currentComposerDraft}
         onDraftChange={updateCurrentComposerDraft}
       />

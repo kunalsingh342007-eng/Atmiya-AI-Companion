@@ -47,7 +47,6 @@ interface HomeScreenProps {
   isChatDrawerOpen: boolean;
   sessionTitle: string;
   messages: ChatMessage[];
-  suggestedMemory: string | null;
   onDismissBubble: () => void;
   onDismissHint: () => void;
   onToggleSidebar: () => void;
@@ -73,8 +72,6 @@ interface HomeScreenProps {
   onEndCall: () => void;
   onRetryMic: () => void;
   onToggleChatDrawer: () => void;
-  onSaveSuggestedMemory: (memoryText: string) => void;
-  onDismissMemorySuggestion: () => void;
   onQuickReaction: (
     emotion: AvatarEmotion,
     label: string,
@@ -110,7 +107,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   isChatDrawerOpen,
   sessionTitle,
   messages,
-  suggestedMemory,
   onDismissBubble,
   onDismissHint,
   onToggleSidebar,
@@ -136,8 +132,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onEndCall,
   onRetryMic,
   onToggleChatDrawer,
-  onSaveSuggestedMemory,
-  onDismissMemorySuggestion,
   onQuickReaction,
   draftText,
   onDraftChange,
@@ -224,13 +218,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               {/* Frosted Greeting / Reply Bubble */}
               {speechBubbleText && (
                 <div className="pointer-events-none absolute bottom-2 inset-x-0 md:inset-auto md:top-[12%] md:right-[6%] lg:right-[8%] z-20 flex justify-center md:justify-end px-3 md:px-0 animate-fadeIn">
-                  <div className="pointer-events-auto relative max-w-[270px] sm:max-w-[300px] rounded-2xl bg-white/94 dark:bg-slate-100/92 text-slate-900 px-4 py-3 text-xs sm:text-[13px] font-medium shadow-xl border border-white/80 backdrop-blur-xl flex items-start gap-2">
+                  <div className="pointer-events-auto relative max-w-[270px] sm:max-w-[300px] rounded-2xl bg-white/95 dark:bg-[#0f1a36]/92 text-slate-900 dark:text-slate-100 px-4 py-3 text-xs sm:text-[13px] font-medium shadow-xl border border-slate-200/90 dark:border-indigo-400/30 backdrop-blur-xl flex items-start gap-2">
                     <span className="leading-snug flex-1">{speechBubbleText}</span>
                     <button
                       type="button"
                       onClick={onDismissBubble}
                       aria-label="Dismiss speech bubble"
-                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer shrink-0"
+                      className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white p-0.5 rounded cursor-pointer shrink-0"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -325,7 +319,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         settings={settings}
         chatError={chatError}
         isThinking={isThinking}
-        suggestedMemory={suggestedMemory}
         isCollapsed={!isDesktopPanelOpen}
         activePanelTab={panelTab}
         onChangePanelTab={setPanelTab}
@@ -341,8 +334,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         onSendMessage={onSendMessage}
         onRetryLastMessage={onRetryLastMessage}
         onDismissChatError={onDismissChatError}
-        onSaveSuggestedMemory={onSaveSuggestedMemory}
-        onDismissMemorySuggestion={onDismissMemorySuggestion}
       />
     </div>
   );

@@ -18,9 +18,6 @@ interface ChatDrawerProps {
   settings: CompanionSettings;
   onSendMessage: (text: string) => void;
   onChangeLanguage: (lang: CompanionLanguage) => void;
-  onSaveSuggestedMemory?: (memoryText: string) => void;
-  suggestedMemory?: string | null;
-  onDismissMemorySuggestion?: () => void;
   draftText?: string;
   onDraftChange?: (text: string) => void;
 }
@@ -38,9 +35,6 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   settings,
   onSendMessage,
   onChangeLanguage,
-  onSaveSuggestedMemory,
-  suggestedMemory,
-  onDismissMemorySuggestion,
   draftText,
   onDraftChange,
 }) => {
@@ -131,9 +125,6 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                 messages={messages}
                 isThinking={isThinking}
                 settings={settings}
-                onSaveSuggestedMemory={onSaveSuggestedMemory}
-                suggestedMemory={suggestedMemory}
-                onDismissMemorySuggestion={onDismissMemorySuggestion}
               />
               {chatError && (
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-500/40 flex items-center justify-between gap-2 text-xs text-rose-700 dark:text-rose-200">

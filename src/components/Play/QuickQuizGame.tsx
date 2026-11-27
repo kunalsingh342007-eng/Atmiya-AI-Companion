@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { playGameSound } from '../../services/gameAudio';
+import { SubpageBackdrop } from '../Layout/CompanionPagePrimitives';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -146,13 +147,13 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
   };
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-slate-50 dark:bg-[#070d1a] px-4 py-5 sm:py-7">
-      <div className="max-w-2xl mx-auto space-y-5">
+    <SubpageBackdrop>
+      <div className="max-w-2xl w-full mx-auto px-4 py-5 sm:py-7 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
             onClick={onBackToHub}
-            className="h-10 px-3.5 rounded-xl bg-white dark:bg-[#0c1528] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
+            className="h-10 px-3.5 rounded-xl bg-[var(--bg-surface)] dark:bg-[#0c1528] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Games</span>
@@ -160,7 +161,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
 
           {phase === 'playing' && (
             <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-              <span className="font-semibold text-blue-700 dark:text-sky-300 tabular-nums">
+              <span className="font-semibold text-indigo-700 dark:text-sky-300 tabular-nums">
                 Question {currentIdx + 1}/{questions.length}
               </span>
               <span aria-hidden="true" className="text-slate-400">·</span>
@@ -169,7 +170,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
           )}
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm dark:shadow-2xl space-y-5">
+        <div className="rounded-2xl bg-[var(--bg-surface)] dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm dark:shadow-2xl space-y-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
@@ -329,6 +330,6 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </SubpageBackdrop>
   );
 };

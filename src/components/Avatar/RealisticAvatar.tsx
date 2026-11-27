@@ -1767,8 +1767,8 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
             )}
           </div>
         ) : (
-          <div className="mt-3 max-w-md px-3.5 py-2 rounded-xl bg-slate-900/90 border border-amber-500/40 text-[11px] text-amber-200 flex items-center gap-2 shadow-lg">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <div className="mt-3 max-w-md px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-slate-900/90 border border-amber-300 dark:border-amber-500/40 text-[11px] text-amber-900 dark:text-amber-200 flex items-center gap-2 shadow-lg">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className="flex-1 text-left">
               {errorReason} Using 2D portrait fallback.
             </span>
@@ -1777,7 +1777,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 <button
                   type="button"
                   onClick={() => setIsExpressionPanelOpen((v) => !v)}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-transparent text-slate-700 dark:text-slate-200 font-medium transition cursor-pointer"
                   title="Preview 16 expressions"
                 >
                   <Smile className="w-3 h-3" />
@@ -1787,7 +1787,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
               <button
                 type="button"
                 onClick={handleRetry}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-100 font-medium transition cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/20 dark:bg-amber-600/30 hover:bg-amber-500/35 dark:hover:bg-amber-600/50 text-amber-900 dark:text-amber-100 font-medium transition cursor-pointer"
                 title="Retry loading 3D GLB model"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -2057,18 +2057,18 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         {!isImmersive && (
           <div className="flex flex-wrap items-center justify-center gap-2">
             {state === 'listening' ? (
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-950/85 border border-cyan-500/50 text-cyan-200 text-xs font-medium shadow-lg">
-                <Mic className="w-3.5 h-3.5 text-cyan-400" />
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-50 dark:bg-cyan-950/85 border border-cyan-300 dark:border-cyan-500/50 text-cyan-800 dark:text-cyan-200 text-xs font-medium shadow-sm dark:shadow-lg">
+                <Mic className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                 <span>Listening to you...</span>
               </div>
             ) : state === 'thinking' ? (
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-950/85 border border-amber-500/50 text-amber-200 text-xs font-medium shadow-lg">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/85 border border-amber-300 dark:border-amber-500/50 text-amber-800 dark:text-amber-200 text-xs font-medium shadow-sm dark:shadow-lg">
+                <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-spin" />
                 <span>Ātmiya is thinking...</span>
               </div>
             ) : state === 'speaking' ? (
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-950/85 border border-violet-500/50 text-violet-200 text-xs font-medium shadow-lg">
-                <Volume2 className="w-3.5 h-3.5 text-violet-400" />
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-50 dark:bg-violet-950/85 border border-violet-300 dark:border-violet-500/50 text-violet-800 dark:text-violet-200 text-xs font-medium shadow-sm dark:shadow-lg">
+                <Volume2 className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
                 <span>
                   {inspection?.capabilities.hasSpeechMorphs || inspection?.capabilities.hasJawBone
                     ? 'Ātmiya is speaking...'
@@ -2076,16 +2076,16 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 </span>
               </div>
             ) : state === 'interrupted' ? (
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-950/80 border border-amber-500/50 text-amber-200 text-xs font-medium">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-500/50 text-amber-800 dark:text-amber-200 text-xs font-medium">
                 <span>Interrupted</span>
               </div>
             ) : state === 'error' ? (
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-medium">
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-500/50 text-rose-800 dark:text-rose-200 text-xs font-medium">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                 <span>Needs attention</span>
               </div>
             ) : (
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 text-xs font-medium">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/90 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium">
                 <span>
                   {effectiveEmotion !== 'neutral'
                     ? `3D Avatar · ${AVATAR_EMOTION_LABELS[effectiveEmotion]}`

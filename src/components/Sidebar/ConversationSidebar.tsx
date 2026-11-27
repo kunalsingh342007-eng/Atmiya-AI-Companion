@@ -108,18 +108,23 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         aria-modal={isOpen ? 'true' : undefined}
         aria-label="Conversation sessions"
         aria-hidden={!isOpen}
-        className={`fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-white dark:bg-[#091224] border-r border-slate-200 dark:border-slate-800/80 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-[var(--bg-surface)] dark:bg-[#091224] border-r border-slate-200 dark:border-slate-800/80 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
         }`}
       >
         {/* Top Branding / Header */}
         <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 dark:hidden flex items-center justify-center shrink-0">
+              <span className="font-serif text-sm font-bold text-indigo-700" aria-hidden="true">
+                आ
+              </span>
+            </div>
             <img
               src="/assets/branding/atmiya-logo.png"
               alt=""
               aria-hidden="true"
-              className="w-8 h-8 rounded-xl object-contain bg-[#0b132b] p-0.5 border border-indigo-400/25 shrink-0"
+              className="hidden dark:block w-8 h-8 rounded-xl object-contain bg-[#0b132b] p-0.5 border border-indigo-400/25 shrink-0"
             />
             <div>
               <span className="font-semibold text-sm tracking-tight text-slate-900 dark:text-white block">

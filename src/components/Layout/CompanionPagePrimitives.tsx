@@ -7,18 +7,17 @@ interface SubpageBackdropProps {
 }
 
 /**
- * Shared canvas container for Learning, Play Games, Memories, and Settings.
- * Matches the dark midnight-navy + subtle blue/violet ambient lighting design
- * while staying crisp and legible in Light mode.
+ * Shared canvas container for History, Play Games, Mini-Games, and Settings.
+ * Uses unified Light and Dark/Night surface tokens for consistent visual depth.
  */
 export const SubpageBackdrop: React.FC<SubpageBackdropProps> = ({
   children,
   className = '',
 }) => (
   <div
-    className={`relative h-full w-full overflow-y-auto bg-slate-50 text-slate-900 dark:bg-[#050b21] dark:text-slate-100 ${className}`}
+    className={`relative h-full w-full overflow-y-auto bg-[var(--bg-canvas)] text-[var(--text-primary)] transition-colors duration-200 ${className}`}
   >
-    {/* Subtle atmospheric glow (dark mode only) */}
+    {/* Subtle atmospheric glow (Dark/Night mode only) */}
     <div
       aria-hidden="true"
       className="hidden dark:block pointer-events-none fixed inset-0 z-0"
@@ -47,7 +46,7 @@ export const BackPillButton: React.FC<BackPillButtonProps> = ({
   <button
     type="button"
     onClick={onClick}
-    className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white/90 dark:bg-[#0b1638]/85 hover:bg-white dark:hover:bg-[#142456] border border-slate-200 dark:border-indigo-400/28 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white text-xs font-medium backdrop-blur-md shadow-xs dark:shadow-[0_6px_18px_rgba(2,6,23,0.45)] transition cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${className}`}
+    className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-[var(--bg-surface)]/95 hover:bg-[var(--bg-elevated)] dark:bg-[#0b1638]/85 dark:hover:bg-[#142456] border border-slate-200 dark:border-indigo-400/28 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white text-xs font-medium backdrop-blur-md shadow-xs dark:shadow-[0_6px_18px_rgba(2,6,23,0.45)] transition cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${className}`}
   >
     <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
     <span>{label}</span>

@@ -50,6 +50,8 @@ interface WardrobeScreenProps {
   onPreviewOnStage?: () => void;
   onApplyWardrobe: (newAvatar: AvatarAppearanceConfig, newRoom: RoomConfig) => void;
   onNavigatePlay: () => void;
+  embedded?: boolean;
+  onBackToAppearance?: () => void;
 }
 
 const ROOM_OPTIONS: {
@@ -135,6 +137,8 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
   onPreviewOnStage,
   onApplyWardrobe,
   onNavigatePlay,
+  embedded = false,
+  onBackToAppearance,
 }) => {
   const [sectionTab, setSectionTab] = useState<'appearance' | 'camera-expressions' | 'room'>(
     'appearance'
@@ -181,15 +185,36 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
   const activeType = draftAvatar.avatarType || '3d-glb';
   const defaultCamera = draftAvatar.defaultCameraPreset || activeCameraPreset || 'close-up';
 
-  return (
-    <SubpageBackdrop>
-      <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+  const content = (
+      <div className={embedded ? 'w-full space-y-5' : 'flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6'}>
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <PageHeading
-            title="Customize Ātmiya"
-            subtitle="Avatar appearance, camera framing, expressions, and room atmosphere."
-          />
+          {embedded ? (
+            <div>
+              <div className="flex items-center gap-2">
+                {onBackToAppearance && (
+                  <button
+                    type="button"
+                    onClick={onBackToAppearance}
+                    className="h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
+                  >
+                    ← Back
+                  </button>
+                )}
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  3D Stage &amp; Room Customizer
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Avatar framing, facial expressions, outfit trim, and room atmosphere.
+              </p>
+            </div>
+          ) : (
+            <PageHeading
+              title="Customize Ātmiya"
+              subtitle="Avatar appearance, camera framing, expressions, and room atmosphere."
+            />
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             {hasChanges && (
@@ -783,6 +808,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
           </div>
         )}
       </div>
-    </SubpageBackdrop>
   );
+
+  return embedded ? content : <SubpageBackdrop>{content}</SubpageBackdrop>;
 };

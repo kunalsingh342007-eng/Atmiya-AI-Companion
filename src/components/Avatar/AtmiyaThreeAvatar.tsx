@@ -184,12 +184,12 @@ export const AtmiyaThreeAvatar: React.FC<AtmiyaThreeAvatarProps> = ({
           onInterrupt={onInterrupt}
           onTapAvatar={onTapAvatar}
         />
-        <div className="mt-1.5 px-3 py-1 rounded-full bg-slate-950/70 border border-white/15 backdrop-blur-md text-[11px] text-slate-200 flex items-center gap-2">
+        <div className="mt-1.5 px-3 py-1 rounded-full bg-white/90 dark:bg-slate-950/70 border border-slate-200 dark:border-white/15 backdrop-blur-md text-[11px] text-slate-700 dark:text-slate-200 flex items-center gap-2">
           <span>2D Fallback ({effectiveError})</span>
           <button
             type="button"
             onClick={handleRetry}
-            className="text-amber-200 hover:text-white inline-flex items-center gap-1 underline cursor-pointer"
+            className="text-indigo-600 dark:text-amber-200 hover:text-indigo-800 dark:hover:text-white inline-flex items-center gap-1 underline cursor-pointer"
           >
             <RefreshCw className="w-3 h-3" />
             <span>Retry 3D</span>
@@ -243,9 +243,9 @@ export const AtmiyaThreeAvatar: React.FC<AtmiyaThreeAvatarProps> = ({
         {(resolvingRecord || !isLoaded) && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pointer-events-none">
             <Loader2
-              className={`w-7 h-7 text-amber-200 ${prefersReducedMotion ? '' : 'animate-spin'}`}
+              className={`w-7 h-7 text-indigo-600 dark:text-amber-200 ${prefersReducedMotion ? '' : 'animate-spin'}`}
             />
-            <span className="px-3 py-1 rounded-full bg-slate-950/75 border border-white/15 text-[11px] font-medium text-slate-100 backdrop-blur-md">
+            <span className="px-3 py-1 rounded-full bg-white/90 dark:bg-slate-950/75 border border-slate-200 dark:border-white/15 text-[11px] font-medium text-slate-800 dark:text-slate-100 backdrop-blur-md">
               Loading 3D Companion...
             </span>
           </div>

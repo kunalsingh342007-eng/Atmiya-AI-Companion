@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AvatarAppearanceConfig,
+  AvatarEmotion,
+  CameraFramingPreset,
   CompanionLanguage,
   CompanionPersonality,
   CompanionSettings,
+  GameProgress,
+  RoomConfig,
   SystemStatus,
   UserProfile,
 } from '../../types/companion';
@@ -10,6 +15,8 @@ import { DEFAULT_SETTINGS, storage } from '../../services/storage';
 import { PageHeading, SubpageBackdrop } from '../Layout/CompanionPagePrimitives';
 import { ProfileAvatar } from '../Profile/ProfileAvatar';
 import { isValidProfileImageUrl, processProfileImageFile } from '../../utils/profileImage';
+import { WardrobeScreen } from '../Wardrobe/WardrobeScreen';
+import type { GlbInspectionReport } from '../Avatar/RealisticAvatar';
 import {
   AlertTriangle,
   Check,
@@ -31,24 +38,39 @@ import {
   Volume2,
 } from 'lucide-react';
 
+export type SettingsSectionId = 'profile' | 'appearance' | 'voice' | 'privacy' | 'about';
+
 interface SettingsScreenProps {
   settings: CompanionSettings;
   profile: UserProfile;
-  memoriesCount: number;
   conversationsCount: number;
   systemStatus: SystemStatus;
   onSaveSettings: (settings: CompanionSettings, toastText?: string) => void;
   onSaveProfile: (profile: UserProfile, toastText?: string) => boolean;
   onDataRestored?: () => void;
   onClearAllConversations: () => void;
-  onClearAllMemories: () => void;
-  onOpenCustomize?: () => void;
-  onOpenMemories?: () => void;
   onRevisitOnboarding?: () => void;
   isApiKeyConfigured: boolean;
+  // Embedded 3D stage & room customizer props (under Appearance)
+  progress: GameProgress;
+  glbInspection?: GlbInspectionReport | null;
+  previewEmotion?: AvatarEmotion | null;
+  activeCameraPreset?: CameraFramingPreset;
+  draftAvatar?: AvatarAppearanceConfig;
+  draftRoom?: RoomConfig;
+  onDraftWardrobeChange?: (avatar: AvatarAppearanceConfig, room: RoomConfig) => void;
+  onSelectPreviewEmotion?: (emotion: AvatarEmotion | null) => void;
+  onChangeCameraPreset?: (preset: CameraFramingPreset) => void;
+  onResetCamera?: () => void;
+  onPreviewOnStage?: () => void;
+  onApplyWardrobe: (newAvatar: AvatarAppearanceConfig, newRoom: RoomConfig) => void;
+  onNavigatePlay: () => void;
+  requestedSection?: {
+    section: SettingsSectionId;
+    openCustomizer?: boolean;
+    nonce: number;
+  } | null;
 }
-
-type SettingsSectionId = 'profile' | 'appearance' | 'voice' | 'privacy' | 'about';
 
 const SECTIONS: {
   id: SettingsSectionId;
@@ -58,7 +80,7 @@ const SECTIONS: {
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'voice', label: 'Language & Voice', icon: Volume2 },
-  { id: 'privacy', label: 'Privacy & Memory', icon: ShieldCheck },
+  { id: 'privacy', label: 'Privacy & Data', icon: ShieldCheck },
   { id: 'about', label: 'About', icon: Info },
 ];
 
@@ -95,20 +117,35 @@ const APPEARANCE_PRESETS = [
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   settings,
   profile,
-  memoriesCount,
   conversationsCount,
   systemStatus,
   onSaveSettings,
   onSaveProfile,
   onDataRestored,
   onClearAllConversations,
-  onClearAllMemories,
-  onOpenCustomize,
-  onOpenMemories,
   onRevisitOnboarding,
   isApiKeyConfigured,
+  progress,
+  glbInspection,
+  previewEmotion = null,
+  activeCameraPreset = 'close-up',
+  draftAvatar,
+  draftRoom,
+  onDraftWardrobeChange,
+  onSelectPreviewEmotion,
+  onChangeCameraPreset,
+  onResetCamera,
+  onPreviewOnStage,
+  onApplyWardrobe,
+  onNavigatePlay,
+  requestedSection,
 }) => {
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>('profile');
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(
+    requestedSection?.section ?? 'profile'
+  );
+  const [showStageCustomizer, setShowStageCustomizer] = useState<boolean>(
+    Boolean(requestedSection?.openCustomizer)
+  );
   const [draftSettings, setDraftSettings] = useState<CompanionSettings>(settings);
 
   // Profile draft
@@ -125,11 +162,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [micPermissionState, setMicPermissionState] = useState<string>('checking');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showClearChatsConfirm, setShowClearChatsConfirm] = useState(false);
-  const [showClearMemoriesConfirm, setShowClearMemoriesConfirm] = useState(false);
   const [exportNotice, setExportNotice] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (requestedSection) {
+      setActiveSection(requestedSection.section);
+      setShowStageCustomizer(Boolean(requestedSection.openCustomizer));
+    }
+  }, [requestedSection]);
 
   useEffect(() => {
     setDraftSettings(settings);
@@ -320,12 +363,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <button
                   key={sec.id}
                   type="button"
-                  onClick={() => setActiveSection(sec.id)}
+                  onClick={() => {
+                    setActiveSection(sec.id);
+                    if (sec.id !== 'appearance') {
+                      setShowStageCustomizer(false);
+                    }
+                  }}
                   aria-current={active ? 'location' : undefined}
                   className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-[13px] font-medium inline-flex items-center gap-2.5 transition cursor-pointer whitespace-nowrap shrink-0 border ${
                     active
                       ? 'bg-indigo-600 border-indigo-500 text-white font-semibold'
-                      : 'bg-white dark:bg-[#0b132b] border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+                      : 'bg-[var(--bg-surface)] dark:bg-[#0b132b] border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                   }`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
@@ -336,7 +384,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </nav>
 
           {/* Active Section Card */}
-          <div className="md:col-span-8 lg:col-span-9 rounded-2xl bg-white dark:bg-[#0b132b] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-xs space-y-6">
+          <div className="md:col-span-8 lg:col-span-9 rounded-2xl bg-[var(--bg-surface)] dark:bg-[#0b132b] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-xs space-y-6">
             {activeSection === 'profile' && (
               <section aria-label="Profile settings" className="space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -469,152 +517,174 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
             {activeSection === 'appearance' && (
               <section aria-label="Appearance settings" className="space-y-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                      Appearance
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Choose theme mode and companion visual presentation.
-                    </p>
-                  </div>
-                  {onOpenCustomize && (
-                    <button
-                      type="button"
-                      onClick={onOpenCustomize}
-                      className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:underline cursor-pointer"
-                    >
-                      Open 3D Customize →
-                    </button>
-                  )}
-                </div>
-
-                {/* Theme Mode */}
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 block">
-                    App Theme
-                  </span>
-                  <div className="grid grid-cols-3 gap-2.5" role="radiogroup" aria-label="Theme mode">
-                    {[
-                      { id: 'dark' as const, label: 'Dark', icon: Moon },
-                      { id: 'light' as const, label: 'Light', icon: Sun },
-                      { id: 'auto' as const, label: 'System', icon: Sparkles },
-                    ].map((t) => {
-                      const Icon = t.icon;
-                      const active = draftSettings.theme === t.id;
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          onClick={() => {
-                            const next = { ...draftSettings, theme: t.id };
-                            setDraftSettings(next);
-                            onSaveSettings(
-                              next,
-                              t.id === 'auto'
-                                ? 'Theme set to follow system'
-                                : `Switched to ${t.label} theme`
-                            );
-                          }}
-                          className={`h-10 px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                            active
-                              ? 'bg-indigo-600 border-indigo-500 text-white'
-                              : 'bg-slate-50 dark:bg-[#081024] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-400'
-                          }`}
-                        >
-                          <Icon className="w-3.5 h-3.5" />
-                          <span>{t.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Facial Expressions */}
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#081024] border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Smile className="w-4 h-4 text-indigo-600 dark:text-indigo-300 shrink-0" />
-                    <div>
-                      <div className="text-xs sm:text-sm font-medium text-slate-900 dark:text-white">
-                        Avatar Facial Expressions
+                {showStageCustomizer ? (
+                  <WardrobeScreen
+                    embedded
+                    onBackToAppearance={() => setShowStageCustomizer(false)}
+                    config={settings.avatarConfig}
+                    roomConfig={settings.roomConfig}
+                    draftAvatar={draftAvatar}
+                    draftRoom={draftRoom}
+                    onDraftChange={onDraftWardrobeChange}
+                    progress={progress}
+                    glbInspection={glbInspection}
+                    previewEmotion={previewEmotion}
+                    activeCameraPreset={activeCameraPreset}
+                    onSelectPreviewEmotion={onSelectPreviewEmotion}
+                    onChangeCameraPreset={onChangeCameraPreset}
+                    onResetCamera={onResetCamera}
+                    onPreviewOnStage={onPreviewOnStage}
+                    onApplyWardrobe={onApplyWardrobe}
+                    onNavigatePlay={onNavigatePlay}
+                  />
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                          Appearance
+                        </h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Switch between Light and Dark / Night themes and customize Ātmiya&apos;s stage.
+                        </p>
                       </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Express emotion and natural head gestures during replies
+                      <button
+                        type="button"
+                        onClick={() => setShowStageCustomizer(true)}
+                        className="h-9 px-3.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/70 border border-indigo-200 dark:border-indigo-500/35 text-xs font-semibold text-indigo-700 dark:text-indigo-200 cursor-pointer transition"
+                      >
+                        Customize 3D Stage &amp; Rooms →
+                      </button>
+                    </div>
+
+                    {/* Theme Mode */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 block">
+                        App Theme
+                      </span>
+                      <div className="grid grid-cols-3 gap-2.5" role="radiogroup" aria-label="Theme mode">
+                        {[
+                          { id: 'light' as const, label: 'Light', icon: Sun },
+                          { id: 'dark' as const, label: 'Dark / Night', icon: Moon },
+                          { id: 'auto' as const, label: 'System', icon: Sparkles },
+                        ].map((t) => {
+                          const Icon = t.icon;
+                          const active = draftSettings.theme === t.id;
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              onClick={() => {
+                                const next = { ...draftSettings, theme: t.id };
+                                setDraftSettings(next);
+                                onSaveSettings(
+                                  next,
+                                  t.id === 'auto'
+                                    ? 'Theme set to follow system'
+                                    : `Switched to ${t.label} theme`
+                                );
+                              }}
+                              className={`h-10 px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                                active
+                                  ? 'bg-indigo-600 border-indigo-500 text-white'
+                                  : 'bg-slate-50 dark:bg-[#081024] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-400'
+                              }`}
+                            >
+                              <Icon className="w-3.5 h-3.5" />
+                              <span>{t.label}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={expressionsActive}
-                    aria-label="Toggle facial expressions"
-                    onClick={() => updateDraft({ expressionsEnabled: !expressionsActive })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer shrink-0 ${
-                      expressionsActive ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
-                        expressionsActive ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
 
-                {/* Companion Trim Accent */}
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 block">
-                    Companion Accent Trim
-                  </span>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {APPEARANCE_PRESETS.map((preset) => {
-                      const active =
-                        (draftSettings.avatarConfig.outfitColor || '#1e3a5f') ===
-                        preset.outfitColor;
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() =>
-                            updateDraft({
-                              avatarConfig: {
-                                ...draftSettings.avatarConfig,
-                                outfitColor: preset.outfitColor,
-                                outfitStyleLabel: preset.label,
-                                accentColor: preset.outfitColor,
-                              },
-                            })
-                          }
-                          className={`h-10 px-3 rounded-xl border text-xs font-medium inline-flex items-center gap-2 transition cursor-pointer ${
-                            active
-                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-900 dark:text-white'
-                              : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081024] text-slate-700 dark:text-slate-300'
+                    {/* Facial Expressions */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#081024] border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Smile className="w-4 h-4 text-indigo-600 dark:text-indigo-300 shrink-0" />
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-slate-900 dark:text-white">
+                            Avatar Facial Expressions
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Express emotion and natural head gestures during replies
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={expressionsActive}
+                        aria-label="Toggle facial expressions"
+                        onClick={() => updateDraft({ expressionsEnabled: !expressionsActive })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer shrink-0 ${
+                          expressionsActive ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
+                            expressionsActive ? 'translate-x-6' : 'translate-x-1'
                           }`}
-                        >
-                          <span
-                            className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/15 dark:border-white/25"
-                            style={{ backgroundColor: preset.outfitColor }}
-                          />
-                          <span className="truncate">{preset.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                        />
+                      </button>
+                    </div>
 
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="button"
-                    onClick={handleSaveSettingsClick}
-                    disabled={!hasUnsavedSettings}
-                    className="h-10 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer disabled:cursor-default"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{hasUnsavedSettings ? 'Save Changes' : 'Saved'}</span>
-                  </button>
-                </div>
+                    {/* Companion Trim Accent */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 block">
+                        Companion Accent Trim
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {APPEARANCE_PRESETS.map((preset) => {
+                          const active =
+                            (draftSettings.avatarConfig.outfitColor || '#1e3a5f') ===
+                            preset.outfitColor;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() =>
+                                updateDraft({
+                                  avatarConfig: {
+                                    ...draftSettings.avatarConfig,
+                                    outfitColor: preset.outfitColor,
+                                    outfitStyleLabel: preset.label,
+                                    accentColor: preset.outfitColor,
+                                  },
+                                })
+                              }
+                              className={`h-10 px-3 rounded-xl border text-xs font-medium inline-flex items-center gap-2 transition cursor-pointer ${
+                                active
+                                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-900 dark:text-white'
+                                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081024] text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <span
+                                className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/15 dark:border-white/25"
+                                style={{ backgroundColor: preset.outfitColor }}
+                              />
+                              <span className="truncate">{preset.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={handleSaveSettingsClick}
+                        disabled={!hasUnsavedSettings}
+                        className="h-10 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer disabled:cursor-default"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>{hasUnsavedSettings ? 'Save Changes' : 'Saved'}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </section>
             )}
 
@@ -851,13 +921,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             )}
 
             {activeSection === 'privacy' && (
-              <section aria-label="Privacy and Memory settings" className="space-y-5">
+              <section aria-label="Privacy and Data settings" className="space-y-5">
                 <div>
                   <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                    Privacy &amp; Memory
+                    Privacy &amp; Data
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Control what Ātmiya remembers and manage data stored locally in this browser.
+                    Manage conversations, preferences, and backups stored locally in this browser.
                   </p>
                 </div>
 
@@ -869,54 +939,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       Local Browser Storage
                     </p>
                     <p>
-                      Your profile, saved memories, preferences, and conversation transcripts are stored locally on this device in <code className="text-indigo-600 dark:text-indigo-300">localStorage</code>. They are not synced across external cloud accounts.
+                      Your profile, preferences, and conversation transcripts are stored locally on this device in <code className="text-indigo-600 dark:text-indigo-300">localStorage</code>. They are not synced across external cloud accounts.
                     </p>
-                  </div>
-                </div>
-
-                {/* Memory Toggle */}
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#081024] border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white">
-                      Personal Memory ({memoriesCount} saved)
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                      Include user-approved memories as context in replies
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {onOpenMemories && (
-                      <button
-                        type="button"
-                        onClick={onOpenMemories}
-                        className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:underline cursor-pointer"
-                      >
-                        Manage Memories →
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={draftSettings.memoryEnabled}
-                      aria-label="Toggle personal memory"
-                      onClick={() => {
-                        const next = { ...draftSettings, memoryEnabled: !draftSettings.memoryEnabled };
-                        setDraftSettings(next);
-                        onSaveSettings(
-                          next,
-                          next.memoryEnabled ? 'Memory enabled' : 'Memory paused'
-                        );
-                      }}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer shrink-0 ${
-                        draftSettings.memoryEnabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
-                          draftSettings.memoryEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
                   </div>
                 </div>
 
@@ -995,47 +1019,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       </div>
                     </div>
                   )}
-
-                  {memoriesCount > 0 &&
-                    (!showClearMemoriesConfirm ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowClearMemoriesConfirm(true)}
-                        className="w-full h-10 px-4 rounded-xl bg-white dark:bg-[#081024] hover:bg-rose-50 dark:hover:bg-rose-950/45 border border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-500/35 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-200 flex items-center justify-between cursor-pointer"
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Clear All Saved Memories</span>
-                        </span>
-                        <span className="tabular-nums opacity-75">{memoriesCount} items</span>
-                      </button>
-                    ) : (
-                      <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-500/40 flex flex-wrap items-center justify-between gap-2 text-xs text-rose-900 dark:text-rose-100">
-                        <span className="inline-flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-300" />
-                          Delete all saved memories?
-                        </span>
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onClearAllMemories();
-                              setShowClearMemoriesConfirm(false);
-                            }}
-                            className="h-8 px-3 rounded-lg bg-rose-600 text-white font-semibold cursor-pointer"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowClearMemoriesConfirm(false)}
-                            className="h-8 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ))}
                 </div>
               </section>
             )}

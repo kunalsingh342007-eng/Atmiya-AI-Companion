@@ -5,7 +5,6 @@ import {
   CompanionPersonality, 
   ChatMessage, 
   SystemStatus, 
-  UserMemory 
 } from '../types/companion';
 import { normalizeStructuredEmotionPayload } from '../components/Avatar/expressionRig';
 
@@ -15,10 +14,6 @@ export interface ChatResponse {
   intensity?: number;
   gesture?: AvatarGestureHint;
   timestamp: string;
-  memorySuggestion?: {
-    detected: boolean;
-    candidateText: string;
-  } | null;
 }
 
 export interface TTSResponse {
@@ -121,7 +116,6 @@ export const api = {
     params: {
       message: string;
       history: ChatMessage[];
-      memories: UserMemory[];
       personality: CompanionPersonality;
       language: CompanionLanguage;
       userName?: string;
@@ -274,26 +268,5 @@ export const api = {
       });
     }
     return data.text || '';
-  },
-
-  async extractMemory(userText: string, aiReply: string): Promise<{
-    hasMemory: boolean;
-    memory?: {
-      category: any;
-      content: string;
-    } | null;
-  }> {
-    try {
-      const res = await fetchWithTimeout('/api/memories/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userText, aiReply }),
-        timeoutMs: 15000,
-      });
-      if (!res.ok) return { hasMemory: false };
-      return await parseJsonSafe(res);
-    } catch {
-      return { hasMemory: false };
-    }
   },
 };

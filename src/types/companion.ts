@@ -119,24 +119,6 @@ export interface EmotionMetadata {
   gesture?: AvatarGestureHint;
 }
 
-export type MemoryCategory =
-  | 'language'
-  | 'preference'
-  | 'project'
-  | 'learning_goal'
-  | 'fact'
-  | 'custom';
-
-export interface UserMemory {
-  id: string;
-  category: MemoryCategory;
-  content: string;
-  sourceText?: string;
-  createdAt: number;
-  updatedAt: number;
-  approvedByUser: boolean;
-}
-
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
@@ -164,9 +146,6 @@ export type ActiveNavTab =
   | 'home'
   | 'history'
   | 'play'
-  | 'learning'
-  | 'wardrobe'
-  | 'memories'
   | 'settings';
 
 export interface UserProfile {
@@ -252,7 +231,6 @@ export interface CompanionSettings {
   speechRate: number;
   autoSpeakResponse: boolean;
   handsFreeMode: boolean;
-  memoryEnabled: boolean;
   avatarConfig: AvatarAppearanceConfig;
   roomConfig?: RoomConfig;
   theme: 'auto' | 'dark' | 'light';

@@ -159,8 +159,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     typeof window !== 'undefined' && 'speechSynthesis' in window;
 
   return (
-    <div className="min-h-dvh w-full bg-slate-50 text-slate-900 dark:bg-[#060b1c] dark:text-slate-100 flex flex-col items-center justify-center px-4 py-8 sm:px-6">
-      <div className="w-full max-w-xl rounded-3xl bg-white dark:bg-[#0b132b] border border-slate-200 dark:border-slate-800/90 shadow-xl dark:shadow-[0_24px_64px_rgba(2,6,23,0.65)] overflow-hidden">
+    <div className="min-h-dvh w-full bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col items-center justify-center px-4 py-8 sm:px-6 transition-colors duration-200">
+      <div className="w-full max-w-xl rounded-3xl bg-[var(--bg-surface)] dark:bg-[#0b132b] border border-slate-200 dark:border-slate-800/90 shadow-xl dark:shadow-[0_24px_64px_rgba(2,6,23,0.65)] overflow-hidden">
         {/* Progress Header */}
         <div className="px-6 pt-5 pb-4 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-4">
           <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 tabular-nums">
@@ -186,21 +186,32 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         <div className="p-6 sm:p-8 space-y-6">
           {step === 1 && (
             <div className="text-center space-y-6 py-2 animate-fadeIn">
-              <div className="mx-auto w-36 rounded-2xl bg-[#060c23] p-3 border border-indigo-400/20 shadow-lg">
-                {!logoError ? (
-                  <img
-                    src="/assets/branding/atmiya-logo.png"
-                    alt="Ātmiya — Your AI Companion"
-                    referrerPolicy="no-referrer"
-                    onError={() => setLogoError(true)}
-                    className="w-full h-auto rounded-lg object-contain mx-auto"
-                  />
-                ) : (
-                  <div className="py-4 text-center">
-                    <div className="text-xl font-bold text-white">Ātmiya</div>
-                    <div className="text-xs text-slate-300">Your AI Companion</div>
+              <div className="mx-auto w-36 rounded-2xl bg-indigo-50/90 dark:bg-[#060c23] p-3 border border-indigo-200 dark:border-indigo-400/20 shadow-md dark:shadow-lg">
+                {/* Light mode brand emblem */}
+                <div className="py-3 text-center dark:hidden">
+                  <div className="w-10 h-10 mx-auto rounded-xl bg-indigo-600 text-white font-serif text-xl font-bold flex items-center justify-center mb-1.5">
+                    आ
                   </div>
-                )}
+                  <div className="text-xl font-bold text-slate-900">Ātmiya</div>
+                  <div className="text-xs text-slate-600">Your AI Companion</div>
+                </div>
+                {/* Dark/Night mode brand artwork */}
+                <div className="hidden dark:block">
+                  {!logoError ? (
+                    <img
+                      src="/assets/branding/atmiya-logo.png"
+                      alt="Ātmiya — Your AI Companion"
+                      referrerPolicy="no-referrer"
+                      onError={() => setLogoError(true)}
+                      className="w-full h-auto rounded-lg object-contain mx-auto"
+                    />
+                  ) : (
+                    <div className="py-4 text-center">
+                      <div className="text-xl font-bold text-white">Ātmiya</div>
+                      <div className="text-xs text-slate-300">Your AI Companion</div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -407,8 +418,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 </span>
                 <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Theme preference">
                   {[
-                    { id: 'dark' as const, label: 'Dark', icon: Moon },
                     { id: 'light' as const, label: 'Light', icon: Sun },
+                    { id: 'dark' as const, label: 'Dark / Night', icon: Moon },
                     { id: 'auto' as const, label: 'System', icon: Sparkles },
                   ].map((item) => {
                     const Icon = item.icon;
@@ -606,8 +617,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 </div>
                 <div className="px-4 py-3 flex items-center justify-between gap-4">
                   <dt className="text-slate-500 dark:text-slate-400">Appearance</dt>
-                  <dd className="font-semibold text-slate-900 dark:text-white capitalize">
-                    {theme === 'auto' ? 'System' : theme}
+                  <dd className="font-semibold text-slate-900 dark:text-white">
+                    {theme === 'auto' ? 'System' : theme === 'dark' ? 'Dark / Night' : 'Light'}
                   </dd>
                 </div>
                 <div className="px-4 py-3 flex items-center justify-between gap-4">

@@ -32,7 +32,6 @@ interface ConversationPanelProps {
   settings: CompanionSettings;
   chatError: string | null;
   isThinking: boolean;
-  suggestedMemory: string | null;
   isCollapsed: boolean;
   activePanelTab: 'overview' | 'chat';
   onChangePanelTab: (tab: 'overview' | 'chat') => void;
@@ -48,8 +47,6 @@ interface ConversationPanelProps {
   onSendMessage: (text: string) => void;
   onRetryLastMessage: () => void;
   onDismissChatError?: () => void;
-  onSaveSuggestedMemory: (memoryText: string) => void;
-  onDismissMemorySuggestion: () => void;
 }
 
 function formatCompactTime(ts: number): string {
@@ -75,7 +72,6 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
   settings,
   chatError,
   isThinking,
-  suggestedMemory,
   isCollapsed,
   activePanelTab,
   onChangePanelTab,
@@ -91,8 +87,6 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
   onSendMessage,
   onRetryLastMessage,
   onDismissChatError,
-  onSaveSuggestedMemory,
-  onDismissMemorySuggestion,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -127,7 +121,7 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
     if (!isCollapsed && activePanelTab === 'chat' && shouldStickToBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [isCollapsed, activePanelTab, messages.length, isThinking, suggestedMemory, chatError]);
+  }, [isCollapsed, activePanelTab, messages.length, isThinking, chatError]);
 
   if (isCollapsed) {
     return null;
@@ -508,9 +502,6 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
               messages={messages}
               isThinking={isThinking}
               settings={settings}
-              onSaveSuggestedMemory={onSaveSuggestedMemory}
-              suggestedMemory={suggestedMemory}
-              onDismissMemorySuggestion={onDismissMemorySuggestion}
             />
           )}
 

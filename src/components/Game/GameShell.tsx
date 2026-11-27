@@ -2,20 +2,16 @@ import React, { useState } from 'react';
 import { ActiveNavTab, UserProfile } from '../../types/companion';
 import { ProfileAvatar } from '../Profile/ProfileAvatar';
 import {
-  BookOpen,
-  Brain,
   ChevronRight,
   Gamepad2,
   History,
   Home,
-  Palette,
   Settings,
 } from 'lucide-react';
 
 interface GameShellProps {
   activeTab: ActiveNavTab;
   onSelectTab: (tab: ActiveNavTab) => void;
-  memoriesCount: number;
   profile: UserProfile;
   userName?: string;
   children: React.ReactNode;
@@ -27,26 +23,10 @@ interface SidebarNavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const SIDEBAR_ITEMS: SidebarNavItem[] = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'history', label: 'History', icon: History },
-  { id: 'memories', label: 'Memories', icon: Brain },
-  { id: 'play', label: 'Play', icon: Gamepad2 },
-  { id: 'learning', label: 'Learning', icon: BookOpen },
-  { id: 'wardrobe', label: 'Customize', icon: Palette },
-  { id: 'settings', label: 'Settings', icon: Settings },
-];
-
-const MOBILE_NAV_ITEMS: {
-  id: ActiveNavTab;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}[] = [
+const PRIMARY_NAV_ITEMS: SidebarNavItem[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'history', label: 'History', icon: History },
   { id: 'play', label: 'Play', icon: Gamepad2 },
-  { id: 'learning', label: 'Learn', icon: BookOpen },
-  { id: 'memories', label: 'Memories', icon: Brain },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -60,9 +40,9 @@ const FallbackLotusMark: React.FC<{ className?: string }> = ({ className = 'w-8 
   >
     <defs>
       <linearGradient id="atmiya-fallback-lotus" x1="10" y1="12" x2="54" y2="52" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stopColor="#f472b6" />
-        <stop offset="55%" stopColor="#a855f7" />
-        <stop offset="100%" stopColor="#fbbf24" />
+        <stop offset="0%" stopColor="#ec4899" />
+        <stop offset="55%" stopColor="#8b5cf6" />
+        <stop offset="100%" stopColor="#f59e0b" />
       </linearGradient>
     </defs>
     <path
@@ -101,7 +81,6 @@ const FallbackLotusMark: React.FC<{ className?: string }> = ({ className = 'w-8 
 export const GameShell: React.FC<GameShellProps> = ({
   activeTab,
   onSelectTab,
-  memoriesCount,
   profile,
   userName = '',
   children,
@@ -113,47 +92,61 @@ export const GameShell: React.FC<GameShellProps> = ({
   const profileSubtitle = profile.bio?.trim() || 'Local profile';
 
   return (
-    <div className="relative flex flex-col md:flex-row h-dvh w-full overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#060b1c] dark:text-slate-100 font-sans transition-colors duration-200">
+    <div className="relative flex flex-col md:flex-row h-dvh w-full overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] font-sans transition-colors duration-200">
       {/* Desktop & Tablet Left Navigation Sidebar (md+) */}
       <aside
         aria-label="Primary companion navigation"
-        className="hidden md:flex flex-col justify-between shrink-0 w-[78px] lg:w-[232px] bg-white dark:bg-[#070d22] border-r border-slate-200 dark:border-slate-800/80 z-30 py-3.5 px-2.5 lg:px-3.5"
+        className="hidden md:flex flex-col justify-between shrink-0 w-[78px] lg:w-[232px] bg-[var(--bg-surface)] dark:bg-[#070d22] border-r border-slate-200 dark:border-slate-800/80 z-30 py-3.5 px-2.5 lg:px-3.5 transition-colors duration-200"
       >
         <div className="space-y-4 min-h-0 flex-1 flex flex-col">
-          {/* Asset 1: Ātmiya Brand Logo */}
+          {/* Ātmiya Brand Logo — adaptive Light & Dark/Night presentation */}
           <button
             type="button"
             onClick={() => onSelectTab('home')}
             aria-label="Ātmiya Home"
-            className="w-full rounded-2xl bg-[#060c23] border border-indigo-400/20 p-2 lg:px-3 lg:py-2.5 flex flex-col items-center justify-center transition hover:border-indigo-400/40 cursor-pointer shrink-0"
+            className="w-full rounded-2xl bg-indigo-50/75 dark:bg-[#060c23] border border-indigo-200/80 dark:border-indigo-400/20 p-2 lg:px-3 lg:py-2.5 flex flex-col items-center justify-center transition hover:border-indigo-300 dark:hover:border-indigo-400/40 cursor-pointer shrink-0"
           >
-            {!logoImgFailed ? (
-              <>
-                <img
-                  src="/assets/branding/atmiya-logo.png"
-                  alt="Ātmiya — Your AI Companion"
-                  referrerPolicy="no-referrer"
-                  onError={() => setLogoImgFailed(true)}
-                  className="hidden lg:block w-28 h-auto object-contain rounded-lg select-none"
-                />
-                <FallbackLotusMark className="lg:hidden w-8 h-8" />
-              </>
-            ) : (
-              <div className="flex flex-col items-center py-1 text-center">
-                <FallbackLotusMark className="w-8 h-8 lg:w-9 lg:h-9" />
-                <span className="hidden lg:block text-base font-bold text-white mt-1 leading-tight">
-                  Ātmiya
-                </span>
-                <span className="hidden lg:block text-[10px] text-slate-300">
-                  Your AI Companion
-                </span>
-              </div>
-            )}
+            {/* Light mode clean brand lockup */}
+            <div className="flex dark:hidden flex-col items-center py-1 text-center">
+              <FallbackLotusMark className="w-8 h-8 lg:w-9 lg:h-9" />
+              <span className="hidden lg:block text-base font-bold text-slate-900 mt-1 leading-tight">
+                Ātmiya
+              </span>
+              <span className="hidden lg:block text-[10px] font-medium text-slate-500">
+                Your AI Companion
+              </span>
+            </div>
+
+            {/* Dark / Night mode brand artwork */}
+            <div className="hidden dark:flex flex-col items-center">
+              {!logoImgFailed ? (
+                <>
+                  <img
+                    src="/assets/branding/atmiya-logo.png"
+                    alt="Ātmiya — Your AI Companion"
+                    referrerPolicy="no-referrer"
+                    onError={() => setLogoImgFailed(true)}
+                    className="hidden lg:block w-28 h-auto object-contain rounded-lg select-none"
+                  />
+                  <FallbackLotusMark className="lg:hidden w-8 h-8" />
+                </>
+              ) : (
+                <div className="flex flex-col items-center py-1 text-center">
+                  <FallbackLotusMark className="w-8 h-8 lg:w-9 lg:h-9" />
+                  <span className="hidden lg:block text-base font-bold text-white mt-1 leading-tight">
+                    Ātmiya
+                  </span>
+                  <span className="hidden lg:block text-[10px] text-slate-300">
+                    Your AI Companion
+                  </span>
+                </div>
+              )}
+            </div>
           </button>
 
-          {/* Clean Vertical Navigation */}
+          {/* Strictly 4 Primary Navigation Sections: Home, History, Play, Settings */}
           <nav className="space-y-1 flex-1 overflow-y-auto pr-0.5" aria-label="Main sections">
-            {SIDEBAR_ITEMS.map((item) => {
+            {PRIMARY_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === activeTab;
 
@@ -163,11 +156,9 @@ export const GameShell: React.FC<GameShellProps> = ({
                   type="button"
                   onClick={() => onSelectTab(item.id)}
                   aria-current={isActive ? 'page' : undefined}
-                  aria-label={
-                    item.id === 'memories' ? `Memories (${memoriesCount})` : item.label
-                  }
+                  aria-label={item.label}
                   title={item.label}
-                  className={`w-full min-h-[40px] px-2.5 lg:px-3 py-2 rounded-xl flex items-center justify-center lg:justify-start gap-3 text-[13px] transition cursor-pointer whitespace-nowrap border ${
+                  className={`w-full min-h-[42px] px-2.5 lg:px-3 py-2 rounded-xl flex items-center justify-center lg:justify-start gap-3 text-[13px] transition cursor-pointer whitespace-nowrap border ${
                     isActive
                       ? 'bg-indigo-600 border-indigo-500 text-white font-semibold shadow-sm'
                       : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05] font-medium'
@@ -179,22 +170,13 @@ export const GameShell: React.FC<GameShellProps> = ({
                     }`}
                   />
                   <span className="hidden lg:inline truncate">{item.label}</span>
-                  {item.id === 'memories' && memoriesCount > 0 && (
-                    <span
-                      className={`hidden lg:inline ml-auto text-[11px] tabular-nums ${
-                        isActive ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'
-                      }`}
-                    >
-                      {memoriesCount}
-                    </span>
-                  )}
                 </button>
               );
             })}
           </nav>
         </div>
 
-        {/* Bottom Profile + Asset 2 Lotus Footer */}
+        {/* Bottom Profile + Adaptive Lotus Footer */}
         <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 space-y-2.5 shrink-0">
           <button
             type="button"
@@ -219,24 +201,35 @@ export const GameShell: React.FC<GameShellProps> = ({
             <ChevronRight className="hidden lg:block w-3.5 h-3.5 text-slate-400 shrink-0" />
           </button>
 
-          {/* Asset 2: Sidebar Lotus Footer Artwork */}
-          <div className="hidden lg:block rounded-xl overflow-hidden bg-[#040818] border border-indigo-400/15 p-1.5">
-            {!footerImgFailed ? (
-              <img
-                src="/assets/branding/lotus-footer.png"
-                alt="Glowing lotus artwork — Always here for you"
-                referrerPolicy="no-referrer"
-                onError={() => setFooterImgFailed(true)}
-                className="w-full max-w-[178px] h-auto mx-auto object-contain rounded-lg select-none"
-              />
-            ) : (
-              <div className="py-3 px-2 flex flex-col items-center justify-center text-center gap-1">
-                <FallbackLotusMark className="w-7 h-7" />
-                <span className="text-[11px] font-medium text-slate-200">
-                  Always here for you
-                </span>
-              </div>
-            )}
+          {/* Adaptive Lotus Footer */}
+          <div className="hidden lg:block rounded-xl overflow-hidden bg-indigo-50/70 dark:bg-[#040818] border border-indigo-200/75 dark:border-indigo-400/15 p-1.5">
+            {/* Light mode lotus footer */}
+            <div className="py-2.5 px-2 flex dark:hidden flex-col items-center justify-center text-center gap-1">
+              <FallbackLotusMark className="w-7 h-7" />
+              <span className="text-[11px] font-medium text-slate-600">
+                Always here for you
+              </span>
+            </div>
+
+            {/* Dark / Night mode lotus footer artwork */}
+            <div className="hidden dark:block">
+              {!footerImgFailed ? (
+                <img
+                  src="/assets/branding/lotus-footer.png"
+                  alt="Glowing lotus artwork — Always here for you"
+                  referrerPolicy="no-referrer"
+                  onError={() => setFooterImgFailed(true)}
+                  className="w-full max-w-[178px] h-auto mx-auto object-contain rounded-lg select-none"
+                />
+              ) : (
+                <div className="py-3 px-2 flex flex-col items-center justify-center text-center gap-1">
+                  <FallbackLotusMark className="w-7 h-7" />
+                  <span className="text-[11px] font-medium text-slate-200">
+                    Always here for you
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </aside>
@@ -249,10 +242,10 @@ export const GameShell: React.FC<GameShellProps> = ({
       {/* Mobile Only Compact Bottom Navigation (< md / 768px) */}
       <nav
         aria-label="Mobile companion navigation"
-        className="md:hidden relative z-30 shrink-0 w-full bg-white/95 dark:bg-[#070d22]/95 border-t border-slate-200 dark:border-slate-800 backdrop-blur-xl px-1.5 py-1.5"
+        className="md:hidden relative z-30 shrink-0 w-full bg-[var(--bg-surface)]/95 dark:bg-[#070d22]/95 border-t border-slate-200 dark:border-slate-800 backdrop-blur-xl px-2 py-1.5"
       >
-        <div className="max-w-2xl mx-auto grid grid-cols-6 gap-0.5">
-          {MOBILE_NAV_ITEMS.map((item) => {
+        <div className="max-w-2xl mx-auto grid grid-cols-4 gap-1">
+          {PRIMARY_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
@@ -261,10 +254,8 @@ export const GameShell: React.FC<GameShellProps> = ({
                 type="button"
                 onClick={() => onSelectTab(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                aria-label={
-                  item.id === 'memories' ? `Memories (${memoriesCount})` : item.label
-                }
-                className={`min-h-[44px] px-0.5 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                aria-label={item.label}
+                className={`min-h-[44px] px-1 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-indigo-50 dark:bg-indigo-600/25 text-indigo-700 dark:text-indigo-200'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.04]'

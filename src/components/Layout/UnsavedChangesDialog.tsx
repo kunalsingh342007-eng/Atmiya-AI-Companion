@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 interface UnsavedChangesDialogProps {
-  kind: 'wardrobe' | 'memories' | null;
+  kind: 'wardrobe' | null;
   onStay: () => void;
   onDiscard: () => void;
   onApplyAndLeave?: () => void;
@@ -16,8 +16,6 @@ export const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
 }) => {
   if (!kind) return null;
 
-  const isWardrobe = kind === 'wardrobe';
-
   return (
     <div
       role="dialog"
@@ -25,7 +23,7 @@ export const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
       aria-labelledby="unsaved-dialog-title"
       className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
     >
-      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4">
+      <div className="w-full max-w-md rounded-2xl bg-[var(--bg-surface)] dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-500/35 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
             <AlertTriangle className="w-5 h-5" />
@@ -35,12 +33,10 @@ export const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
               id="unsaved-dialog-title"
               className="text-sm font-bold text-slate-900 dark:text-white"
             >
-              {isWardrobe ? 'Unsaved customization changes' : 'Unsaved memory draft'}
+              Unsaved appearance changes
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              {isWardrobe
-                ? 'You have unapplied changes in Customize. Would you like to apply them before leaving, or discard them?'
-                : 'You have an unsubmitted memory draft open. Leaving now will discard the unsaved text.'}
+              You have unapplied stage and room customizations. Would you like to apply them before leaving, or discard them?
             </p>
           </div>
         </div>
@@ -60,11 +56,11 @@ export const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
           >
             Discard &amp; Leave
           </button>
-          {isWardrobe && onApplyAndLeave && (
+          {onApplyAndLeave && (
             <button
               type="button"
               onClick={onApplyAndLeave}
-              className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white cursor-pointer"
+              className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white cursor-pointer"
             >
               Apply &amp; Leave
             </button>
