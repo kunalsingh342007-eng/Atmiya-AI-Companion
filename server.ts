@@ -5,7 +5,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
-dotenv.config();
+const isServerlessRuntime = Boolean(
+  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION
+);
+
+if (!isServerlessRuntime) {
+  try {
+    dotenv.config();
+  } catch {
+    // Ignore missing/unreadable .env files
+  }
+}
 
 const VALID_EMOTIONS = [
   'neutral',
@@ -68,8 +78,57 @@ function clampIntensity(value: unknown, fallback = 0.7): number {
   return Math.max(0, Math.min(1, Number(value.toFixed(2))));
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+function sanitizeLogText(text: string): string {
+  return text
+    .replace(/AIza[0-9A-Za-z_-]{16,}/g, '[REDACTED_KEY]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+    .replace(/([?&](?:key|api_key|token|auth)=)[^&\s]+/gi, '$1[REDACTED]')
+    .slice(0, 200);
+}
+
+export function logServerError(
+  route: string,
+  category: string,
+  err: unknown,
+  status?: number
+): void {
+  const anyErr = err as { name?: unknown; code?: unknown; message?: unknown } | null | undefined;
+  const errorName = typeof anyErr?.name === 'string' && anyErr.name ? anyErr.name : 'Error';
+  const errorCode =
+    typeof anyErr?.code === 'string' || typeof anyErr?.code === 'number'
+      ? String(anyErr.code)
+      : undefined;
+  const rawMessage =
+    typeof anyErr?.message === 'string' && anyErr.message
+      ? anyErr.message
+      : typeof err === 'string' && err
+      ? err
+      : 'Unexpected server error';
+
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      route,
+      category,
+      ...(status ? { status } : {}),
+      errorName,
+      ...(errorCode ? { errorCode } : {}),
+      message: sanitizeLogText(rawMessage),
+    })
+  );
+}
+
+export function logServerWarn(route: string, category: string, message: string, status?: number): void {
+  console.warn(
+    JSON.stringify({
+      level: 'warn',
+      route,
+      category,
+      ...(status ? { status } : {}),
+      message: sanitizeLogText(message),
+    })
+  );
+}
 
 export const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -282,6 +341,15 @@ function parseGeminiError(err: unknown): {
   };
 }
 
+function createAbortError(message: string, name: 'TimeoutError' | 'AbortError'): Error {
+  if (typeof DOMException === 'function') {
+    return new DOMException(message, name) as unknown as Error;
+  }
+  const err = new Error(message);
+  err.name = name;
+  return err;
+}
+
 function createUpstreamAbortControl(res: Response, timeoutMs: number) {
   const controller = new AbortController();
   let timedOut = false;
@@ -289,13 +357,13 @@ function createUpstreamAbortControl(res: Response, timeoutMs: number) {
 
   const timer = setTimeout(() => {
     timedOut = true;
-    controller.abort(new DOMException(`Upstream request timed out after ${timeoutMs}ms`, 'TimeoutError'));
+    controller.abort(createAbortError(`Upstream request timed out after ${timeoutMs}ms`, 'TimeoutError'));
   }, timeoutMs);
 
   const onResClose = () => {
     if (!res.writableEnded) {
       clientClosed = true;
-      controller.abort(new DOMException('Client closed request', 'AbortError'));
+      controller.abort(createAbortError('Client closed request', 'AbortError'));
     }
   };
   res.on('close', onResClose);
@@ -306,25 +374,42 @@ function createUpstreamAbortControl(res: Response, timeoutMs: number) {
     isClientClosed: () => clientClosed,
     cleanup: () => {
       clearTimeout(timer);
-      res.off('close', onResClose);
+      if (typeof res.off === 'function') {
+        res.off('close', onResClose);
+      } else if (typeof res.removeListener === 'function') {
+        res.removeListener('close', onResClose);
+      }
     },
   };
 }
 
 // 1. Health and configuration status endpoint
 app.get('/api/status', (_req: Request, res: Response) => {
-  const isKeyConfigured = isValidGeminiApiKey(process.env.GEMINI_API_KEY);
-  
-  res.json({
-    status: 'ok',
-    isKeyConfigured,
-    model: 'gemini-4-hydrogen',
-    ttsModel: 'gemini-3.8-flash-lite-tts',
-    transcribeModel: 'gemini-3.5-transcribe',
-    serverTime: new Date().toISOString(),
-    supportedLanguages: ['hi-IN', 'en-IN', 'en-US', 'hinglish'],
-    supportedVoices: ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'],
-  });
+  try {
+    const isKeyConfigured = isValidGeminiApiKey(process.env.GEMINI_API_KEY);
+    if (!isKeyConfigured) {
+      logServerWarn('/api/status', 'API_KEY_MISSING', 'GEMINI_API_KEY is missing or placeholder.', 200);
+    }
+
+    res.json({
+      status: 'ok',
+      isKeyConfigured,
+      model: 'gemini-4-hydrogen',
+      ttsModel: 'gemini-3.8-flash-lite-tts',
+      transcribeModel: 'gemini-3.5-transcribe',
+      serverTime: new Date().toISOString(),
+      supportedLanguages: ['hi-IN', 'en-IN', 'en-US', 'hinglish'],
+      supportedVoices: ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'],
+    });
+  } catch (err) {
+    logServerError('/api/status', 'STATUS_ERROR', err, 500);
+    if (!res.writableEnded && !res.headersSent) {
+      res.status(500).json({
+        error: 'STATUS_ERROR',
+        message: 'Unable to check server configuration status.',
+      });
+    }
+  }
 });
 
 // 2. Chat Completion endpoint with personality & language support
@@ -332,6 +417,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
+      logServerWarn('/api/chat', 'API_KEY_MISSING', 'GEMINI_API_KEY is missing or invalid.', 503);
       return res.status(503).json({
         error: 'API_KEY_MISSING',
         message: 'Gemini API Key is not configured. Please add GEMINI_API_KEY to your environment secrets.',
@@ -523,7 +609,7 @@ ${languageInstruction}
     const waitMs = (ms: number, signal?: AbortSignal) =>
       new Promise<void>((resolve, reject) => {
         if (signal?.aborted) {
-          reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+          reject(signal.reason || createAbortError('Aborted', 'AbortError'));
           return;
         }
         const t = setTimeout(resolve, ms);
@@ -531,7 +617,7 @@ ${languageInstruction}
           'abort',
           () => {
             clearTimeout(t);
-            reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+            reject(signal.reason || createAbortError('Aborted', 'AbortError'));
           },
           { once: true }
         );
@@ -589,8 +675,10 @@ ${languageInstruction}
           break;
         }
 
-        console.warn(
-          `/api/chat attempt ${i + 1} (${attempt.model}, schema=${attempt.useJsonSchema}) returned empty payload.`
+        logServerWarn(
+          '/api/chat',
+          'EMPTY_MODEL_ATTEMPT',
+          `Attempt ${i + 1} (${attempt.model}, schema=${attempt.useJsonSchema}) returned empty payload.`
         );
       } catch (err) {
         if (attemptControl.isClientClosed()) {
@@ -601,8 +689,11 @@ ${languageInstruction}
         if (parsedErr.isQuota || parsedErr.isAuth || parsedErr.isBadRequest) {
           throw err;
         }
-        console.warn(
-          `/api/chat attempt ${i + 1} (${attempt.model}) failed (${parsedErr.code}): ${parsedErr.message}`
+        logServerWarn(
+          '/api/chat',
+          parsedErr.code,
+          `Attempt ${i + 1} (${attempt.model}) failed: ${parsedErr.message}`,
+          parsedErr.httpStatus
         );
       } finally {
         attemptControl.cleanup();
@@ -636,9 +727,9 @@ ${languageInstruction}
     if (res.writableEnded || res.headersSent) return;
     const parsed = parseGeminiError(err);
     if (parsed.isQuota || parsed.isTimeout) {
-      console.warn(`/api/chat ${parsed.httpStatus} (${parsed.code}): ${parsed.message}`);
+      logServerWarn('/api/chat', parsed.code, parsed.message, parsed.httpStatus);
     } else {
-      console.error('Error in /api/chat:', err);
+      logServerError('/api/chat', parsed.code, { name: err?.name, code: parsed.code, message: parsed.message }, parsed.httpStatus);
     }
     if (parsed.retryAfterSeconds) {
       res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
@@ -656,6 +747,7 @@ app.post('/api/tts', async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
+      logServerWarn('/api/tts', 'API_KEY_MISSING', 'GEMINI_API_KEY is missing or invalid.', 503);
       return res.status(503).json({
         error: 'API_KEY_MISSING',
         message: 'Gemini API Key is not configured for TTS.',
@@ -736,8 +828,11 @@ app.post('/api/tts', async (req: Request, res: Response) => {
     const parsed = parseGeminiError(err);
 
     if (parsed.isQuota) {
-      console.warn(
-        `/api/tts quota exhausted (429)${parsed.retryAfterSeconds ? `, retryAfter=${parsed.retryAfterSeconds}s` : ''} — client falling back to browser voice.`
+      logServerWarn(
+        '/api/tts',
+        'TTS_QUOTA_EXCEEDED',
+        `Quota exhausted${parsed.retryAfterSeconds ? `, retryAfter=${parsed.retryAfterSeconds}s` : ''}`,
+        429
       );
       if (parsed.retryAfterSeconds) {
         res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
@@ -749,14 +844,15 @@ app.post('/api/tts', async (req: Request, res: Response) => {
       });
     }
 
+    const category = parsed.code === 'GENERATION_ERROR' ? 'TTS_ERROR' : parsed.code;
     if (parsed.isTimeout) {
-      console.warn(`/api/tts timeout (504): ${parsed.message}`);
+      logServerWarn('/api/tts', category, parsed.message, parsed.httpStatus);
     } else {
-      console.error('Error in /api/tts:', err);
+      logServerError('/api/tts', category, { name: err?.name, code: category, message: parsed.message }, parsed.httpStatus);
     }
 
     res.status(parsed.httpStatus).json({
-      error: parsed.code === 'GENERATION_ERROR' ? 'TTS_ERROR' : parsed.code,
+      error: category,
       message: parsed.message,
     });
   }
@@ -767,6 +863,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
+      logServerWarn('/api/transcribe', 'API_KEY_MISSING', 'GEMINI_API_KEY is missing or invalid.', 503);
       return res.status(503).json({
         error: 'API_KEY_MISSING',
         message: 'Gemini API Key is not configured for transcription.',
@@ -824,12 +921,22 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
   } catch (err: any) {
     if (res.writableEnded || res.headersSent) return;
     const parsed = parseGeminiError(err);
-    console.error('Error in /api/transcribe:', parsed.isQuota || parsed.isTimeout ? parsed.message : err);
+    const category = parsed.code === 'GENERATION_ERROR' ? 'TRANSCRIBE_ERROR' : parsed.code;
+    if (parsed.isQuota || parsed.isTimeout) {
+      logServerWarn('/api/transcribe', category, parsed.message, parsed.httpStatus);
+    } else {
+      logServerError(
+        '/api/transcribe',
+        category,
+        { name: err?.name, code: category, message: parsed.message },
+        parsed.httpStatus
+      );
+    }
     if (parsed.retryAfterSeconds) {
       res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
     }
     res.status(parsed.httpStatus).json({
-      error: parsed.code === 'GENERATION_ERROR' ? 'TRANSCRIBE_ERROR' : parsed.code,
+      error: category,
       message: parsed.message,
     });
   }
@@ -838,16 +945,60 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
 
 
 // Return JSON 404 for unknown API routes before SPA fallback
-app.all('/api/*', (_req: Request, res: Response) => {
+app.all('/api/*', (req: Request, res: Response) => {
+  const route = req.originalUrl ? req.originalUrl.split('?')[0] : req.path || '/api';
+  logServerWarn(route, 'NOT_FOUND', `Unhandled API route ${req.method} ${route}`, 404);
   res.status(404).json({ error: 'NOT_FOUND', message: 'API route not found.' });
 });
 
-// Dev / Prod Vite server integration
+// Global Express error handler: always return structured JSON HTTP errors and safe logs
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+  if (res.writableEnded || res.headersSent) {
+    return;
+  }
+  const route = req.originalUrl ? req.originalUrl.split('?')[0] : req.path || '/api';
+  if (err?.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    logServerError(route, 'INVALID_JSON', err, 400);
+    return res.status(400).json({
+      error: 'INVALID_JSON',
+      message: 'Request body must be valid JSON.',
+    });
+  }
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    logServerError(route, 'PAYLOAD_TOO_LARGE', err, 413);
+    return res.status(413).json({
+      error: 'PAYLOAD_TOO_LARGE',
+      message: 'Request payload exceeds the maximum allowed size.',
+    });
+  }
+  const status =
+    typeof err?.status === 'number' && err.status >= 400 && err.status < 600 ? err.status : 500;
+  const category = status === 500 ? 'UNHANDLED_EXPRESS_ERROR' : 'REQUEST_ERROR';
+  logServerError(route, category, err, status);
+  return res.status(status).json({
+    error: status === 500 ? 'INTERNAL_SERVER_ERROR' : 'REQUEST_ERROR',
+    message: 'The server encountered an error while processing your request.',
+  });
+});
+
+function resolveRuntimeDir(): string {
+  try {
+    if (typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    // Fallback to cwd if import.meta.url cannot be resolved
+  }
+  return process.cwd();
+}
+
+// Dev / Prod Vite server integration (local/standalone mode only; bypassed in serverless)
 async function startServer() {
+  const runtimeDir = resolveRuntimeDir();
   const isProduction = process.env.NODE_ENV === 'production';
   const staticRoot = isProduction
-    ? path.resolve(__dirname, 'dist')
-    : path.resolve(__dirname, 'public');
+    ? path.resolve(runtimeDir, 'dist')
+    : path.resolve(runtimeDir, 'public');
 
   // Ensure missing 3D model binaries return 404 instead of SPA index.html
   app.use('/models', (req: Request, res: Response, next) => {
@@ -873,9 +1024,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // In production standalone mode, serve dist folder
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    app.use(express.static(path.resolve(runtimeDir, 'dist')));
     app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.resolve(runtimeDir, 'dist', 'index.html'));
     });
   }
 
@@ -884,13 +1035,9 @@ async function startServer() {
   });
 }
 
-const isServerlessRuntime = Boolean(
-  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION
-);
-
 if (!isServerlessRuntime && process.env.NODE_ENV !== 'test') {
   startServer().catch((err) => {
-    console.error('Failed to start server:', err);
+    logServerError('startup', 'SERVER_START_ERROR', err, 500);
     process.exit(1);
   });
 }
