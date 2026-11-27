@@ -95,6 +95,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isListening = avatarState === 'listening';
+  const isPreparingAudio = avatarState === 'preparing_audio';
   const displayName = personaName.trim() || 'Ātmiya';
   const isMicUnsupported = micPermission === 'unsupported';
   const isMicDenied = micPermission === 'denied';
@@ -102,7 +103,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = draftText.trim();
-    if (!trimmed || isThinking) return;
+    if (!trimmed || isThinking || isPreparingAudio) return;
     onSendMessage(trimmed);
     setDraftText('');
   };
@@ -116,6 +117,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
   const showStatusStrip =
     isListening ||
     isThinking ||
+    isPreparingAudio ||
     isSpeaking ||
     Boolean(chatError) ||
     Boolean(voiceError) ||
@@ -155,6 +157,13 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
                     <Loader2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300 animate-spin shrink-0" />
                     <span className="text-amber-700 dark:text-amber-200 font-medium truncate">
                       {displayName} is thinking...
+                    </span>
+                  </>
+                ) : isPreparingAudio ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300 animate-spin shrink-0" />
+                    <span className="text-sky-700 dark:text-sky-200 font-medium truncate">
+                      Preparing voice response...
                     </span>
                   </>
                 ) : isSpeaking ? (
@@ -253,7 +262,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
                   </button>
                 )}
 
-                {isSpeaking && (
+                {(isSpeaking || isPreparingAudio) && (
                   <button
                     type="button"
                     onClick={onInterrupt}
@@ -269,12 +278,12 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
 
           {/* Voice + Text Composer Bar */}
           <div className="flex items-center gap-2 rounded-full bg-white/94 dark:bg-[#0b1433]/90 border border-slate-200 dark:border-indigo-400/30 focus-within:border-blue-500 dark:focus-within:border-sky-400/65 p-1.5 backdrop-blur-xl shadow-lg transition-colors">
-            {isSpeaking ? (
+            {isSpeaking || isPreparingAudio ? (
               <button
                 type="button"
                 onClick={onInterrupt}
-                aria-label="Stop speaking"
-                title="Stop response speech"
+                aria-label={isPreparingAudio ? 'Cancel voice response' : 'Stop speaking'}
+                title={isPreparingAudio ? 'Cancel voice response' : 'Stop response speech'}
                 className="h-11 w-11 rounded-full bg-rose-600 hover:bg-rose-500 text-white inline-flex items-center justify-center transition cursor-pointer shrink-0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
               >
                 <PauseCircle className="w-5 h-5" />
@@ -283,7 +292,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
               <button
                 type="button"
                 onClick={onToggleListen}
-                disabled={isThinking || isMicUnsupported}
+                disabled={isThinking || isPreparingAudio || isMicUnsupported}
                 aria-pressed={isListening}
                 aria-label={
                   isMicUnsupported
@@ -324,10 +333,11 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
               <input
                 ref={inputRef}
                 type="text"
+                maxLength={4000}
                 value={draftText}
                 onChange={(e) => setDraftText(e.target.value)}
                 placeholder="Tap to speak or type a message..."
-                disabled={isThinking}
+                disabled={isThinking || isPreparingAudio}
                 aria-label={`Message ${displayName}`}
                 className="flex-1 min-w-0 h-11 px-2.5 sm:px-3 bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-300/65 focus:outline-none disabled:opacity-60"
               />
@@ -338,7 +348,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
                 onClick={cycleLanguage}
                 aria-label={`Response language: ${LANGUAGE_LABELS[language]}`}
                 title="Switch response language"
-                className="md:hidden h-9 px-2.5 rounded-full bg-white dark:bg-[#121e47] border border-slate-200 dark:border-indigo-400/25 text-slate-700 dark:text-slate-200 text-xs font-medium inline-flex items-center gap-1 cursor-pointer shrink-0"
+                className="md:hidden h-9 px-2.5 rounded-full bg-white dark:bg-[#121e47] border border-slate-200 dark:border-indigo-400/25 text-slate-700 dark:text-slate-200 text-xs font-medium inline-flex items-center gap-1 cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
                 <span className="hidden xs:inline">{LANGUAGE_LABELS[language]}</span>
@@ -350,7 +360,7 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
                 onClick={onToggleChatDrawer}
                 aria-label="Open conversation history"
                 title="Open conversation"
-                className={`md:hidden h-9 px-2.5 rounded-full border text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 ${
+                className={`md:hidden h-9 px-2.5 rounded-full border text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                   isChatDrawerOpen
                     ? 'bg-blue-600 border-blue-500 text-white'
                     : 'bg-white dark:bg-[#121e47] border-slate-200 dark:border-indigo-400/25 text-slate-800 dark:text-slate-100'
@@ -365,13 +375,13 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
               </button>
 
               {/* Clear / Reset Active Turn when active */}
-              {(isListening || isSpeaking || isThinking || Boolean(aiSpokenText)) && (
+              {(isListening || isSpeaking || isPreparingAudio || isThinking || Boolean(aiSpokenText)) && (
                 <button
                   type="button"
                   onClick={onEndCall}
                   aria-label="Reset current turn"
                   title="Reset turn"
-                  className="hidden sm:flex h-9 w-9 rounded-full bg-white dark:bg-[#121e47] hover:bg-rose-50 dark:hover:bg-rose-950/70 border border-slate-200 dark:border-indigo-400/25 hover:border-rose-300 dark:hover:border-rose-500/40 text-slate-500 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-200 items-center justify-center transition cursor-pointer shrink-0"
+                  className="hidden sm:flex h-9 w-9 rounded-full bg-white dark:bg-[#121e47] hover:bg-rose-50 dark:hover:bg-rose-950/70 border border-slate-200 dark:border-indigo-400/25 hover:border-rose-300 dark:hover:border-rose-500/40 text-slate-500 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-200 items-center justify-center transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
@@ -379,12 +389,12 @@ export const DialoguePanel: React.FC<DialoguePanelProps> = ({
 
               <button
                 type="submit"
-                disabled={!draftText.trim() || isThinking}
-                aria-label={isThinking ? 'Sending message' : 'Send message'}
-                title={isThinking ? 'Waiting for reply' : 'Send message'}
-                className="h-11 w-11 rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 dark:disabled:bg-slate-800/80 disabled:text-slate-400 dark:disabled:text-slate-500 text-white inline-flex items-center justify-center transition cursor-pointer shrink-0 shadow-sm disabled:shadow-none disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                disabled={!draftText.trim() || isThinking || isPreparingAudio}
+                aria-label={isThinking || isPreparingAudio ? 'Processing message' : 'Send message'}
+                title={isThinking || isPreparingAudio ? 'Waiting for reply' : 'Send message'}
+                className="h-11 w-11 rounded-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 dark:disabled:bg-slate-800/80 disabled:text-slate-400 dark:disabled:text-slate-500 text-white inline-flex items-center justify-center transition cursor-pointer shrink-0 shadow-sm disabled:shadow-none disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
               >
-                {isThinking ? (
+                {isThinking || isPreparingAudio ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />

@@ -5,7 +5,7 @@ import {
   AvatarEmotion,
   AVATAR_EMOTION_LABELS,
 } from '../../types/companion';
-import { Volume2, Mic, Sparkles, AlertCircle, Heart } from 'lucide-react';
+import { Volume2, Mic, Sparkles, AlertCircle, Heart, Loader2 } from 'lucide-react';
 
 export type CompanionEmotion = AvatarEmotion;
 
@@ -134,11 +134,13 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
   const auraStyles = useMemo(() => {
     switch (state) {
       case 'listening':
-        return 'from-sky-400/35 via-indigo-400/25 to-violet-500/20';
+        return 'from-sky-400/35 via-indigo-400/25 to-blue-500/20';
       case 'thinking':
-        return 'from-amber-300/35 via-violet-400/25 to-indigo-500/20';
+        return 'from-amber-300/35 via-indigo-400/25 to-blue-500/20';
+      case 'preparing_audio':
+        return 'from-sky-400/35 via-blue-400/25 to-indigo-500/20';
       case 'speaking':
-        return 'from-violet-400/45 via-indigo-400/35 to-sky-400/25';
+        return 'from-blue-400/45 via-indigo-400/35 to-sky-400/25';
       case 'interrupted':
         return 'from-amber-400/30 via-rose-400/20 to-transparent';
       case 'error':
@@ -151,14 +153,14 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
           case 'encouraging':
           case 'excited':
           case 'winking':
-            return 'from-amber-200/30 via-rose-300/25 to-violet-400/20';
+            return 'from-amber-200/30 via-rose-300/25 to-indigo-400/20';
           case 'sad':
           case 'worried':
           case 'disappointed':
           case 'empathetic':
             return 'from-indigo-400/30 via-slate-500/25 to-transparent';
           default:
-            return 'from-indigo-300/25 via-violet-300/20 to-transparent';
+            return 'from-indigo-300/25 via-sky-300/20 to-transparent';
         }
     }
   }, [state, emotion]);
@@ -243,7 +245,9 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
           background: `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, ${outfitBorderColor}38 100%)`,
           boxShadow:
             state === 'speaking'
-              ? `0 16px 38px rgba(15, 23, 42, 0.45), 0 0 ${14 + audioLevel * 18}px rgba(99, 102, 241, ${0.28 + audioLevel * 0.25})`
+              ? `0 16px 38px rgba(15, 23, 42, 0.45), 0 0 ${14 + audioLevel * 18}px rgba(59, 130, 246, ${0.28 + audioLevel * 0.25})`
+              : state === 'preparing_audio'
+              ? '0 16px 38px rgba(15, 23, 42, 0.45), 0 0 18px rgba(56, 189, 248, 0.28)'
               : state === 'listening'
               ? '0 16px 38px rgba(15, 23, 42, 0.45), 0 0 18px rgba(56, 189, 248, 0.28)'
               : state === 'thinking'
@@ -355,9 +359,14 @@ export const CompanionAvatar: React.FC<CompanionAvatarProps> = ({
               <Sparkles className={`w-3.5 h-3.5 text-amber-600 dark:text-amber-400 ${prefersReducedMotion ? '' : 'animate-spin'}`} />
               <span>Ātmiya is thinking...</span>
             </div>
+          ) : state === 'preparing_audio' ? (
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-50 dark:bg-sky-950/85 border border-sky-300 dark:border-sky-400/50 text-sky-800 dark:text-sky-200 text-xs font-medium shadow-sm dark:shadow-lg">
+              <Loader2 className={`w-3.5 h-3.5 text-sky-600 dark:text-sky-400 ${prefersReducedMotion ? '' : 'animate-spin'}`} />
+              <span>Preparing voice...</span>
+            </div>
           ) : state === 'speaking' ? (
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-50 dark:bg-violet-950/85 border border-violet-300 dark:border-violet-500/50 text-violet-800 dark:text-violet-200 text-xs font-medium shadow-sm dark:shadow-lg">
-              <Volume2 className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/85 border border-blue-300 dark:border-blue-500/50 text-blue-800 dark:text-sky-200 text-xs font-medium shadow-sm dark:shadow-lg">
+              <Volume2 className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
               <span>Ātmiya is speaking...</span>
             </div>
           ) : state === 'error' ? (

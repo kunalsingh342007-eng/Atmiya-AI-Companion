@@ -124,6 +124,8 @@ export default function App() {
     nonce: number;
   } | null>(null);
   const [pendingNavTab, setPendingNavTab] = useState<ActiveNavTab | null>(null);
+  const [hasUnsavedSettingsTab, setHasUnsavedSettingsTab] = useState(false);
+  const [activeReplayMessageId, setActiveReplayMessageId] = useState<string | null>(null);
 
   const [micPermission, refreshMicPermission, markMicDenied] = useMicrophonePermission();
 
@@ -182,6 +184,7 @@ export default function App() {
     }
     isProcessingRef.current = false;
     setIsThinking(false);
+    setActiveReplayMessageId(null);
   }, [cancelPendingGreetingAudio]);
 
   // 1. Initial Load
@@ -294,6 +297,9 @@ export default function App() {
         setIsChatDrawerOpen(false);
         setIsSidebarOpen(false);
       }
+      if (tab !== 'settings') {
+        setHasUnsavedSettingsTab(false);
+      }
       setActiveTab(tab);
     },
     []
@@ -301,7 +307,7 @@ export default function App() {
 
   const handleSelectTab = (tab: ActiveNavTab) => {
     if (tab === activeTab) return;
-    if (activeTab === 'settings' && hasUnsavedWardrobeChanges) {
+    if (activeTab === 'settings' && (hasUnsavedWardrobeChanges || hasUnsavedSettingsTab)) {
       setPendingNavTab(tab);
       return;
     }
@@ -499,9 +505,13 @@ export default function App() {
 
   const handleToggleSound = () => {
     if (isSoundEnabled) {
+      cancelActiveTurn();
       speechService.stopSpeaking();
       setIsSpeaking(false);
-      if (avatarStateRef.current === 'speaking') {
+      if (
+        avatarStateRef.current === 'speaking' ||
+        avatarStateRef.current === 'preparing_audio'
+      ) {
         animControllerRef.current?.returnToIdle();
         setAvatarState('idle');
       }
@@ -887,14 +897,16 @@ export default function App() {
       isProcessingRef.current = false;
 
       if (isSoundEnabled) {
-        // Show emotional expression calmly while TTS audio fetches/decodes; switch to 'speaking' only on actual audio start
+        // Hold calm emotional expression in explicit preparing_audio state while TTS fetches/decodes
         animControllerRef.current?.dispatch({
+          animationState: 'preparing_audio',
           emotion: replyEmotion,
           intensity: nextIntensity,
           gestureHint,
           force: true,
           source: 'conversation',
         });
+        setAvatarState('preparing_audio');
 
         let speechDispatchId: number | undefined;
 
@@ -1058,13 +1070,165 @@ export default function App() {
     }
   };
 
+  const handleReplayMessage = useCallback(
+    async (msg: ChatMessage) => {
+      if (isProcessingRef.current) return;
+
+      if (activeReplayMessageId === msg.id) {
+        cancelActiveTurn();
+        speechService.stopSpeaking();
+        setIsSpeaking(false);
+        animControllerRef.current?.returnToIdle();
+        setAvatarState('idle');
+        return;
+      }
+
+      const cleanText = (msg.content || '').trim();
+      if (!cleanText) return;
+
+      if (showFirstTimeHint) {
+        setShowFirstTimeHint(false);
+        storage.dismissHomeHint();
+      }
+      cancelActiveTurn();
+      const myEpoch = turnEpochRef.current;
+      const abortController = new AbortController();
+      activeAbortRef.current = abortController;
+
+      setPreviewEmotion(null);
+      setVoiceError(null);
+      setChatError(null);
+      speechService.stopRecognition();
+      speechService.stopSpeaking();
+
+      const replayEmotion: AvatarEmotion = normalizeAvatarEmotion(msg.emotion);
+      const replayIntensity = normalizeEmotionIntensity(msg.emotionIntensity, 0.7);
+      const replayGestureHint = normalizeAvatarGestureHint(msg.gestureHint);
+
+      setActiveReplayMessageId(msg.id);
+      setAiSpokenText(cleanText);
+
+      animControllerRef.current?.dispatch({
+        animationState: 'preparing_audio',
+        emotion: replayEmotion,
+        intensity: replayIntensity,
+        gestureHint: replayGestureHint,
+        force: true,
+        source: 'user-action',
+      });
+      setAvatarState('preparing_audio');
+
+      let speechDispatchId: number | undefined;
+
+      const onPlaybackStart = () => {
+        if (turnEpochRef.current !== myEpoch) return;
+        const speechDispatch = animControllerRef.current?.dispatch({
+          animationState: 'speaking',
+          emotion: replayEmotion,
+          intensity: replayIntensity,
+          gestureHint: replayGestureHint,
+          force: true,
+          source: 'user-action',
+        });
+        speechDispatchId = speechDispatch?.requestId;
+        animControllerRef.current?.beginSpeechSession({
+          text: cleanText,
+          emotion: replayEmotion,
+          gestureHint: replayGestureHint,
+          speechRate: settings.speechRate,
+          requestId: speechDispatchId,
+        });
+        setAvatarState('speaking');
+        setIsSpeaking(true);
+      };
+
+      const onFinish = () => {
+        if (turnEpochRef.current !== myEpoch) return;
+        setIsSpeaking(false);
+        setActiveReplayMessageId(null);
+        animControllerRef.current?.endSpeechSession();
+        animControllerRef.current?.returnToIdle(speechDispatchId);
+        setAvatarState('idle');
+      };
+
+      try {
+        if (settings.voiceEngine === 'gemini-native' && !api.isTtsInCooldown()) {
+          try {
+            const ttsRes = await api.generateTTS(
+              {
+                text: cleanText,
+                voice: settings.selectedVoice || 'Kore',
+              },
+              abortController.signal
+            );
+
+            if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) {
+              return;
+            }
+
+            if (ttsRes.audioBase64) {
+              await speechService.playWavAudio(
+                ttsRes.audioBase64,
+                onFinish,
+                () => {
+                  if (turnEpochRef.current !== myEpoch) return;
+                  speechService.speakWithBrowserTTS(
+                    cleanText,
+                    settings.language,
+                    settings.speechRate,
+                    onFinish,
+                    onPlaybackStart
+                  );
+                },
+                {
+                  text: cleanText,
+                  lang: settings.language,
+                  rate: settings.speechRate,
+                  onStart: onPlaybackStart,
+                }
+              );
+              return;
+            }
+          } catch (e: any) {
+            if (e?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
+              return;
+            }
+            console.warn('Replay TTS fallback:', e?.message || e);
+          }
+        }
+
+        if (turnEpochRef.current !== myEpoch) return;
+        speechService.speakWithBrowserTTS(
+          cleanText,
+          settings.language,
+          settings.speechRate,
+          onFinish,
+          onPlaybackStart
+        );
+      } finally {
+        if (activeAbortRef.current === abortController) {
+          activeAbortRef.current = null;
+        }
+      }
+    },
+    [
+      activeReplayMessageId,
+      cancelActiveTurn,
+      settings.language,
+      settings.selectedVoice,
+      settings.speechRate,
+      settings.voiceEngine,
+      showFirstTimeHint,
+    ]
+  );
+
   // Desktop keyboard shortcuts on Home (latest state/callbacks via ref to prevent listener churn)
   const keyboardShortcutsRef = useRef<{
     activeTab: ActiveNavTab;
     pendingNavTab: ActiveNavTab | null;
     isChatDrawerOpen: boolean;
     isSidebarOpen: boolean;
-    isSpeaking: boolean;
+    isSpeakingOrPreparing: boolean;
     handleInterrupt: () => void;
     handleToggleListen: () => void;
     handleTapAvatar: () => void;
@@ -1074,7 +1238,7 @@ export default function App() {
     pendingNavTab,
     isChatDrawerOpen,
     isSidebarOpen,
-    isSpeaking,
+    isSpeakingOrPreparing: isSpeaking || avatarState === 'preparing_audio',
     handleInterrupt,
     handleToggleListen,
     handleTapAvatar,
@@ -1089,7 +1253,7 @@ export default function App() {
         if (ctx.pendingNavTab) setPendingNavTab(null);
         else if (ctx.isChatDrawerOpen) setIsChatDrawerOpen(false);
         else if (ctx.isSidebarOpen) setIsSidebarOpen(false);
-        else if (ctx.isSpeaking) ctx.handleInterrupt();
+        else if (ctx.isSpeakingOrPreparing) ctx.handleInterrupt();
         return;
       }
 
@@ -1513,6 +1677,8 @@ export default function App() {
           }
           draftText={currentComposerDraft}
           onDraftChange={updateCurrentComposerDraft}
+          speakingMessageId={activeReplayMessageId}
+          onReplayMessage={handleReplayMessage}
         />
       )}
 
@@ -1578,12 +1744,21 @@ export default function App() {
           onApplyWardrobe={handleApplyWardrobe}
           onNavigatePlay={() => handleSelectTab('play')}
           requestedSection={settingsNavRequest}
+          onDirtyStateChange={setHasUnsavedSettingsTab}
         />
       )}
 
       {/* Unsaved Changes Confirmation Dialog */}
       <UnsavedChangesDialog
-        kind={pendingNavTab && activeTab === 'settings' ? 'wardrobe' : null}
+        kind={
+          pendingNavTab && activeTab === 'settings'
+            ? hasUnsavedWardrobeChanges
+              ? 'wardrobe'
+              : hasUnsavedSettingsTab
+              ? 'settings'
+              : null
+            : null
+        }
         onStay={() => setPendingNavTab(null)}
         onDiscard={() => {
           if (!pendingNavTab) return;
@@ -1591,10 +1766,11 @@ export default function App() {
           setPendingNavTab(null);
           setWardrobeDraftAvatar(settings.avatarConfig);
           setWardrobeDraftRoom(savedRoomConfig);
+          setHasUnsavedSettingsTab(false);
           executeSelectTab(target);
         }}
         onApplyAndLeave={
-          activeTab === 'settings'
+          activeTab === 'settings' && hasUnsavedWardrobeChanges
             ? () => {
                 if (!pendingNavTab) return;
                 const target = pendingNavTab;
@@ -1622,6 +1798,8 @@ export default function App() {
         onChangeLanguage={(lang) => handleSaveSettings({ ...settings, language: lang })}
         draftText={currentComposerDraft}
         onDraftChange={updateCurrentComposerDraft}
+        speakingMessageId={activeReplayMessageId}
+        onReplayMessage={handleReplayMessage}
       />
     </GameShell>
   );

@@ -21,6 +21,7 @@ export const UNIFIED_STATE_PRIORITY: Record<UnifiedAnimationState, number> = {
   concerned: 1,
   listening: 2,
   thinking: 3,
+  preparing_audio: 4,
   gesturing: 4,
   speaking: 5,
   greeting: 6,
@@ -521,6 +522,8 @@ export function mapUnifiedStateToAvatarState(
       return 'listening';
     case 'thinking':
       return 'thinking';
+    case 'preparing_audio':
+      return 'preparing_audio';
     case 'speaking':
       return 'speaking';
     case 'interrupted':
@@ -547,6 +550,8 @@ export function mapAvatarStateToUnifiedState(
       return 'listening';
     case 'thinking':
       return 'thinking';
+    case 'preparing_audio':
+      return 'preparing_audio';
     case 'speaking':
       return 'speaking';
     case 'interrupted':
@@ -729,8 +734,9 @@ export class UnifiedAnimationController {
 
     // Enforce priority unless caller explicitly forces a transition (e.g. interrupt/end/reset)
     if (!input.force && nextState !== currentState && nextPriority < currentPriority) {
-      // Never let low-priority mood/idle transitions interrupt active speaking/greeting/goodbye/interrupted/error
+      // Never let low-priority mood/idle transitions interrupt active speaking/preparing/greeting/goodbye/interrupted/error
       if (
+        currentState === 'preparing_audio' ||
         currentState === 'speaking' ||
         currentState === 'greeting' ||
         currentState === 'goodbye' ||
@@ -738,7 +744,7 @@ export class UnifiedAnimationController {
         currentState === 'error'
       ) {
         // If only emotion was meant to change while speaking, update facial expression cleanly
-        if (input.emotion && currentState === 'speaking') {
+        if (input.emotion && (currentState === 'speaking' || currentState === 'preparing_audio')) {
           this.updateFacialEmotion(input.emotion, input.intensity);
         }
         return {
@@ -835,6 +841,7 @@ export class UnifiedAnimationController {
       nextState === 'idle' ||
       nextState === 'listening' ||
       nextState === 'thinking' ||
+      nextState === 'preparing_audio' ||
       nextState === 'interrupted' ||
       nextState === 'error';
     const nextSpeechSessionId = shouldClearSpeechPlan

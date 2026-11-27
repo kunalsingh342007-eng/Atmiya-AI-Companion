@@ -20,6 +20,8 @@ interface ChatDrawerProps {
   onChangeLanguage: (lang: CompanionLanguage) => void;
   draftText?: string;
   onDraftChange?: (text: string) => void;
+  speakingMessageId?: string | null;
+  onReplayMessage?: (msg: ChatMessage) => void;
 }
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
@@ -37,6 +39,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   onChangeLanguage,
   draftText,
   onDraftChange,
+  speakingMessageId,
+  onReplayMessage,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [suggestionsDismissed, setSuggestionsDismissed] = React.useState(false);
@@ -65,7 +69,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 
       <div
         role="dialog"
-        aria-modal="true"
+        aria-modal={isOpen ? 'true' : undefined}
+        aria-hidden={!isOpen}
         aria-label="Conversation history"
         className={`fixed top-0 right-0 bottom-0 z-50 w-full sm:w-[460px] bg-white dark:bg-[#081020] border-l border-slate-200 dark:border-slate-800/90 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
@@ -125,6 +130,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                 messages={messages}
                 isThinking={isThinking}
                 settings={settings}
+                speakingMessageId={speakingMessageId}
+                onReplayMessage={onReplayMessage}
               />
               {chatError && (
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-500/40 flex items-center justify-between gap-2 text-xs text-rose-700 dark:text-rose-200">

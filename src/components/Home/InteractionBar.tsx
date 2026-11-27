@@ -58,7 +58,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
   const moreContainerRef = useRef<HTMLDivElement>(null);
 
   const isListening = avatarState === 'listening';
-  const isBusy = avatarState === 'thinking';
+  const isBusy = avatarState === 'thinking' || avatarState === 'preparing_audio';
   const isSpeaking = avatarState === 'speaking';
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
         onClick={onNavigatePlay}
         className={secondaryPill}
       >
-        <Gamepad2 className="w-4 h-4 text-blue-600 dark:text-violet-300" />
+        <Gamepad2 className="w-4 h-4 text-blue-600 dark:text-sky-300" />
         <span>Play</span>
       </button>
 
@@ -159,7 +159,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
           <div
             role="menu"
             aria-label="Secondary avatar and companion actions"
-            className="absolute bottom-full right-0 mb-2.5 w-56 p-2 rounded-2xl bg-white/98 dark:bg-[#09142c]/98 border border-slate-200 dark:border-indigo-400/25 shadow-2xl space-y-1.5 animate-fadeIn z-40"
+            className="absolute bottom-full right-0 mb-2.5 w-56 max-w-[calc(100vw-1.5rem)] p-2 rounded-2xl bg-white/98 dark:bg-[#09142c]/98 border border-slate-200 dark:border-indigo-400/25 shadow-2xl space-y-1.5 animate-fadeIn z-40"
           >
               {/* Secondary Camera View Presets */}
               {onChangeCameraPreset && (

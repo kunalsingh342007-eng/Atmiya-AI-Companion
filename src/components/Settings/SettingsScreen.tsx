@@ -70,6 +70,7 @@ interface SettingsScreenProps {
     openCustomizer?: boolean;
     nonce: number;
   } | null;
+  onDirtyStateChange?: (dirty: boolean) => void;
 }
 
 const SECTIONS: {
@@ -139,6 +140,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onApplyWardrobe,
   onNavigatePlay,
   requestedSection,
+  onDirtyStateChange,
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(
     requestedSection?.section ?? 'profile'
@@ -222,6 +224,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     draftName.trim() !== (profile.displayName || '').trim() ||
     draftBio.trim() !== (profile.bio || '').trim() ||
     (draftAvatarUrl || '') !== (profile.avatarDataUrl || '');
+
+  useEffect(() => {
+    onDirtyStateChange?.(hasUnsavedSettings || hasUnsavedProfile);
+  }, [hasUnsavedSettings, hasUnsavedProfile, onDirtyStateChange]);
 
   const voiceOutputActive =
     draftSettings.voiceEngine !== 'none' && draftSettings.autoSpeakResponse;

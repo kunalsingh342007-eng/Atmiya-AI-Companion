@@ -203,7 +203,10 @@ export const AtmiyaThreeAvatar: React.FC<AtmiyaThreeAvatarProps> = ({
   const auraGlow = useMemo(() => {
     if (state === 'speaking') {
       const intensity = Math.min(0.55, 0.25 + audioLevel * 0.35);
-      return `radial-gradient(circle at 50% 45%, rgba(139, 92, 246, ${intensity}), transparent 66%)`;
+      return `radial-gradient(circle at 50% 45%, rgba(59, 130, 246, ${intensity}), transparent 66%)`;
+    }
+    if (state === 'preparing_audio') {
+      return 'radial-gradient(circle at 50% 45%, rgba(56, 189, 248, 0.24), transparent 66%)';
     }
     if (state === 'listening') {
       return 'radial-gradient(circle at 50% 45%, rgba(56, 189, 248, 0.28), transparent 66%)';

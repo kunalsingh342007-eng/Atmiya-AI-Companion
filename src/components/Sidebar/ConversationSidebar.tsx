@@ -247,12 +247,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                       {isEditing ? (
                         <input
                           type="text"
+                          maxLength={80}
                           value={editTitle}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => setEditTitle(e.target.value)}
                           onKeyDown={(e) => {
                             e.stopPropagation();
-                            if (e.key === 'Enter') handleSaveRename(conv.id, e);
+                            if (e.key === 'Enter' && editTitle.trim()) handleSaveRename(conv.id, e);
                             if (e.key === 'Escape') setEditingId(null);
                           }}
                           aria-label="Session title"
@@ -285,8 +286,9 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         <>
                           <button
                             type="button"
+                            disabled={!editTitle.trim()}
                             onClick={(e) => handleSaveRename(conv.id, e)}
-                            className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded cursor-pointer"
+                            className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
                             title="Save rename"
                             aria-label="Save conversation title"
                           >

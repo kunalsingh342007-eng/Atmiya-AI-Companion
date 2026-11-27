@@ -11,6 +11,7 @@ export type AvatarState =
   | 'idle'
   | 'listening'
   | 'thinking'
+  | 'preparing_audio'
   | 'speaking'
   | 'interrupted'
   | 'connecting'
@@ -71,6 +72,7 @@ export const UNIFIED_ANIMATION_STATES = [
   'greeting',
   'listening',
   'thinking',
+  'preparing_audio',
   'speaking',
   'gesturing',
   'interrupted',

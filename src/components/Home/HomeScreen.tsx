@@ -80,6 +80,8 @@ interface HomeScreenProps {
   ) => void;
   draftText?: string;
   onDraftChange?: (text: string) => void;
+  speakingMessageId?: string | null;
+  onReplayMessage?: (msg: ChatMessage) => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -135,6 +137,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onQuickReaction,
   draftText,
   onDraftChange,
+  speakingMessageId,
+  onReplayMessage,
 }) => {
   const [isDesktopPanelOpen, setIsDesktopPanelOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -203,12 +207,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   aria-expanded={false}
                   aria-label={`Open workspace and chat with ${companionName}`}
                   title={`Open Workspace & Chat`}
-                  className="pointer-events-auto hidden lg:inline-flex items-center gap-2 absolute right-4 top-1/2 -translate-y-1/2 z-20 px-3.5 py-2.5 rounded-full bg-white/92 dark:bg-[#0b132b]/86 hover:bg-white dark:hover:bg-[#131f47] border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold backdrop-blur-xl shadow-lg transition cursor-pointer"
+                  className="pointer-events-auto hidden lg:inline-flex items-center gap-2 absolute right-4 top-1/2 -translate-y-1/2 z-20 px-3.5 py-2.5 rounded-full bg-white/92 dark:bg-[#0b132b]/86 hover:bg-white dark:hover:bg-[#131f47] border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold backdrop-blur-xl shadow-lg transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
-                  <PanelRightOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-300 shrink-0" />
+                  <PanelRightOpen className="w-4 h-4 text-blue-600 dark:text-sky-300 shrink-0" />
                   <span>Workspace &amp; Chat</span>
                   {messages.length > 0 && (
-                    <span className="tabular-nums text-[11px] text-indigo-600 dark:text-indigo-300">
+                    <span className="tabular-nums text-[11px] text-blue-600 dark:text-sky-300">
                       · {messages.length}
                     </span>
                   )}
@@ -224,7 +228,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       type="button"
                       onClick={onDismissBubble}
                       aria-label="Dismiss speech bubble"
-                      className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white p-0.5 rounded cursor-pointer shrink-0"
+                      className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white p-0.5 rounded cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -235,13 +239,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               {showFirstTimeHint && !speechBubbleText && (
                 <div className="pointer-events-none absolute bottom-2 inset-x-0 z-20 flex justify-center px-3 animate-fadeIn">
                   <div className="pointer-events-auto rounded-full bg-white/94 dark:bg-[#0b132b]/90 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 px-3.5 py-1.5 text-[11px] font-medium shadow-md flex items-center gap-2 backdrop-blur-md">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300 shrink-0" />
+                    <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300 shrink-0" />
                     <span>Tap {companionName} to greet, or talk &amp; message below</span>
                     <button
                       type="button"
                       onClick={onDismissHint}
                       aria-label="Dismiss hint"
-                      className="text-slate-400 hover:text-slate-700 dark:text-slate-300 dark:hover:text-white cursor-pointer"
+                      className="text-slate-400 hover:text-slate-700 dark:text-slate-300 dark:hover:text-white cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -334,6 +338,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         onSendMessage={onSendMessage}
         onRetryLastMessage={onRetryLastMessage}
         onDismissChatError={onDismissChatError}
+        speakingMessageId={speakingMessageId}
+        onReplayMessage={onReplayMessage}
       />
     </div>
   );

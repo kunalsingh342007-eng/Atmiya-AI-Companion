@@ -65,6 +65,8 @@ export function getCompanionMoodLabel(
       return 'Listening';
     case 'thinking':
       return 'Thinking';
+    case 'preparing_audio':
+      return 'Preparing Voice';
     case 'speaking':
       return 'Speaking';
     case 'interrupted':

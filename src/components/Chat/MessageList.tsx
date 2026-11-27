@@ -16,16 +16,24 @@ interface MessageListProps {
   messages: ChatMessage[];
   isThinking: boolean;
   settings: CompanionSettings;
+  speakingMessageId?: string | null;
+  onReplayMessage?: (msg: ChatMessage) => void;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   isThinking,
   settings,
+  speakingMessageId: controlledSpeakingMessageId,
+  onReplayMessage,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [copiedCodeKey, setCopiedCodeKey] = useState<string | null>(null);
+  const [localSpeakingMessageId, setLocalSpeakingMessageId] = useState<string | null>(null);
   const speakRequestIdRef = React.useRef<number>(0);
+
+  const activeSpeakingId =
+    onReplayMessage !== undefined ? controlledSpeakingMessageId ?? null : localSpeakingMessageId;
 
   React.useEffect(() => {
     return () => {
@@ -33,27 +41,50 @@ export const MessageList: React.FC<MessageListProps> = ({
     };
   }, []);
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const copyTextSafely = (text: string, onSuccess: () => void) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(onSuccess)
+        .catch(() => {});
+    }
   };
 
-  const handleSpeak = async (id: string, text: string) => {
-    if (speakingMessageId === id) {
+  const handleCopy = (id: string, text: string) => {
+    copyTextSafely(text, () => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((curr) => (curr === id ? null : curr)), 2000);
+    });
+  };
+
+  const handleCopyCode = (key: string, code: string) => {
+    copyTextSafely(code, () => {
+      setCopiedCodeKey(key);
+      setTimeout(() => setCopiedCodeKey((curr) => (curr === key ? null : curr)), 2000);
+    });
+  };
+
+  const handleSpeak = async (msg: ChatMessage) => {
+    if (onReplayMessage) {
+      onReplayMessage(msg);
+      return;
+    }
+
+    const { id, content: text } = msg;
+    if (localSpeakingMessageId === id) {
       speakRequestIdRef.current += 1;
       speechService.stopSpeaking();
-      setSpeakingMessageId(null);
+      setLocalSpeakingMessageId(null);
       return;
     }
 
     const reqId = ++speakRequestIdRef.current;
     speechService.stopSpeaking();
-    setSpeakingMessageId(id);
+    setLocalSpeakingMessageId(id);
 
     const onFinish = () => {
       if (speakRequestIdRef.current !== reqId) return;
-      setSpeakingMessageId(null);
+      setLocalSpeakingMessageId(null);
     };
 
     if (settings.voiceEngine === 'gemini-native' && !api.isTtsInCooldown()) {
@@ -64,10 +95,24 @@ export const MessageList: React.FC<MessageListProps> = ({
         });
         if (speakRequestIdRef.current !== reqId) return;
         if (res.audioBase64) {
-          await speechService.playWavAudio(res.audioBase64, onFinish, () => {
-            if (speakRequestIdRef.current !== reqId) return;
-            speechService.speakWithBrowserTTS(text, settings.language, settings.speechRate, onFinish);
-          });
+          await speechService.playWavAudio(
+            res.audioBase64,
+            onFinish,
+            () => {
+              if (speakRequestIdRef.current !== reqId) return;
+              speechService.speakWithBrowserTTS(
+                text,
+                settings.language,
+                settings.speechRate,
+                onFinish
+              );
+            },
+            {
+              text,
+              lang: settings.language,
+              rate: settings.speechRate,
+            }
+          );
           return;
         }
       } catch (e: any) {
@@ -85,7 +130,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     );
   };
 
-  const renderMessageContent = (content: string, isUser: boolean) => {
+  const renderMessageContent = (msgId: string, content: string, isUser: boolean) => {
     const parts = content.split(/(```[\s\S]*?```)/g);
 
     return parts.map((part, index) => {
@@ -95,6 +140,8 @@ export const MessageList: React.FC<MessageListProps> = ({
         const hasLang = /^[a-zA-Z0-9#+-]+$/.test(firstLine);
         const language = hasLang ? firstLine : '';
         const code = (hasLang ? lines.slice(1) : lines).join('\n');
+        const codeKey = `${msgId}:code:${index}`;
+        const isCodeCopied = copiedCodeKey === codeKey;
 
         return (
           <div
@@ -108,11 +155,20 @@ export const MessageList: React.FC<MessageListProps> = ({
               </span>
               <button
                 type="button"
-                onClick={() => navigator.clipboard.writeText(code)}
-                className="text-[11px] text-slate-300 hover:text-white flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 transition cursor-pointer"
+                onClick={() => handleCopyCode(codeKey, code)}
+                className="text-[11px] text-slate-300 hover:text-white flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               >
-                <Copy className="w-3 h-3" />
-                Copy
+                {isCodeCopied ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-300">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>Copy</span>
+                  </>
+                )}
               </button>
             </div>
             <pre className="p-3 overflow-x-auto text-sky-200 leading-relaxed">
@@ -140,7 +196,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       {/* Message Items */}
       {messages.map((msg) => {
         const isUser = msg.role === 'user';
-        const isMsgSpeaking = speakingMessageId === msg.id;
+        const isMsgSpeaking = activeSpeakingId === msg.id;
 
         return (
           <div
@@ -151,8 +207,8 @@ export const MessageList: React.FC<MessageListProps> = ({
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-semibold mt-0.5 ${
                 isUser
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200'
               }`}
             >
               {isUser ? (
@@ -189,7 +245,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
               {/* Message Text Content */}
               <div className="text-[13px] sm:text-sm font-normal">
-                {renderMessageContent(msg.content, isUser)}
+                {renderMessageContent(msg.id, msg.content, isUser)}
               </div>
 
               {/* Actions for Model Messages */}
@@ -197,8 +253,9 @@ export const MessageList: React.FC<MessageListProps> = ({
                 <div className="mt-2.5 pt-2 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between text-xs">
                   <button
                     type="button"
-                    onClick={() => handleSpeak(msg.id, msg.content)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                    disabled={isThinking && !isMsgSpeaking}
+                    onClick={() => handleSpeak(msg)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       isMsgSpeaking
                         ? 'bg-blue-600 text-white'
                         : 'bg-white dark:bg-[#091224] hover:bg-blue-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/70 text-slate-700 dark:text-slate-300'
@@ -221,7 +278,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   <button
                     type="button"
                     onClick={() => handleCopy(msg.id, msg.content)}
-                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-800"
+                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title="Copy message"
                     aria-label="Copy message"
                   >
@@ -243,7 +300,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       {/* Thinking Indicator */}
       {isThinking && (
         <div className="flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200 flex items-center justify-center font-serif text-[11px]">
+          <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200 flex items-center justify-center font-serif text-[11px]">
             आ
           </div>
           <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-[#101c36] border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-xs flex items-center gap-2">

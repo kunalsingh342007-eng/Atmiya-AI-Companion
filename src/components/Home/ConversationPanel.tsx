@@ -47,6 +47,8 @@ interface ConversationPanelProps {
   onSendMessage: (text: string) => void;
   onRetryLastMessage: () => void;
   onDismissChatError?: () => void;
+  speakingMessageId?: string | null;
+  onReplayMessage?: (msg: ChatMessage) => void;
 }
 
 function formatCompactTime(ts: number): string {
@@ -87,6 +89,8 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
   onSendMessage,
   onRetryLastMessage,
   onDismissChatError,
+  speakingMessageId,
+  onReplayMessage,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -254,6 +258,7 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
                             <div className="flex items-center gap-1.5">
                               <input
                                 type="text"
+                                maxLength={80}
                                 value={editTitle}
                                 onChange={(e) => setEditTitle(e.target.value)}
                                 onKeyDown={(e) => {
@@ -264,19 +269,20 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
                                   if (e.key === 'Escape') setEditingId(null);
                                 }}
                                 aria-label="Rename conversation"
-                                className="flex-1 min-w-0 h-7 px-2 rounded-lg bg-slate-50 dark:bg-[#060b1c] border border-indigo-500 text-xs text-slate-900 dark:text-white"
+                                className="flex-1 min-w-0 h-7 px-2 rounded-lg bg-slate-50 dark:bg-[#060b1c] border border-blue-500 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                                 autoFocus
                               />
                               <button
                                 type="button"
+                                disabled={!editTitle.trim()}
                                 onClick={() => {
                                   if (editTitle.trim()) {
                                     onRenameConversation(conv.id, editTitle.trim());
+                                    setEditingId(null);
                                   }
-                                  setEditingId(null);
                                 }}
                                 aria-label="Save rename"
-                                className="h-7 w-7 rounded-lg bg-emerald-600 text-white inline-flex items-center justify-center cursor-pointer"
+                                className="h-7 w-7 rounded-lg bg-emerald-600 text-white inline-flex items-center justify-center cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
                               >
                                 <Check className="w-3 h-3" />
                               </button>
@@ -502,6 +508,8 @@ export const ConversationPanel: React.FC<ConversationPanelProps> = ({
               messages={messages}
               isThinking={isThinking}
               settings={settings}
+              speakingMessageId={speakingMessageId}
+              onReplayMessage={onReplayMessage}
             />
           )}
 

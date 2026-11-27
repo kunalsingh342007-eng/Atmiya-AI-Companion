@@ -231,21 +231,23 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                         <div className="flex items-center gap-2 max-w-md">
                           <input
                             type="text"
+                            maxLength={80}
                             value={editTitle}
                             onChange={(e) => setEditTitle(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveRename(session.id);
+                              if (e.key === 'Enter' && editTitle.trim()) handleSaveRename(session.id);
                               if (e.key === 'Escape') setEditingId(null);
                             }}
                             aria-label="Conversation title"
-                            className="flex-1 h-8 px-2.5 rounded-lg bg-slate-50 dark:bg-[#060b1c] border border-indigo-500 text-sm text-slate-900 dark:text-white"
+                            className="flex-1 h-8 px-2.5 rounded-lg bg-slate-50 dark:bg-[#060b1c] border border-blue-500 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                             autoFocus
                           />
                           <button
                             type="button"
+                            disabled={!editTitle.trim()}
                             onClick={() => handleSaveRename(session.id)}
                             aria-label="Save title"
-                            className="h-8 w-8 rounded-lg bg-emerald-600 text-white inline-flex items-center justify-center cursor-pointer"
+                            className="h-8 w-8 rounded-lg bg-emerald-600 text-white inline-flex items-center justify-center cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
                           >
                             <Check className="w-3.5 h-3.5" />
                           </button>

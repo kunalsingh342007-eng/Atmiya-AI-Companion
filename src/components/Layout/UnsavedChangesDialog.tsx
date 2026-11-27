@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 interface UnsavedChangesDialogProps {
-  kind: 'wardrobe' | null;
+  kind: 'wardrobe' | 'settings' | null;
   onStay: () => void;
   onDiscard: () => void;
   onApplyAndLeave?: () => void;
@@ -15,6 +15,8 @@ export const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
   onApplyAndLeave,
 }) => {
   if (!kind) return null;
+
+  const isWardrobe = kind === 'wardrobe';
 
   return (
     <div
@@ -33,10 +35,12 @@ export const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
               id="unsaved-dialog-title"
               className="text-sm font-bold text-slate-900 dark:text-white"
             >
-              Unsaved appearance changes
+              {isWardrobe ? 'Unsaved appearance changes' : 'Unsaved settings or profile edits'}
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              You have unapplied stage and room customizations. Would you like to apply them before leaving, or discard them?
+              {isWardrobe
+                ? 'You have unapplied stage and room customizations. Would you like to apply them before leaving, or discard them?'
+                : 'You have unsaved changes in Settings. Stay to click Save, or discard these edits and leave.'}
             </p>
           </div>
         </div>

@@ -145,6 +145,8 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
           background:
             avatarState === 'listening'
               ? 'radial-gradient(circle at 50% 46%, rgba(56, 189, 248, 0.22), transparent 58%)'
+              : avatarState === 'preparing_audio'
+              ? 'radial-gradient(circle at 50% 46%, rgba(56, 189, 248, 0.16), transparent 58%)'
               : avatarState === 'speaking'
               ? 'radial-gradient(circle at 50% 46%, rgba(99, 102, 241, 0.2), transparent 58%)'
               : avatarState === 'thinking'

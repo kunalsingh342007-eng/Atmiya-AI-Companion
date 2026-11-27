@@ -1745,12 +1745,14 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         return '#22d3ee';
       case 'thinking':
         return '#fbbf24';
+      case 'preparing_audio':
+        return '#38bdf8';
       case 'speaking':
         return '#60a5fa';
       case 'error':
         return '#f43f5e';
       default:
-        return config?.accentColor || '#8b5cf6';
+        return config?.accentColor || '#3b82f6';
     }
   }, [state, config?.accentColor]);
 
@@ -1991,7 +1993,9 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
             : {
                 boxShadow:
                   state === 'speaking'
-                    ? `0 0 ${24 + audioLevel * 38}px rgba(168, 85, 247, ${0.45 + audioLevel * 0.35})`
+                    ? `0 0 ${24 + audioLevel * 38}px rgba(59, 130, 246, ${0.42 + audioLevel * 0.35})`
+                    : state === 'preparing_audio'
+                    ? '0 0 28px rgba(56, 189, 248, 0.35)'
                     : state === 'listening'
                     ? '0 0 32px rgba(6, 182, 212, 0.45)'
                     : state === 'thinking'
@@ -2098,9 +2102,14 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-spin" />
                 <span>Ātmiya is thinking...</span>
               </div>
+            ) : state === 'preparing_audio' ? (
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-50 dark:bg-sky-950/85 border border-sky-300 dark:border-sky-500/50 text-sky-800 dark:text-sky-200 text-xs font-medium shadow-sm dark:shadow-lg">
+                <Loader2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 animate-spin" />
+                <span>Preparing voice...</span>
+              </div>
             ) : state === 'speaking' ? (
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-50 dark:bg-violet-950/85 border border-violet-300 dark:border-violet-500/50 text-violet-800 dark:text-violet-200 text-xs font-medium shadow-sm dark:shadow-lg">
-                <Volume2 className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/85 border border-blue-300 dark:border-blue-500/50 text-blue-800 dark:text-sky-200 text-xs font-medium shadow-sm dark:shadow-lg">
+                <Volume2 className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
                 <span>
                   {inspection?.capabilities.hasSpeechMorphs || inspection?.capabilities.hasJawBone
                     ? 'Ātmiya is speaking...'
@@ -2212,7 +2221,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           </div>
         )}
 
-        {!isImmersive && state === 'speaking' && onInterrupt && (
+        {!isImmersive && (state === 'speaking' || state === 'preparing_audio') && onInterrupt && (
           <button
             type="button"
             onClick={onInterrupt}
