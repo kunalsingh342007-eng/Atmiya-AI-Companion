@@ -1035,17 +1035,36 @@ export class UnifiedAnimationController {
    * Finishes app-open greeting speech without clipping an ongoing opening wave.
    */
   public finishAppOpenSpeech(): void {
+    this.finishGreetingSpeech();
+  }
+
+  /**
+   * Finishes any greeting speech cleanly: if a wave gesture timer is still completing,
+   * returns avatarState to 'idle' and lets the gesture timer finish smoothly to 'idle'.
+   */
+  public finishGreetingSpeech(expectedRequestId?: number): void {
     if (this.snapshot.isDisposed) return;
+    if (
+      expectedRequestId !== undefined &&
+      expectedRequestId !== this.snapshot.requestId
+    ) {
+      return;
+    }
     this.greetingVoiceActive = false;
-    if (this.snapshot.unifiedState === 'greeting' && this.snapshot.activeGesture === 'wave' && this.gestureReturnTimer) {
+    if (this.snapshot.activeGesture === 'wave' && this.gestureReturnTimer) {
       this.snapshot = {
         ...this.snapshot,
+        unifiedState: 'greeting',
         avatarState: 'idle',
+        speechSessionId: this.snapshot.activeSpeechPlan
+          ? this.snapshot.speechSessionId + 1
+          : this.snapshot.speechSessionId,
+        activeSpeechPlan: null,
       };
       this.emit();
       return;
     }
-    this.returnToIdle();
+    this.returnToIdle(expectedRequestId);
   }
 
   /**

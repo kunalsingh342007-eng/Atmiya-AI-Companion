@@ -1650,15 +1650,16 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
   }, []);
 
   useEffect(() => {
-    if (!isStageControlsOpen) return;
+    if (!isStageControlsOpen && !isExpressionPanelOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsStageControlsOpen(false);
+        setIsExpressionPanelOpen(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isStageControlsOpen]);
+  }, [isStageControlsOpen, isExpressionPanelOpen]);
 
   // Preflight check so missing GLB or unavailable WebGL degrades cleanly to 2D portrait fallback
   useEffect(() => {
@@ -1976,6 +1977,11 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
       <div
         className={`${stageContainerClasses} ${onTapAvatar ? 'cursor-pointer' : ''}`}
         onPointerDown={(e) => {
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('button,a,input,select,textarea,[role="button"],[role="menu"]')) {
+            pointerDownPosRef.current = null;
+            return;
+          }
           pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
         }}
         onPointerUp={(e) => {
@@ -2232,14 +2238,8 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           </button>
         )}
 
-        {isExpressionPanelOpen && onSelectPreviewEmotion && (
-          <div
-            className={
-              isImmersive
-                ? 'fixed top-16 right-4 z-40 w-[min(23rem,calc(100vw-2rem))]'
-                : 'w-full flex justify-center'
-            }
-          >
+        {isExpressionPanelOpen && onSelectPreviewEmotion && !isImmersive && (
+          <div className="w-full flex justify-center">
             <ExpressionPreviewDrawer
               activeEmotion={emotion}
               previewEmotion={previewEmotion}
@@ -2268,6 +2268,39 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           </div>
         )}
       </div>
+
+      {isExpressionPanelOpen && onSelectPreviewEmotion && isImmersive && (
+        <div
+          className="absolute top-16 right-3 z-30 w-[min(22rem,calc(100%-1.5rem))] max-h-[calc(100%-11rem)] overflow-y-auto rounded-2xl shadow-2xl"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <ExpressionPreviewDrawer
+            activeEmotion={emotion}
+            previewEmotion={previewEmotion}
+            supportedExpressions={inspection?.supportedExpressions}
+            hasGlbLoaded={assetStatus === 'ready' && Boolean(inspection)}
+            verifiedSkeleton={inspection?.verifiedSkeleton}
+            verifiedArmHand={inspection?.verifiedArmHand}
+            verifiedFullBody={inspection?.verifiedFullBody}
+            skeletonLimitations={inspection?.skeletonLimitations}
+            idleMovementEnabled={idleMovementEnabled}
+            idleIntensity={idleIntensity}
+            activeHeadPose={activeHeadPose}
+            activeArmGesture={activeArmGesture}
+            activeHandPose={activeHandPose}
+            onToggleIdleMovement={handleToggleIdleMovement}
+            onChangeIdleIntensity={handleChangeIdleIntensity}
+            onTestHeadNod={handleTestHeadNod}
+            onTestHeadPose={handleTestHeadPose}
+            onTriggerArmGesture={handleTriggerArmGesture}
+            onResetArmPose={handleResetArmPose}
+            onResetFullPose={handleResetFullPose}
+            onSelectHandPose={handleSelectHandPose}
+            onSelect={onSelectPreviewEmotion}
+            onClose={() => setIsExpressionPanelOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 });

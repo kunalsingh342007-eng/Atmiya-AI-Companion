@@ -159,7 +159,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     typeof window !== 'undefined' && 'speechSynthesis' in window;
 
   return (
-    <div className="min-h-dvh w-full bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col items-center justify-center px-4 py-8 sm:px-6 transition-colors duration-200">
+    <div className="min-h-dvh w-full bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col items-center justify-center px-4 py-6 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-8 transition-colors duration-200">
       <div className="w-full max-w-xl rounded-3xl bg-[var(--bg-surface)] dark:bg-[#0b132b] border border-slate-200 dark:border-slate-800/90 shadow-xl dark:shadow-[0_24px_64px_rgba(2,6,23,0.65)] overflow-hidden">
         {/* Progress Header */}
         <div className="px-6 pt-5 pb-4 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-4">
@@ -416,7 +416,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 block">
                   Appearance
                 </span>
-                <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Theme preference">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Theme preference">
                   {[
                     { id: 'light' as const, label: 'Light', icon: Sun },
                     { id: 'dark' as const, label: 'Dark / Night', icon: Moon },
@@ -431,13 +431,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                         role="radio"
                         aria-checked={active}
                         onClick={() => handleSelectTheme(item.id)}
-                        className={`h-10 px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                        className={`min-h-[42px] px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                           active
                             ? 'bg-indigo-600 border-indigo-500 text-white'
                             : 'bg-slate-50 dark:bg-[#081024] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-400'
                         }`}
                       >
-                        <Icon className="w-3.5 h-3.5" />
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
                         <span>{item.label}</span>
                       </button>
                     );
@@ -484,7 +484,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   <Volume2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>Voice Replies</span>
                 </span>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[
                     { id: 'gemini-native' as const, label: 'Gemini Voice' },
                     { id: 'browser-tts' as const, label: 'Browser Voice' },
@@ -496,7 +496,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                         key={v.id}
                         type="button"
                         onClick={() => setVoiceEngine(v.id)}
-                        className={`h-9 px-2 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                        className={`min-h-[40px] px-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                           active
                             ? 'bg-indigo-600 border-indigo-500 text-white'
                             : 'bg-slate-50 dark:bg-[#081024] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
@@ -547,7 +547,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 block">
                   Default Avatar Framing
                 </span>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[
                     { id: 'close-up' as const, label: 'Close-Up' },
                     { id: 'upper-body' as const, label: 'Upper Body' },
@@ -557,7 +557,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                       key={preset.id}
                       type="button"
                       onClick={() => setDefaultCameraPreset(preset.id)}
-                      className={`h-9 px-3 rounded-xl border text-xs font-medium transition cursor-pointer ${
+                      className={`min-h-[40px] px-3 rounded-xl border text-xs font-medium transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                         defaultCameraPreset === preset.id
                           ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-900 dark:text-white'
                           : 'bg-slate-50 dark:bg-[#081024] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
@@ -609,25 +609,25 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               </div>
 
               <dl className="rounded-2xl bg-slate-50 dark:bg-[#081024] border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                <div className="px-4 py-3 flex items-center justify-between gap-4">
+                <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                   <dt className="text-slate-500 dark:text-slate-400">Display Name</dt>
-                  <dd className="font-semibold text-slate-900 dark:text-white">
+                  <dd className="font-semibold text-slate-900 dark:text-white break-words">
                     {displayName.trim() || 'Not set'}
                   </dd>
                 </div>
-                <div className="px-4 py-3 flex items-center justify-between gap-4">
+                <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                   <dt className="text-slate-500 dark:text-slate-400">Appearance</dt>
                   <dd className="font-semibold text-slate-900 dark:text-white">
                     {theme === 'auto' ? 'System' : theme === 'dark' ? 'Dark / Night' : 'Light'}
                   </dd>
                 </div>
-                <div className="px-4 py-3 flex items-center justify-between gap-4">
+                <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                   <dt className="text-slate-500 dark:text-slate-400">Language</dt>
                   <dd className="font-semibold text-slate-900 dark:text-white">
                     {LANGUAGES.find((l) => l.id === language)?.label ?? 'Auto-detect'}
                   </dd>
                 </div>
-                <div className="px-4 py-3 flex items-center justify-between gap-4">
+                <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                   <dt className="text-slate-500 dark:text-slate-400">Voice</dt>
                   <dd className="font-semibold text-slate-900 dark:text-white">
                     {voiceEngine === 'none'

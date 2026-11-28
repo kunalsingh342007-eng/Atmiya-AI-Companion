@@ -7,6 +7,37 @@ import {
   RoomEnvironmentId,
   UserProfile,
 } from '../types/companion';
+import { isValidProfileImageUrl } from '../utils/profileImage';
+
+function sanitizeProfileAvatarUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return isValidProfileImageUrl(trimmed) ? trimmed : undefined;
+}
+
+function sanitizeSafeAssetUrl(
+  value: unknown,
+  fallback: string,
+  allowDataImage = false
+): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  if (trimmed === '/avatars/atmiya.png') return '';
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.includes('..')) {
+    return trimmed;
+  }
+  if (allowDataImage && /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? trimmed : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 const SETTINGS_KEY = 'atmiya_companion_settings_v1';
 const PROFILE_KEY = 'atmiya_user_profile_v1';
@@ -25,7 +56,7 @@ export const DEFAULT_AVATAR_CONFIG: CompanionSettings['avatarConfig'] = {
   accessory: 'none',
   defaultCameraPreset: 'close-up',
   avatarType: '3d-glb',
-  customImagePath: '/avatars/atmiya.png',
+  customImagePath: '',
   glbModelPath: '/models/atmiya-avatar.glb',
   threeWsAvatarId: '7f2a722a-ce89-4f13-adba-443f9d962c47',
   threeWsModelUrl:
@@ -111,6 +142,19 @@ export const storage = {
         ...DEFAULT_AVATAR_CONFIG,
         ...parsedAvatar,
       };
+      mergedAvatar.customImagePath = sanitizeSafeAssetUrl(
+        mergedAvatar.customImagePath,
+        '',
+        true
+      );
+      mergedAvatar.glbModelPath = sanitizeSafeAssetUrl(
+        mergedAvatar.glbModelPath,
+        DEFAULT_AVATAR_CONFIG.glbModelPath || '/models/atmiya-avatar.glb'
+      );
+      mergedAvatar.threeWsModelUrl = sanitizeSafeAssetUrl(
+        mergedAvatar.threeWsModelUrl,
+        DEFAULT_AVATAR_CONFIG.threeWsModelUrl || ''
+      );
       if (!parsedAvatar.localGlbMigrated) {
         mergedAvatar.avatarType = '3d-glb';
         mergedAvatar.glbModelPath = mergedAvatar.glbModelPath || '/models/atmiya-avatar.glb';
@@ -171,10 +215,7 @@ export const storage = {
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           return {
             displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
-            avatarDataUrl:
-              typeof parsed.avatarDataUrl === 'string' && parsed.avatarDataUrl.trim()
-                ? parsed.avatarDataUrl.trim()
-                : undefined,
+            avatarDataUrl: sanitizeProfileAvatarUrl(parsed.avatarDataUrl),
             bio: typeof parsed.bio === 'string' ? parsed.bio : '',
             onboardingCompleted: Boolean(parsed.onboardingCompleted),
             createdAt: typeof parsed.createdAt === 'number' ? parsed.createdAt : now,
@@ -219,6 +260,7 @@ export const storage = {
       const sanitized: UserProfile = {
         ...profile,
         displayName: profile.displayName.trim().slice(0, 80),
+        avatarDataUrl: sanitizeProfileAvatarUrl(profile.avatarDataUrl),
         bio: profile.bio ? profile.bio.trim().slice(0, 240) : '',
         updatedAt: Date.now(),
       };
@@ -516,8 +558,7 @@ export const storage = {
       if (data.profile && typeof data.profile === 'object' && !Array.isArray(data.profile)) {
         this.saveProfile({
           displayName: typeof data.profile.displayName === 'string' ? data.profile.displayName : '',
-          avatarDataUrl:
-            typeof data.profile.avatarDataUrl === 'string' ? data.profile.avatarDataUrl : undefined,
+          avatarDataUrl: sanitizeProfileAvatarUrl(data.profile.avatarDataUrl),
           bio: typeof data.profile.bio === 'string' ? data.profile.bio : '',
           onboardingCompleted: Boolean(data.profile.onboardingCompleted),
           createdAt: typeof data.profile.createdAt === 'number' ? data.profile.createdAt : Date.now(),
@@ -526,6 +567,10 @@ export const storage = {
         importedAny = true;
       }
       if (data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings)) {
+        const rawImportedAvatar =
+          data.settings.avatarConfig && typeof data.settings.avatarConfig === 'object'
+            ? data.settings.avatarConfig
+            : {};
         const mergedSettings: CompanionSettings = {
           ...DEFAULT_SETTINGS,
           ...data.settings,
@@ -539,9 +584,16 @@ export const storage = {
               : true,
           avatarConfig: {
             ...DEFAULT_AVATAR_CONFIG,
-            ...(data.settings.avatarConfig && typeof data.settings.avatarConfig === 'object'
-              ? data.settings.avatarConfig
-              : {}),
+            ...rawImportedAvatar,
+            customImagePath: sanitizeSafeAssetUrl(rawImportedAvatar.customImagePath, '', true),
+            glbModelPath: sanitizeSafeAssetUrl(
+              rawImportedAvatar.glbModelPath,
+              DEFAULT_AVATAR_CONFIG.glbModelPath || '/models/atmiya-avatar.glb'
+            ),
+            threeWsModelUrl: sanitizeSafeAssetUrl(
+              rawImportedAvatar.threeWsModelUrl,
+              DEFAULT_AVATAR_CONFIG.threeWsModelUrl || ''
+            ),
           },
           roomConfig: {
             ...DEFAULT_ROOM_CONFIG,

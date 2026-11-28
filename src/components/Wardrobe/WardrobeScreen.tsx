@@ -173,7 +173,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
   const handleReset = () => {
     const resetAvatar: AvatarAppearanceConfig = {
       ...DEFAULT_AVATAR_CONFIG,
-      customImagePath: config.customImagePath || '/avatars/atmiya.png',
+      customImagePath: config.customImagePath === '/avatars/atmiya.png' ? '' : (config.customImagePath || ''),
     };
     const resetRoom: RoomConfig = { ...DEFAULT_ROOM_CONFIG };
     updateDraft(resetAvatar, resetRoom);
@@ -398,7 +398,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                     <span className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
                       Avatar Renderer Mode
                     </span>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() =>
@@ -413,7 +413,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                             draftRoom
                           )
                         }
-                        className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
+                        className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer transition ${
                           activeType === '3d-glb'
                             ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
                             : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300'
@@ -435,7 +435,7 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                             draftRoom
                           )
                         }
-                        className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
+                        className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer transition ${
                           activeType === 'three-ws'
                             ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
                             : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300'
@@ -453,12 +453,15 @@ export const WardrobeScreen: React.FC<WardrobeScreenProps> = ({
                               avatarType: 'custom-image',
                               threeWsMigrated: true,
                               localGlbMigrated: true,
-                              customImagePath: draftAvatar.customImagePath || '/avatars/atmiya.png',
+                              customImagePath:
+                                draftAvatar.customImagePath === '/avatars/atmiya.png'
+                                  ? ''
+                                  : (draftAvatar.customImagePath || ''),
                             },
                             draftRoom
                           )
                         }
-                        className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1 cursor-pointer transition ${
+                        className={`h-10 px-2.5 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer transition ${
                           activeType === 'custom-image'
                             ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-white'
                             : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020] text-slate-700 dark:text-slate-300'

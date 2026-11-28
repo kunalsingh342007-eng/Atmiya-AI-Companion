@@ -96,7 +96,7 @@ export const GameShell: React.FC<GameShellProps> = ({
       {/* Desktop & Tablet Left Navigation Sidebar (md+) */}
       <aside
         aria-label="Primary companion navigation"
-        className="hidden md:flex flex-col justify-between shrink-0 w-[78px] lg:w-[232px] bg-[var(--bg-surface)] dark:bg-[#070d22] border-r border-slate-200 dark:border-slate-800/80 z-30 py-3.5 px-2.5 lg:px-3.5 transition-colors duration-200"
+        className="hidden md:flex flex-col justify-between shrink-0 w-[72px] lg:w-[216px] xl:w-[232px] bg-[var(--bg-surface)] dark:bg-[#070d22] border-r border-slate-200 dark:border-slate-800/80 z-30 py-3.5 px-2.5 lg:px-3.5 transition-colors duration-200"
       >
         <div className="space-y-4 min-h-0 flex-1 flex flex-col">
           {/* Ātmiya Brand Logo — adaptive Light & Dark/Night presentation */}
@@ -242,7 +242,7 @@ export const GameShell: React.FC<GameShellProps> = ({
       {/* Mobile Only Compact Bottom Navigation (< md / 768px) */}
       <nav
         aria-label="Mobile companion navigation"
-        className="md:hidden relative z-30 shrink-0 w-full bg-[var(--bg-surface)]/95 dark:bg-[#070d22]/95 border-t border-slate-200 dark:border-slate-800 backdrop-blur-xl px-2 py-1.5"
+        className="md:hidden relative z-30 shrink-0 w-full bg-[var(--bg-surface)]/95 dark:bg-[#070d22]/95 border-t border-slate-200 dark:border-slate-800 backdrop-blur-xl px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
       >
         <div className="max-w-2xl mx-auto grid grid-cols-4 gap-1">
           {PRIMARY_NAV_ITEMS.map((item) => {

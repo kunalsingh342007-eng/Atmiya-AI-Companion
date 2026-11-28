@@ -187,6 +187,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 unifiedState={avatarControllerState.unifiedState}
                 emotion={previewEmotion ?? companionEmotion}
                 micPermission={micPermission}
+                isMicMuted={isMicMuted}
                 isKeyConfigured={isKeyConfigured}
                 onToggleSidebar={onToggleSidebar}
                 onOpenHistoryTab={onOpenHistoryTab}
@@ -221,14 +222,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
               {/* Frosted Greeting / Reply Bubble */}
               {speechBubbleText && (
-                <div className="pointer-events-none absolute bottom-2 inset-x-0 md:inset-auto md:top-[12%] md:right-[6%] lg:right-[8%] z-20 flex justify-center md:justify-end px-3 md:px-0 animate-fadeIn">
-                  <div className="pointer-events-auto relative max-w-[270px] sm:max-w-[300px] rounded-2xl bg-white/95 dark:bg-[#0f1a36]/92 text-slate-900 dark:text-slate-100 px-4 py-3 text-xs sm:text-[13px] font-medium shadow-xl border border-slate-200/90 dark:border-indigo-400/30 backdrop-blur-xl flex items-start gap-2">
-                    <span className="leading-snug flex-1">{speechBubbleText}</span>
+                <div className="pointer-events-none absolute bottom-2 inset-x-0 md:inset-auto md:top-3 md:right-4 lg:right-6 z-20 flex justify-center md:justify-end px-3 md:px-0 animate-fadeIn">
+                  <div className="pointer-events-auto relative max-w-[min(300px,calc(100vw-1.5rem))] rounded-2xl bg-white/95 dark:bg-[#0f1a36]/92 text-slate-900 dark:text-slate-100 px-4 py-3 text-xs sm:text-[13px] font-medium shadow-xl border border-slate-200/90 dark:border-indigo-400/30 backdrop-blur-xl flex items-start gap-2">
+                    <span className="leading-snug flex-1 min-w-0 break-words">{speechBubbleText}</span>
                     <button
                       type="button"
                       onClick={onDismissBubble}
                       aria-label="Dismiss speech bubble"
-                      className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white p-0.5 rounded cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white p-1 -mr-1 -mt-0.5 rounded-lg cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -340,6 +341,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         onDismissChatError={onDismissChatError}
         speakingMessageId={speakingMessageId}
         onReplayMessage={onReplayMessage}
+        prefersReducedMotion={prefersReducedMotion}
       />
     </div>
   );

@@ -274,7 +274,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                       )}
 
                       {previewText && (
-                        <p className="text-xs sm:text-[13px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                        <p className="text-xs sm:text-[13px] text-slate-600 dark:text-slate-300 line-clamp-2 break-words leading-relaxed">
                           {lastMessage.role === 'user' ? 'You: ' : 'Ātmiya: '}
                           {previewText}
                         </p>
@@ -295,7 +295,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => onResumeSession(session.id)}
-                        className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                        className="h-9 sm:h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                       >
                         <span>Resume</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -311,7 +311,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                           }}
                           aria-label={`Rename ${session.title || 'conversation'}`}
                           title="Rename"
-                          className="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white inline-flex items-center justify-center transition cursor-pointer"
+                          className="h-9 w-9 sm:h-8 sm:w-8 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white inline-flex items-center justify-center transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -324,7 +324,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                         }
                         aria-label={`Delete ${session.title || 'conversation'}`}
                         title="Delete"
-                        className="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 inline-flex items-center justify-center transition cursor-pointer"
+                        className="h-9 w-9 sm:h-8 sm:w-8 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 inline-flex items-center justify-center transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

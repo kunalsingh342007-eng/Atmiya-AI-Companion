@@ -582,7 +582,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 block">
                         App Theme
                       </span>
-                      <div className="grid grid-cols-3 gap-2.5" role="radiogroup" aria-label="Theme mode">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5" role="radiogroup" aria-label="Theme mode">
                         {[
                           { id: 'light' as const, label: 'Light', icon: Sun },
                           { id: 'dark' as const, label: 'Dark / Night', icon: Moon },
@@ -606,13 +606,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                                     : `Switched to ${t.label} theme`
                                 );
                               }}
-                              className={`h-10 px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                              className={`min-h-[42px] px-3 rounded-xl border text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                                 active
                                   ? 'bg-indigo-600 border-indigo-500 text-white'
                                   : 'bg-slate-50 dark:bg-[#081024] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-400'
                               }`}
                             >
-                              <Icon className="w-3.5 h-3.5" />
+                              <Icon className="w-3.5 h-3.5 shrink-0" />
                               <span>{t.label}</span>
                             </button>
                           );
@@ -806,7 +806,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
                       { id: 'gemini-native' as const, label: 'Gemini TTS' },
                       { id: 'browser-tts' as const, label: 'Browser TTS' },
@@ -821,7 +821,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                             autoSpeakResponse: mode.id !== 'none',
                           })
                         }
-                        className={`h-9 px-2 rounded-xl border text-xs font-medium cursor-pointer transition ${
+                        className={`min-h-[40px] px-2.5 rounded-xl border text-xs font-medium cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                           draftSettings.voiceEngine === mode.id
                             ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-900 dark:text-white'
                             : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081024] text-slate-700 dark:text-slate-300'
@@ -1055,25 +1055,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </div>
 
                 <dl className="rounded-2xl bg-slate-50 dark:bg-[#081024] border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                  <div className="px-4 py-3 flex items-center justify-between gap-4">
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <dt className="text-slate-500 dark:text-slate-400">Product Name</dt>
                     <dd className="font-semibold text-slate-900 dark:text-white">
                       Ātmiya AI Companion
                     </dd>
                   </div>
-                  <div className="px-4 py-3 flex items-center justify-between gap-4">
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <dt className="text-slate-500 dark:text-slate-400">Version</dt>
                     <dd className="font-semibold text-slate-900 dark:text-white tabular-nums">
                       v{appVersion}
                     </dd>
                   </div>
-                  <div className="px-4 py-3 flex items-center justify-between gap-4">
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <dt className="text-slate-500 dark:text-slate-400">Data Persistence</dt>
                     <dd className="font-medium text-slate-800 dark:text-slate-200">
                       Local browser storage (single-device)
                     </dd>
                   </div>
-                  <div className="px-4 py-3 flex items-center justify-between gap-4">
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <dt className="text-slate-500 dark:text-slate-400">Server AI Status</dt>
                     <dd
                       className={`font-semibold ${
@@ -1085,9 +1085,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       {isApiKeyConfigured ? 'Connected' : 'API Key Not Configured'}
                     </dd>
                   </div>
-                  <div className="px-4 py-3 flex items-center justify-between gap-4">
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <dt className="text-slate-500 dark:text-slate-400">Chat / Voice Models</dt>
-                    <dd className="font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                    <dd className="font-mono text-[11px] text-slate-700 dark:text-slate-300 break-all sm:text-right">
                       {systemStatus.model} · {systemStatus.ttsModel}
                     </dd>
                   </div>

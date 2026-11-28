@@ -8,7 +8,7 @@ import {
 } from '../types/companion';
 import { normalizeStructuredEmotionPayload } from '../components/Avatar/expressionRig';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 function apiUrl(path: string): string {
   return API_BASE_URL ? `${API_BASE_URL}${path}` : path;

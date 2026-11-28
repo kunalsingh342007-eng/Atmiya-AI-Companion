@@ -1314,6 +1314,7 @@ export interface RigAnimationRuntime {
   speechPauseDamp: number;
   speechHeadInflectionLevel: number;
   speechControlledHeadPose: boolean;
+  nextListeningNodAt: number;
 }
 
 export function createRigRuntime(): RigAnimationRuntime {
@@ -1354,6 +1355,7 @@ export function createRigRuntime(): RigAnimationRuntime {
     speechPauseDamp: 1,
     speechHeadInflectionLevel: 0,
     speechControlledHeadPose: false,
+    nextListeningNodAt: -1,
   };
 }
 
@@ -1453,6 +1455,7 @@ export function resetHeadPose(runtime: RigAnimationRuntime): void {
   runtime.nodActive = false;
   runtime.nodProgress = 0;
   runtime.speechControlledHeadPose = false;
+  runtime.nextListeningNodAt = -1;
 }
 
 const DEFAULT_GESTURE_DURATIONS: Record<Exclude<ArmGestureName, 'none'>, number> = {
@@ -2014,6 +2017,22 @@ export function updateHeadNeckRig(params: {
     delta
   );
 
+  const isListeningState = state === 'listening' || unifiedState === 'listening';
+  const isThinkingState =
+    !isSpeaking && (state === 'thinking' || state === 'preparing_audio' || unifiedState === 'thinking' || unifiedState === 'preparing_audio');
+
+  // Attentive occasional subtle nod during extended listening (non-repetitive, well-spaced)
+  if (isListeningState && !prefersReducedMotion && runtime.headPose === 'neutral') {
+    if (runtime.nextListeningNodAt < 0) {
+      runtime.nextListeningNodAt = elapsed + 4.8 + Math.random() * 2.8;
+    } else if (!runtime.nodActive && elapsed >= runtime.nextListeningNodAt) {
+      triggerHeadNod(runtime, { intensity: 0.34, duration: 0.74 });
+      runtime.nextListeningNodAt = elapsed + 5.6 + Math.random() * 3.0;
+    }
+  } else {
+    runtime.nextListeningNodAt = -1;
+  }
+
   // 1. Advance explicit head nod action if running (completes smoothly even during speech pause)
   let nodPitch = 0;
   if (runtime.nodActive) {
@@ -2029,7 +2048,8 @@ export function updateHeadNeckRig(params: {
     }
   }
 
-  // 2. Explicit head turn / tilt target pose
+  // 2. Explicit head turn / tilt target pose, or restrained state poise for listening / thinking
+  let posePitch = 0;
   let poseYaw = 0;
   let poseRoll = 0;
   switch (runtime.headPose) {
@@ -2047,6 +2067,16 @@ export function updateHeadNeckRig(params: {
       break;
     case 'neutral':
     default:
+      if (!prefersReducedMotion) {
+        if (isListeningState) {
+          posePitch = 0.032; // Gentle attentive inclination
+          poseRoll = -0.022;
+        } else if (isThinkingState) {
+          posePitch = -0.032; // Restrained thoughtful upward glance + gentle tilt
+          poseYaw = 0.042;
+          poseRoll = 0.055;
+        }
+      }
       break;
   }
 
@@ -2065,8 +2095,10 @@ export function updateHeadNeckRig(params: {
       unifiedState === 'error'
     ) {
       targetIdleBlend = 0.25; // Calm, settled posture on interruption/error
-    } else if (state === 'listening' || unifiedState === 'listening') {
-      targetIdleBlend = 0.4; // Attentive, calm stillness
+    } else if (isListeningState) {
+      targetIdleBlend = 0.3; // Attentive, calm stillness
+    } else if (isThinkingState) {
+      targetIdleBlend = 0.28; // Calm, focused thinking posture (no artificial looping)
     } else if (isSpeaking) {
       targetIdleBlend = 0.45 * runtime.speechPauseDamp; // Subtle presence; calm during pauses
     } else if (unifiedState === 'greeting' || unifiedState === 'goodbye') {
@@ -2114,10 +2146,10 @@ export function updateHeadNeckRig(params: {
     }
   }
 
-  // 5. Smoothly interpolate head/neck angles toward combined target
-  const targetPitch = nodPitch + idlePitch;
-  const targetYaw = poseYaw + idleYaw;
-  const targetRoll = poseRoll + idleRoll;
+  // 5. Smoothly interpolate head/neck angles toward clamped anatomical target
+  const targetPitch = THREE.MathUtils.clamp(nodPitch + posePitch + idlePitch, -0.2, 0.24);
+  const targetYaw = THREE.MathUtils.clamp(poseYaw + idleYaw, -0.26, 0.26);
+  const targetRoll = THREE.MathUtils.clamp(poseRoll + idleRoll, -0.16, 0.16);
 
   const dampSpeed = runtime.nodActive ? 14 : 6.5;
   runtime.headPitch = THREE.MathUtils.damp(runtime.headPitch, targetPitch, dampSpeed, delta);
@@ -2284,6 +2316,8 @@ export function updateArmHandRig(params: {
   if (!prefersReducedMotion && runtime.idleEnabled) {
     if (state === 'listening' || unifiedState === 'listening') {
       targetArmIdleBlend = 0.35;
+    } else if (state === 'thinking' || state === 'preparing_audio' || unifiedState === 'thinking' || unifiedState === 'preparing_audio') {
+      targetArmIdleBlend = 0.45;
     } else if (state === 'speaking' || unifiedState === 'speaking') {
       targetArmIdleBlend = 0.55 * runtime.speechPauseDamp;
     } else {
@@ -2581,6 +2615,8 @@ export function updateFullBodyAndLowerRig(params: {
     unifiedState === 'goodbye';
   const isSpeaking = state === 'speaking' || unifiedState === 'speaking';
   const isListening = state === 'listening' || unifiedState === 'listening';
+  const isThinking =
+    !isSpeaking && (state === 'thinking' || state === 'preparing_audio' || unifiedState === 'thinking' || unifiedState === 'preparing_audio');
 
   let targetBodyBlend = 0;
   if (!prefersReducedMotion && runtime.idleEnabled) {
@@ -2589,7 +2625,9 @@ export function updateFullBodyAndLowerRig(params: {
     } else if (isSpeaking) {
       targetBodyBlend = 0.48 * (0.65 + 0.35 * runtime.speechPauseDamp); // Gentle breathing + calm conversational poise
     } else if (isListening) {
-      targetBodyBlend = 0.55; // Attentive stillness
+      targetBodyBlend = 0.42; // Minimal upper-body sway with gentle breathing
+    } else if (isThinking) {
+      targetBodyBlend = 0.45; // Calm, focused thinking posture
     } else {
       targetBodyBlend = 1.0; // Natural idle
     }
@@ -2608,7 +2646,13 @@ export function updateFullBodyAndLowerRig(params: {
   const isLowerBodyVisible = presentationMode !== 'close-up';
   const weightShiftFactor = isLowerBodyVisible ? 1.0 : 0.0;
   const blend = runtime.bodyIdleBlend * intensityScale;
-  const speechSwayPauseFactor = isSpeaking ? 0.45 + 0.55 * runtime.speechPauseDamp : 1.0;
+  const stateSwayFactor = isSpeaking
+    ? 0.45 + 0.55 * runtime.speechPauseDamp
+    : isListening
+    ? 0.35
+    : isThinking
+    ? 0.45
+    : 1.0;
 
   // 2. Smooth multi-frequency time signals (sub-Hz natural breathing ~0.23Hz & slow sway ~0.12Hz)
   const t = elapsed + runtime.idlePhaseOffset;
@@ -2616,8 +2660,8 @@ export function updateFullBodyAndLowerRig(params: {
   const sway =
     (Math.sin(t * 0.76 + 0.4) * 0.7 + Math.sin(t * 0.43 + 1.9) * 0.3) *
     blend *
-    speechSwayPauseFactor;
-  const microPitch = Math.sin(t * 0.53 + 1.1) * blend * speechSwayPauseFactor;
+    stateSwayFactor;
+  const microPitch = Math.sin(t * 0.53 + 1.1) * blend * stateSwayFactor;
 
   // 3. Chest breathing (Spine, Spine1, Spine2): seated posture base + subtle inhale expansion
   const seatedSpinePitch = isSeated ? -0.04 : 0;

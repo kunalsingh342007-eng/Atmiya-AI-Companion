@@ -31,6 +31,7 @@ interface CompanionHUDProps {
   unifiedState?: UnifiedAnimationState;
   emotion: AvatarEmotion;
   micPermission: MicPermissionStatus;
+  isMicMuted?: boolean;
   isKeyConfigured: boolean;
   onToggleSidebar: () => void;
   onOpenHistoryTab: () => void;
@@ -55,6 +56,7 @@ export const CompanionHUD: React.FC<CompanionHUDProps> = ({
   unifiedState,
   emotion,
   micPermission,
+  isMicMuted = false,
   isKeyConfigured,
   onToggleSidebar,
   onOpenHistoryTab,
@@ -74,7 +76,7 @@ export const CompanionHUD: React.FC<CompanionHUDProps> = ({
         Boolean(window.matchMedia?.('(prefers-color-scheme: dark)').matches)
       : settings.theme !== 'light';
   const moodText = getCompanionMoodLabel(avatarState, emotion, unifiedState);
-  const showActiveMood = avatarState !== 'idle' || micPermission === 'denied';
+  const showActiveMood = avatarState !== 'idle' || micPermission === 'denied' || isMicMuted;
   const displayName = profile.displayName?.trim() || settings.userName?.trim() || '';
   const greetingText = getContextualGreeting(displayName);
 
@@ -102,18 +104,34 @@ export const CompanionHUD: React.FC<CompanionHUDProps> = ({
   return (
     <header className="relative z-20 w-full px-3 sm:px-5 pt-3 pb-1 flex items-center justify-between gap-2 shrink-0">
       {/* Top-Left: Contextual Greeting + Active Companion State */}
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div className="px-3.5 py-1.5 rounded-full bg-white/88 dark:bg-[#0b132b]/78 border border-slate-200/80 dark:border-slate-700/60 backdrop-blur-md shadow-xs min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="px-3 py-1.5 rounded-full bg-white/88 dark:bg-[#0b132b]/78 border border-slate-200/80 dark:border-slate-700/60 backdrop-blur-md shadow-xs min-w-0 max-w-[42vw] sm:max-w-[240px]">
           <span className="text-xs font-semibold text-slate-900 dark:text-white truncate block">
             {greetingText}
           </span>
         </div>
 
         {showActiveMood && (
-          <div className="hidden sm:block px-3 py-1.5 rounded-full bg-white/88 dark:bg-[#0b132b]/78 border border-indigo-200 dark:border-indigo-400/30 backdrop-blur-md text-[11px] font-medium text-indigo-700 dark:text-indigo-200 truncate shadow-xs">
-            <span>{moodText}</span>
+          <div
+            role="status"
+            aria-live="polite"
+            className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md text-[11px] font-medium truncate shadow-xs border ${
+              avatarState === 'error'
+                ? 'bg-rose-50/95 dark:bg-rose-950/85 border-rose-200 dark:border-rose-500/40 text-rose-700 dark:text-rose-200'
+                : micPermission === 'denied' || isMicMuted
+                ? 'bg-amber-50/95 dark:bg-amber-950/80 border-amber-200 dark:border-amber-500/35 text-amber-800 dark:text-amber-200'
+                : 'bg-white/88 dark:bg-[#0b132b]/78 border-indigo-200 dark:border-indigo-400/30 text-indigo-700 dark:text-indigo-200'
+            }`}
+          >
+            {avatarState === 'listening' && (
+              <span className="w-2 h-2 rounded-full bg-sky-500 motion-safe:animate-pulse shrink-0" aria-hidden="true" />
+            )}
+            {avatarState === 'speaking' && (
+              <span className="w-2 h-2 rounded-full bg-blue-500 motion-safe:animate-pulse shrink-0" aria-hidden="true" />
+            )}
+            <span>{avatarState === 'idle' && isMicMuted ? 'Mic muted' : moodText}</span>
             {micPermission === 'denied' && (
-              <span className="ml-1.5 text-amber-600 dark:text-amber-300 font-semibold">
+              <span className="text-amber-700 dark:text-amber-300 font-semibold">
                 · Mic blocked
               </span>
             )}
@@ -122,7 +140,7 @@ export const CompanionHUD: React.FC<CompanionHUDProps> = ({
       </div>
 
       {/* Top-Right Compact Controls: API Warning (if needed), Sessions, Language, Audio, Theme, Profile Menu */}
-      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap justify-end">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 justify-end">
         {!isKeyConfigured && (
           <button
             type="button"

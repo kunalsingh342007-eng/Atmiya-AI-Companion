@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ConversationSession } from '../../types/companion';
 import {
   MessageSquare,
@@ -54,6 +54,21 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editingId) {
+          setEditingId(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, editingId, onClose]);
 
   const normalizedQuery = searchTerm.trim().toLowerCase();
   const filtered = conversations.filter((c) => {
@@ -212,55 +227,53 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               return (
                 <div key={conv.id} className="space-y-1">
                   <div
-                    onClick={() => {
-                      if (isEditing) return;
-                      setConfirmDeleteId(null);
-                      onSelect(conv.id);
-                      onClose();
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    aria-current={isActive ? 'true' : undefined}
-                    onKeyDown={(e) => {
-                      if (isEditing) return;
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setConfirmDeleteId(null);
-                        onSelect(conv.id);
-                        onClose();
-                      }
-                    }}
-                    className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    className={`group relative flex items-center justify-between gap-1 p-1.5 rounded-xl transition text-xs ${
                       isActive
                         ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-200 border border-blue-200 dark:border-blue-500/40 font-semibold'
                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/70 border border-transparent'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
-                      <MessageSquare
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          isActive
-                            ? 'text-blue-600 dark:text-sky-400'
-                            : 'text-slate-400 dark:text-slate-500'
-                        }`}
-                      />
-                      {isEditing ? (
+                    {isEditing ? (
+                      <div className="flex items-center gap-2 min-w-0 flex-1 px-1 py-1">
+                        <MessageSquare
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isActive
+                              ? 'text-blue-600 dark:text-sky-400'
+                              : 'text-slate-400 dark:text-slate-500'
+                          }`}
+                        />
                         <input
                           type="text"
                           maxLength={80}
                           value={editTitle}
-                          onClick={(e) => e.stopPropagation()}
                           onChange={(e) => setEditTitle(e.target.value)}
                           onKeyDown={(e) => {
-                            e.stopPropagation();
                             if (e.key === 'Enter' && editTitle.trim()) handleSaveRename(conv.id, e);
                             if (e.key === 'Escape') setEditingId(null);
                           }}
                           aria-label="Session title"
-                          className="bg-white dark:bg-slate-900 border border-blue-500 rounded px-1.5 py-0.5 text-xs text-slate-900 dark:text-slate-100 w-full focus:outline-none"
+                          className="bg-white dark:bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs text-slate-900 dark:text-slate-100 w-full focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                           autoFocus
                         />
-                      ) : (
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmDeleteId(null);
+                          onSelect(conv.id);
+                          onClose();
+                        }}
+                        aria-current={isActive ? 'true' : undefined}
+                        className="flex items-center gap-2.5 min-w-0 flex-1 text-left px-1.5 py-1 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      >
+                        <MessageSquare
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isActive
+                              ? 'text-blue-600 dark:text-sky-400'
+                              : 'text-slate-400 dark:text-slate-500'
+                          }`}
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="truncate block" title={conv.title}>
@@ -277,18 +290,18 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                             {timeLabel ? ` · ${timeLabel}` : ''}
                           </span>
                         </div>
-                      )}
-                    </div>
+                      </button>
+                    )}
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-0.5 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                       {isEditing ? (
                         <>
                           <button
                             type="button"
                             disabled={!editTitle.trim()}
                             onClick={(e) => handleSaveRename(conv.id, e)}
-                            className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                            className="h-8 w-8 inline-flex items-center justify-center text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                             title="Save rename"
                             aria-label="Save conversation title"
                           >
@@ -300,32 +313,32 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                               e.stopPropagation();
                               setEditingId(null);
                             }}
-                            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded cursor-pointer"
+                            className="h-8 w-8 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                             title="Cancel rename"
                             aria-label="Cancel rename"
                           >
-                            <X className="w-3 h-3" />
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </>
                       ) : (
                         <button
                           type="button"
                           onClick={(e) => handleStartRename(conv, e)}
-                          className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded cursor-pointer"
+                          className="h-8 w-8 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                           title="Rename"
                           aria-label={`Rename ${conv.title || 'conversation'}`}
                         >
-                          <Edit2 className="w-3 h-3" />
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                       <button
                         type="button"
                         onClick={(e) => handleRequestDelete(conv, e)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded cursor-pointer"
+                        className="h-8 w-8 inline-flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                         title="Delete"
                         aria-label={`Delete ${conv.title || 'conversation'}`}
                       >
-                        <Trash2 className="w-3 h-3" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -361,7 +374,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         </div>
 
         {/* Clear All Confirmation */}
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800/80">
+        <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-200 dark:border-slate-800/80">
           {showClearConfirm ? (
             <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-[11px] text-rose-800 dark:text-rose-200 space-y-2">
               <div className="flex items-center gap-1.5 font-medium">

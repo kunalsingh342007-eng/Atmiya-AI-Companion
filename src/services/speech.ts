@@ -281,6 +281,10 @@ class SpeechService {
         throw new Error('AudioContext suspended (awaiting user gesture)');
       }
 
+      if (!base64Wav || typeof base64Wav !== 'string') {
+        throw new Error('Empty audio payload');
+      }
+
       const binaryString = atob(base64Wav);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);

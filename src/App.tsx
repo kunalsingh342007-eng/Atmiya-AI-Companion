@@ -48,10 +48,13 @@ import { ToastBanner } from './components/Layout/ToastBanner';
 import { UnsavedChangesDialog } from './components/Layout/UnsavedChangesDialog';
 import { useSystemPreferences } from './hooks/useSystemPreferences';
 import { useToast } from './hooks/useToast';
+import { pathnameForTab, resolveTabFromPathname } from './utils/navigation';
 
 export default function App() {
-  // Navigation & Game Progression State
-  const [activeTab, setActiveTab] = useState<ActiveNavTab>('home');
+  // Navigation & Game Progression State (synced with URL pathname for direct-route refresh)
+  const [activeTab, setActiveTab] = useState<ActiveNavTab>(() =>
+    typeof window !== 'undefined' ? resolveTabFromPathname(window.location.pathname) : 'home'
+  );
   const [progress, setProgress] = useState<GameProgress>(() => storage.getProgress());
   const [showFirstTimeHint, setShowFirstTimeHint] = useState<boolean>(
     () => !storage.isHomeHintDismissed()
@@ -281,7 +284,7 @@ export default function App() {
   );
 
   const executeSelectTab = useCallback(
-    (tab: ActiveNavTab) => {
+    (tab: ActiveNavTab, options: { syncHistory?: boolean } = {}) => {
       if (tab !== 'home' && avatarStateRef.current === 'listening') {
         manualStopListeningRef.current = true;
         latestRecognizedTranscriptRef.current = '';
@@ -300,10 +303,30 @@ export default function App() {
       if (tab !== 'settings') {
         setHasUnsavedSettingsTab(false);
       }
+      if (options.syncHistory !== false && typeof window !== 'undefined') {
+        const targetPath = pathnameForTab(tab);
+        if (window.location.pathname !== targetPath) {
+          window.history.pushState({ tab }, '', targetPath);
+        }
+      }
       setActiveTab(tab);
     },
     []
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetInitial = pathnameForTab(activeTab);
+    if (window.location.pathname !== targetInitial) {
+      window.history.replaceState({ tab: activeTab }, '', targetInitial);
+    }
+    const onPopState = () => {
+      const nextTab = resolveTabFromPathname(window.location.pathname);
+      executeSelectTab(nextTab, { syncHistory: false });
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [executeSelectTab]);
 
   const handleSelectTab = (tab: ActiveNavTab) => {
     if (tab === activeTab) return;
@@ -339,7 +362,7 @@ export default function App() {
     }
 
     dismissHint();
-    cancelPendingGreetingAudio();
+    cancelActiveTurn();
     const epochAtStart = turnEpochRef.current;
     setPreviewEmotion(null);
     setVoiceError(null);
@@ -352,7 +375,6 @@ export default function App() {
       force: true,
       source: 'voice',
     });
-    setAvatarState('listening');
     setUserTranscript('');
 
     const langLocale: 'hi-IN' | 'en-IN' = settings.language === 'hi' ? 'hi-IN' : 'en-IN';
@@ -461,7 +483,8 @@ export default function App() {
 
   const handleToggleListen = () => {
     if (isProcessingRef.current) return;
-    if (avatarState === 'speaking') {
+    if (avatarState === 'speaking' || avatarState === 'preparing_audio') {
+      cancelActiveTurn();
       speechService.stopSpeaking();
       setIsSpeaking(false);
     }
@@ -706,7 +729,7 @@ export default function App() {
     if (isProcessingRef.current || speechService.getIsSpeaking()) return;
 
     dismissHint();
-    cancelPendingGreetingAudio();
+    cancelActiveTurn();
     playGameSound('tap', isSoundEnabled);
     setAiSpokenText(line);
     showSpeechBubble(line);
@@ -738,15 +761,17 @@ export default function App() {
           if (turnEpochRef.current !== reactionEpoch) return;
           setIsSpeaking(false);
           ctrl?.endSpeechSession();
-          ctrl?.returnToIdle(speechReqId);
-          setAvatarState('idle');
+          if (explicitState === 'greeting') {
+            ctrl?.finishGreetingSpeech(speechReqId);
+          } else {
+            ctrl?.returnToIdle(speechReqId);
+          }
         },
         () => {
           if (turnEpochRef.current !== reactionEpoch) return;
           const startRes = ctrl?.dispatch({
-            animationState: explicitState ?? 'speaking',
+            animationState: 'speaking',
             emotion,
-            gesture,
             intensity: 0.78,
             force: true,
             source: 'user-action',
@@ -760,7 +785,6 @@ export default function App() {
             speechRate: settings.speechRate,
             requestId: speechReqId,
           });
-          setAvatarState('speaking');
           setIsSpeaking(true);
         }
       );
@@ -770,7 +794,7 @@ export default function App() {
         emotion,
         gesture,
         intensity: 0.78,
-        durationMs: 2600,
+        durationMs: 2800,
         force: true,
         source: 'user-action',
       });
@@ -784,7 +808,7 @@ export default function App() {
       'Haanji! I am right here and listening whenever you are ready.',
     ];
     const picked = greetings[Math.floor(Math.random() * greetings.length)];
-    triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true, 'nod', 'greeting');
+    triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true, 'wave', 'greeting');
   };
 
   const handleSendMessage = async (text: string, options: { isRetry?: boolean } = {}) => {
@@ -1290,6 +1314,7 @@ export default function App() {
     cancelActiveTurn();
     speechService.stopSpeaking();
     speechService.stopRecognition();
+    animControllerRef.current?.returnToIdle();
     storage.clearAllConversations();
     const fresh = storage.createConversation(settings.personality, settings.language);
     setConversations([fresh]);
@@ -1297,7 +1322,7 @@ export default function App() {
     setDraftsBySession({});
     setAiSpokenText('');
     setUserTranscript('');
-    setAvatarState('idle');
+    setIsSpeaking(false);
     showToast('Conversation history cleared');
   };
 
@@ -1344,7 +1369,7 @@ export default function App() {
       setResetCameraNonce((n) => n + 1);
     }
     setShowOnboarding(false);
-    setActiveTab('home');
+    executeSelectTab('home');
   };
 
   const handleToggleTheme = () => {
@@ -1376,8 +1401,8 @@ export default function App() {
     storage.setActiveConversationId(id);
     speechService.stopSpeaking();
     speechService.stopRecognition();
+    animControllerRef.current?.returnToIdle();
     setIsSpeaking(false);
-    setAvatarState('idle');
     setChatError(null);
     const selected = conversations.find((c) => c.id === id);
     const lastModel = selected?.messages
@@ -1398,8 +1423,8 @@ export default function App() {
       cancelActiveTurn();
       speechService.stopSpeaking();
       speechService.stopRecognition();
+      animControllerRef.current?.returnToIdle();
       setIsSpeaking(false);
-      setAvatarState('idle');
       setChatError(null);
     }
     setDraftsBySession((prev) => {
@@ -1800,6 +1825,7 @@ export default function App() {
         onDraftChange={updateCurrentComposerDraft}
         speakingMessageId={activeReplayMessageId}
         onReplayMessage={handleReplayMessage}
+        prefersReducedMotion={prefersReducedMotion}
       />
     </GameShell>
   );

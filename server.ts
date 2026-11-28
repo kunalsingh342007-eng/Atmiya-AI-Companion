@@ -131,7 +131,16 @@ export function logServerWarn(route: string, category: string, message: string, 
 }
 
 export const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// Baseline security headers compatible with iframe hosting
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 // Optional explicit CORS allowlist for split-origin deployments (no wildcard)
 const ALLOWED_ORIGINS = new Set(
@@ -151,9 +160,84 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method === 'OPTIONS') {
       return res.status(204).end();
     }
+  } else if (origin && req.method === 'OPTIONS' && req.path.startsWith('/api/')) {
+    return res.status(403).json({
+      error: 'CORS_ORIGIN_DENIED',
+      message: 'Cross-origin request is not permitted.',
+    });
   }
   next();
 });
+
+// Dependency-free sliding-window per-IP rate limiter for AI endpoints
+interface RateLimitBucket {
+  timestamps: number[];
+}
+
+const activeRateLimitStores: Array<Map<string, RateLimitBucket>> = [];
+
+export function resetRateLimitersForTests(): void {
+  for (const store of activeRateLimitStores) {
+    store.clear();
+  }
+}
+
+export function createRateLimiter(options: {
+  windowMs: number;
+  maxRequests: number;
+  routeLabel: string;
+}) {
+  const store = new Map<string, RateLimitBucket>();
+  activeRateLimitStores.push(store);
+  let lastPruneMs = Date.now();
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const cutoff = now - options.windowMs;
+
+    if (now - lastPruneMs > options.windowMs && store.size > 200) {
+      lastPruneMs = now;
+      for (const [key, bucket] of store.entries()) {
+        bucket.timestamps = bucket.timestamps.filter((t) => t > cutoff);
+        if (bucket.timestamps.length === 0) {
+          store.delete(key);
+        }
+      }
+    }
+
+    const forwarded = req.headers['x-forwarded-for'];
+    const forwardedIp =
+      typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : Array.isArray(forwarded)
+        ? forwarded[0]?.trim()
+        : '';
+    const clientIp = req.ip || forwardedIp || req.socket?.remoteAddress || 'unknown';
+
+    const bucket = store.get(clientIp) || { timestamps: [] };
+    bucket.timestamps = bucket.timestamps.filter((t) => t > cutoff);
+
+    if (bucket.timestamps.length >= options.maxRequests) {
+      const oldest = bucket.timestamps[0] ?? now;
+      const retryAfterSec = Math.max(1, Math.ceil((oldest + options.windowMs - now) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSec));
+      logServerWarn(options.routeLabel, 'RATE_LIMITED', `Rate limit reached (${options.maxRequests}/${Math.round(options.windowMs / 1000)}s).`, 429);
+      return res.status(429).json({
+        error: 'RATE_LIMITED',
+        message: 'Too many requests in a short window. Please wait a moment and try again.',
+        retryAfterSeconds: retryAfterSec,
+      });
+    }
+
+    bucket.timestamps.push(now);
+    store.set(clientIp, bucket);
+    next();
+  };
+}
+
+const chatRateLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 30, routeLabel: '/api/chat' });
+const ttsRateLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 30, routeLabel: '/api/tts' });
+const transcribeRateLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 15, routeLabel: '/api/transcribe' });
 
 // Middleware for parsing JSON with ample limit for audio blobs
 app.use(express.json({ limit: '25mb' }));
@@ -413,7 +497,7 @@ app.get('/api/status', (_req: Request, res: Response) => {
 });
 
 // 2. Chat Completion endpoint with personality & language support
-app.post('/api/chat', async (req: Request, res: Response) => {
+app.post('/api/chat', chatRateLimiter, async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
@@ -436,10 +520,20 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'INVALID_INPUT', message: 'Message text is required.' });
     }
 
-    const trimmedMessage = message.trim().slice(0, 8000);
-    const safeHistory = Array.isArray(history) ? history : [];
+    const rawTrimmedMessage = message.trim();
+    if (rawTrimmedMessage.length > 8000) {
+      return res.status(400).json({
+        error: 'INPUT_TOO_LONG',
+        message: 'Message text exceeds the 8,000-character limit.',
+      });
+    }
+
+    const trimmedMessage = rawTrimmedMessage;
+    const safeHistory = Array.isArray(history) ? history.slice(-30) : [];
+    const allowedLanguages = new Set(['auto', 'en', 'hi', 'hinglish']);
     const safePersonality = typeof personality === 'string' ? personality : 'calm';
-    const safeLanguage = typeof language === 'string' ? language : 'auto';
+    const safeLanguage =
+      typeof language === 'string' && allowedLanguages.has(language) ? language : 'auto';
     const safeUserName = typeof userName === 'string' ? userName.trim().slice(0, 80) : '';
 
     // Build personality directives
@@ -743,7 +837,7 @@ ${languageInstruction}
 });
 
 // 3. Text-to-Speech (TTS) endpoint using gemini-3.8-flash-lite-tts
-app.post('/api/tts', async (req: Request, res: Response) => {
+app.post('/api/tts', ttsRateLimiter, async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
@@ -758,6 +852,13 @@ app.post('/api/tts', async (req: Request, res: Response) => {
 
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: 'INVALID_INPUT', message: 'Text is required for TTS.' });
+    }
+
+    if (text.trim().length > 8000) {
+      return res.status(400).json({
+        error: 'INPUT_TOO_LONG',
+        message: 'TTS input exceeds the maximum allowed character limit.',
+      });
     }
 
     const safeStyle = typeof style === 'string' && style.trim()
@@ -776,7 +877,7 @@ app.post('/api/tts', async (req: Request, res: Response) => {
     }
 
     const validVoices = ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'];
-    const chosenVoice = validVoices.includes(voice) ? voice : 'Kore';
+    const chosenVoice = typeof voice === 'string' && validVoices.includes(voice) ? voice : 'Kore';
 
     const ttsAbort = createUpstreamAbortControl(res, 18000);
     let base64Audio: string | undefined;
@@ -859,7 +960,7 @@ app.post('/api/tts', async (req: Request, res: Response) => {
 });
 
 // 4. Audio Transcription endpoint using gemini-3.5-transcribe
-app.post('/api/transcribe', async (req: Request, res: Response) => {
+app.post('/api/transcribe', transcribeRateLimiter, async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
     if (!ai) {
@@ -882,6 +983,18 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       });
     }
 
+    const normalizedBase64 = audioBase64
+      .trim()
+      .replace(/^data:audio\/[a-z0-9.+-]+;base64,/i, '')
+      .replace(/\s+/g, '');
+
+    if (!normalizedBase64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(normalizedBase64)) {
+      return res.status(400).json({
+        error: 'INVALID_INPUT',
+        message: 'audioBase64 must be valid base64-encoded audio data.',
+      });
+    }
+
     const safeMimeType =
       typeof mimeType === 'string' && /^audio\/[a-z0-9.+-]+$/i.test(mimeType)
         ? mimeType
@@ -890,7 +1003,7 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
     const audioPart = {
       inlineData: {
         mimeType: safeMimeType,
-        data: audioBase64,
+        data: normalizedBase64,
       },
     };
 
@@ -1005,7 +1118,11 @@ async function startServer() {
     const relPath = req.path.replace(/^\/+/, '');
     const resolved = path.resolve(staticRoot, 'models', relPath);
     const modelsRoot = path.resolve(staticRoot, 'models');
-    if (!resolved.startsWith(modelsRoot) || !fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
+    if (
+      (resolved !== modelsRoot && !resolved.startsWith(modelsRoot + path.sep)) ||
+      !fs.existsSync(resolved) ||
+      fs.statSync(resolved).isDirectory()
+    ) {
       return res.status(404).json({
         error: 'MODEL_NOT_FOUND',
         message: '3D model asset not found at /models/' + relPath,
@@ -1035,7 +1152,7 @@ async function startServer() {
   });
 }
 
-if (!isServerlessRuntime && process.env.NODE_ENV !== 'test') {
+if (!isServerlessRuntime && process.env.NODE_ENV !== 'test' && !process.env.NODE_TEST_CONTEXT) {
   startServer().catch((err) => {
     logServerError('startup', 'SERVER_START_ERROR', err, 500);
     process.exit(1);

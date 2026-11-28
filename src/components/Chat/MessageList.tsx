@@ -146,17 +146,18 @@ export const MessageList: React.FC<MessageListProps> = ({
         return (
           <div
             key={index}
-            className="my-2.5 rounded-xl overflow-hidden bg-[#081020] border border-slate-700/80 text-xs font-mono"
+            className="my-2.5 max-w-full rounded-xl overflow-hidden bg-[#081020] border border-slate-700/80 text-xs font-mono"
           >
-            <div className="flex items-center justify-between px-3 py-1.5 bg-[#0f1b33] border-b border-slate-700/80 text-slate-300">
-              <span className="flex items-center gap-1.5 text-[11px] font-sans font-semibold">
-                <Terminal className="w-3.5 h-3.5 text-sky-400" />
-                {language || 'code'}
+            <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-[#0f1b33] border-b border-slate-700/80 text-slate-300">
+              <span className="flex items-center gap-1.5 min-w-0 text-[11px] font-sans font-semibold">
+                <Terminal className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span className="truncate">{language || 'code'}</span>
               </span>
               <button
                 type="button"
                 onClick={() => handleCopyCode(codeKey, code)}
-                className="text-[11px] text-slate-300 hover:text-white flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                aria-label={isCodeCopied ? 'Copied code block' : 'Copy code block'}
+                className="text-[11px] text-slate-300 hover:text-white flex items-center gap-1 py-1 px-2 rounded hover:bg-slate-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               >
                 {isCodeCopied ? (
                   <>
@@ -171,7 +172,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                 )}
               </button>
             </div>
-            <pre className="p-3 overflow-x-auto text-sky-200 leading-relaxed">
+            <pre className="p-3 max-w-full overflow-x-auto text-sky-200 leading-relaxed">
               <code>{code}</code>
             </pre>
           </div>
@@ -181,7 +182,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       return (
         <div
           key={index}
-          className={`whitespace-pre-wrap leading-relaxed ${
+          className={`whitespace-pre-wrap [overflow-wrap:anywhere] break-words leading-[1.58] ${
             isUser ? 'text-white' : 'text-slate-800 dark:text-slate-100'
           }`}
         >
@@ -192,7 +193,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   };
 
   return (
-    <div className="space-y-4 pb-2">
+    <div className="space-y-4 pb-2 min-w-0">
       {/* Message Items */}
       {messages.map((msg) => {
         const isUser = msg.role === 'user';
@@ -201,10 +202,11 @@ export const MessageList: React.FC<MessageListProps> = ({
         return (
           <div
             key={msg.id}
-            className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+            className={`flex items-start gap-2.5 min-w-0 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
           >
             {/* Avatar icon */}
             <div
+              aria-hidden="true"
               className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-semibold mt-0.5 ${
                 isUser
                   ? 'bg-blue-600 text-white'
@@ -220,7 +222,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
             {/* Message Bubble Container */}
             <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] sm:text-sm transition-colors ${
+              className={`max-w-[88%] sm:max-w-[85%] min-w-0 rounded-2xl px-3.5 py-2.5 text-[13px] sm:text-sm transition-colors ${
                 isUser
                   ? 'bg-blue-600 text-white rounded-tr-sm shadow-xs'
                   : 'bg-slate-100 dark:bg-[#101c36] border border-slate-200/90 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-tl-sm'
@@ -228,14 +230,14 @@ export const MessageList: React.FC<MessageListProps> = ({
             >
               {/* Unboxed Message Meta */}
               <div
-                className={`flex items-center justify-between gap-3 mb-1 text-[11px] ${
-                  isUser ? 'text-blue-100/90' : 'text-slate-500 dark:text-slate-400'
+                className={`flex items-center justify-between gap-3 mb-1.5 text-[11px] min-w-0 ${
+                  isUser ? 'text-blue-100/95' : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
-                <span className="font-semibold">
+                <span className="font-semibold truncate min-w-0">
                   {isUser ? settings.userName || 'You' : settings.avatarConfig.personaName || 'Ātmiya'}
                 </span>
-                <span className="tabular-nums">
+                <span className="tabular-nums shrink-0">
                   {new Date(msg.timestamp).toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit',
@@ -244,18 +246,20 @@ export const MessageList: React.FC<MessageListProps> = ({
               </div>
 
               {/* Message Text Content */}
-              <div className="text-[13px] sm:text-sm font-normal">
+              <div className="text-[13px] sm:text-sm font-normal min-w-0">
                 {renderMessageContent(msg.id, msg.content, isUser)}
               </div>
 
               {/* Actions for Model Messages */}
               {!isUser && (
-                <div className="mt-2.5 pt-2 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                <div className="mt-2.5 pt-2 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2 text-xs">
                   <button
                     type="button"
                     disabled={isThinking && !isMsgSpeaking}
                     onClick={() => handleSpeak(msg)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    aria-pressed={isMsgSpeaking}
+                    aria-label={isMsgSpeaking ? 'Stop speaking reply' : 'Listen to reply'}
+                    className={`min-h-[32px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       isMsgSpeaking
                         ? 'bg-blue-600 text-white'
                         : 'bg-white dark:bg-[#091224] hover:bg-blue-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/70 text-slate-700 dark:text-slate-300'
@@ -278,9 +282,9 @@ export const MessageList: React.FC<MessageListProps> = ({
                   <button
                     type="button"
                     onClick={() => handleCopy(msg.id, msg.content)}
-                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    className="min-h-[32px] min-w-[32px] px-2 py-1 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-800 inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title="Copy message"
-                    aria-label="Copy message"
+                    aria-label={copiedId === msg.id ? 'Message copied' : 'Copy message'}
                   >
                     {copiedId === msg.id ? (
                       <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[11px] font-medium">

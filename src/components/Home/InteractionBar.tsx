@@ -85,23 +85,23 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
   }, [isMoreOpen]);
 
   const secondaryPill =
-    'h-10 px-3.5 sm:px-5 rounded-full bg-white/92 dark:bg-[#0d1636]/86 hover:bg-white dark:hover:bg-[#152252] border border-slate-200/90 dark:border-indigo-400/30 hover:dark:border-sky-400/45 backdrop-blur-lg text-slate-800 dark:text-slate-100 text-xs sm:text-[13px] font-medium inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 shadow-md disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
+    'h-10 px-3 sm:px-4.5 rounded-full bg-white/92 dark:bg-[#0d1636]/86 hover:bg-white dark:hover:bg-[#152252] border border-slate-200/90 dark:border-indigo-400/25 hover:dark:border-sky-400/45 backdrop-blur-lg text-slate-800 dark:text-slate-100 text-xs sm:text-[13px] font-medium inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 shadow-sm disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400';
 
   return (
-    <div className="relative z-20 w-full max-w-3xl mx-auto px-3 sm:px-5 pb-2 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 pointer-events-auto shrink-0">
-      {/* Talk */}
+    <div className="relative z-20 w-full max-w-3xl mx-auto px-3 sm:px-5 pb-1.5 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 pointer-events-auto shrink-0">
+      {/* Primary Action: Talk */}
       <button
         type="button"
         onClick={onTalk}
         disabled={isBusy}
         aria-pressed={isListening}
-        className={`h-10 px-4 sm:px-6 rounded-full text-xs sm:text-[13px] font-semibold inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-55 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${
+        className={`h-10 sm:h-11 px-4 sm:px-6 rounded-full text-xs sm:text-[13px] font-semibold inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-55 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${
           isListening
-            ? 'bg-sky-500 hover:bg-sky-400 text-white shadow-md ring-2 ring-sky-300/60'
+            ? 'bg-sky-500 hover:bg-sky-400 text-white shadow-lg ring-2 ring-sky-300/70'
             : 'bg-blue-600 hover:bg-blue-500 text-white border border-sky-300/35 shadow-md'
         }`}
       >
-        <Mic className="w-4 h-4" />
+        <Mic className={`w-4 h-4 ${isListening ? 'motion-safe:animate-pulse' : ''}`} />
         <span>{isListening ? 'Send Voice' : 'Talk'}</span>
       </button>
 
@@ -313,7 +313,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
                   setIsMoreOpen(false);
                   onOpenChat();
                 }}
-                className="md:hidden w-full px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.07] flex items-center gap-2 transition cursor-pointer"
+                className="lg:hidden w-full px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.07] flex items-center gap-2 transition cursor-pointer"
               >
                 <MessageSquare className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400 shrink-0" />
                 <span>Open Chat</span>
