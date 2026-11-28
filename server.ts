@@ -836,7 +836,66 @@ ${languageInstruction}
   }
 });
 
-// 3. Text-to-Speech (TTS) endpoint using gemini-3.8-flash-lite-tts
+const VALID_TTS_VOICES = ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'] as const;
+
+function prepareTtsRequest(body: unknown):
+  | {
+      ok: true;
+      cleanedText: string;
+      chosenVoice: string;
+      safeStyle: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      message: string;
+    } {
+  const { text, voice = 'Kore', style = 'Warm, natural, friendly companion' } = (body ?? {}) as Record<string, unknown>;
+
+  if (!text || typeof text !== 'string') {
+    return { ok: false, status: 400, error: 'INVALID_INPUT', message: 'Text is required for TTS.' };
+  }
+
+  if (text.trim().length > 8000) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'INPUT_TOO_LONG',
+      message: 'TTS input exceeds the maximum allowed character limit.',
+    };
+  }
+
+  const safeStyle =
+    typeof style === 'string' && style.trim()
+      ? style.trim().slice(0, 120)
+      : 'Warm, natural, friendly companion';
+
+  // Clean text for TTS (strip code blocks and markdown symbols for cleaner pronunciation)
+  const cleanedText = text
+    .replace(/```[\s\S]*?```/g, ' [code snippet omitted for voice] ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[*_#]/g, '')
+    .slice(0, 1000);
+
+  if (!cleanedText.trim()) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'INVALID_INPUT',
+      message: 'No pronounceable text provided.',
+    };
+  }
+
+  const chosenVoice =
+    typeof voice === 'string' && (VALID_TTS_VOICES as readonly string[]).includes(voice)
+      ? voice
+      : 'Kore';
+
+  return { ok: true, cleanedText, chosenVoice, safeStyle };
+}
+
+// 3. Text-to-Speech (TTS) endpoint using gemini-3.8-flash-lite-tts (unary WAV)
 app.post('/api/tts', ttsRateLimiter, async (req: Request, res: Response) => {
   try {
     const ai = getGenAIClient();
@@ -848,36 +907,11 @@ app.post('/api/tts', ttsRateLimiter, async (req: Request, res: Response) => {
       });
     }
 
-    const { text, voice = 'Kore', style = 'Warm, natural, friendly companion' } = req.body ?? {};
-
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: 'Text is required for TTS.' });
+    const prep = prepareTtsRequest(req.body);
+    if (!prep.ok) {
+      return res.status(prep.status).json({ error: prep.error, message: prep.message });
     }
-
-    if (text.trim().length > 8000) {
-      return res.status(400).json({
-        error: 'INPUT_TOO_LONG',
-        message: 'TTS input exceeds the maximum allowed character limit.',
-      });
-    }
-
-    const safeStyle = typeof style === 'string' && style.trim()
-      ? style.trim().slice(0, 120)
-      : 'Warm, natural, friendly companion';
-
-    // Clean text for TTS (strip code blocks and markdown symbols for cleaner pronunciation)
-    const cleanedText = text
-      .replace(/```[\s\S]*?```/g, ' [code snippet omitted for voice] ')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/[*_#]/g, '')
-      .slice(0, 1000); // Reasonable slice for single spoken utterance
-
-    if (!cleanedText.trim()) {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: 'No pronounceable text provided.' });
-    }
-
-    const validVoices = ['Kore', 'Puck', 'Fenrir', 'Zephyr', 'Charon'];
-    const chosenVoice = typeof voice === 'string' && validVoices.includes(voice) ? voice : 'Kore';
+    const { cleanedText, chosenVoice, safeStyle } = prep;
 
     const ttsAbort = createUpstreamAbortControl(res, 18000);
     let base64Audio: string | undefined;
@@ -956,6 +990,150 @@ app.post('/api/tts', ttsRateLimiter, async (req: Request, res: Response) => {
       error: category,
       message: parsed.message,
     });
+  }
+});
+
+// 3b. Streaming Text-to-Speech (TTS) endpoint emitting NDJSON 24kHz L16 raw PCM chunks
+app.post('/api/tts/stream', ttsRateLimiter, async (req: Request, res: Response) => {
+  const ttsAbort = createUpstreamAbortControl(res, 22000);
+  try {
+    const ai = getGenAIClient();
+    if (!ai) {
+      logServerWarn('/api/tts/stream', 'API_KEY_MISSING', 'GEMINI_API_KEY is missing or invalid.', 503);
+      return res.status(503).json({
+        error: 'API_KEY_MISSING',
+        message: 'Gemini API Key is not configured for TTS.',
+      });
+    }
+
+    const prep = prepareTtsRequest(req.body);
+    if (!prep.ok) {
+      return res.status(prep.status).json({ error: prep.error, message: prep.message });
+    }
+    const { cleanedText, chosenVoice, safeStyle } = prep;
+
+    const responseStream = await ai.models.generateContentStream({
+      model: 'gemini-3.8-flash-lite-tts',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: cleanedText,
+              speechMetadata: {
+                style: safeStyle,
+              },
+            },
+          ],
+        },
+      ],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: chosenVoice },
+          },
+        },
+        abortSignal: ttsAbort.signal,
+      },
+    });
+
+    let streamHeadersSent = false;
+    let chunkCount = 0;
+
+    const ensureStreamHeaders = () => {
+      if (streamHeadersSent || res.headersSent || res.writableEnded) return;
+      streamHeadersSent = true;
+      res.status(200);
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      if (typeof (res as any).flushHeaders === 'function') {
+        (res as any).flushHeaders();
+      }
+    };
+
+    for await (const chunk of responseStream) {
+      if (ttsAbort.isClientClosed() || res.writableEnded) {
+        return;
+      }
+      const base64Pcm = chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Pcm) {
+        ensureStreamHeaders();
+        chunkCount += 1;
+        res.write(
+          JSON.stringify({
+            type: 'chunk',
+            audioBase64: base64Pcm,
+            mimeType: 'audio/l16;rate=24000',
+            sampleRate: 24000,
+          }) + '\n'
+        );
+      }
+    }
+
+    if (ttsAbort.isClientClosed() || res.writableEnded) {
+      return;
+    }
+
+    if (chunkCount === 0) {
+      return res.status(502).json({
+        error: 'TTS_EMPTY',
+        message: 'No audio chunks returned by streaming TTS model.',
+      });
+    }
+
+    res.write(JSON.stringify({ type: 'done', voice: chosenVoice, chunkCount }) + '\n');
+    res.end();
+  } catch (err: any) {
+    if (ttsAbort.isClientClosed() || res.writableEnded) return;
+    const parsed = parseGeminiError(err);
+
+    if (res.headersSent) {
+      const category = parsed.isQuota
+        ? 'TTS_QUOTA_EXCEEDED'
+        : parsed.code === 'GENERATION_ERROR'
+        ? 'TTS_ERROR'
+        : parsed.code;
+      logServerWarn('/api/tts/stream', category, parsed.message, parsed.httpStatus);
+      try {
+        res.write(JSON.stringify({ type: 'error', error: category, message: parsed.message }) + '\n');
+        res.end();
+      } catch {
+        // ignore write-after-end
+      }
+      return;
+    }
+
+    if (parsed.isQuota) {
+      logServerWarn(
+        '/api/tts/stream',
+        'TTS_QUOTA_EXCEEDED',
+        `Quota exhausted${parsed.retryAfterSeconds ? `, retryAfter=${parsed.retryAfterSeconds}s` : ''}`,
+        429
+      );
+      if (parsed.retryAfterSeconds) {
+        res.setHeader('Retry-After', String(parsed.retryAfterSeconds));
+      }
+      return res.status(429).json({
+        error: 'TTS_QUOTA_EXCEEDED',
+        message: 'Gemini TTS free-tier quota reached. Switched to browser voice fallback.',
+        ...(parsed.retryAfterSeconds ? { retryAfterSeconds: parsed.retryAfterSeconds } : {}),
+      });
+    }
+
+    const category = parsed.code === 'GENERATION_ERROR' ? 'TTS_ERROR' : parsed.code;
+    if (parsed.isTimeout) {
+      logServerWarn('/api/tts/stream', category, parsed.message, parsed.httpStatus);
+    } else {
+      logServerError('/api/tts/stream', category, { name: err?.name, code: category, message: parsed.message }, parsed.httpStatus);
+    }
+
+    res.status(parsed.httpStatus).json({
+      error: category,
+      message: parsed.message,
+    });
+  } finally {
+    ttsAbort.cleanup();
   }
 });
 

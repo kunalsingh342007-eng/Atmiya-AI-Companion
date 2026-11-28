@@ -229,4 +229,69 @@ describe('Server API, Security Headers, CORS, Rate Limiting & Client API', () =>
       api.resetTtsCooldown();
     }
   });
+
+  it('validates /api/tts/stream safely and parses chunked NDJSON stream & error frames in api.streamTTS', async () => {
+    // Missing key returns safe 503 JSON
+    process.env.GEMINI_API_KEY = '';
+    const missingKeyStream = await fetch(`${baseUrl}/api/tts/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Hello' }),
+    });
+    assert.equal(missingKeyStream.status, 503);
+    assert.equal(((await missingKeyStream.json()) as any).error, 'API_KEY_MISSING');
+
+    // Validation checks with non-empty test key
+    process.env.GEMINI_API_KEY = 'dummy-nonempty-test-key-value';
+    const emptyStream = await fetch(`${baseUrl}/api/tts/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '   ' }),
+    });
+    assert.equal(emptyStream.status, 400);
+    assert.equal(((await emptyStream.json()) as any).error, 'INVALID_INPUT');
+
+    const longStream = await fetch(`${baseUrl}/api/tts/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'c'.repeat(8001) }),
+    });
+    assert.equal(longStream.status, 400);
+    assert.equal(((await longStream.json()) as any).error, 'INPUT_TOO_LONG');
+
+    // Client api.streamTTS NDJSON split-line chunk parsing + done termination
+    const origFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+
+    globalThis.fetch = (async () => {
+      const ndjsonPart1 = '{"type":"chunk","audioBase64":"AAAA","mimeType":"audio/l16;rate=24000","sampleRate":24000}\n{"type":"chunk","audioBase64":';
+      const ndjsonPart2 = '"BBBB","mimeType":"audio/l16;rate=24000","sampleRate":24000}\n{"type":"done","voice":"Kore","chunkCount":2}\n';
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(ndjsonPart1));
+          controller.enqueue(encoder.encode(ndjsonPart2));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'application/x-ndjson' },
+      });
+    }) as typeof fetch;
+
+    try {
+      const received: Array<{ audioBase64: string; sampleRate: number }> = [];
+      const gen = await api.streamTTS({ text: 'Hello there', voice: 'Kore' });
+      for await (const c of gen) {
+        received.push({ audioBase64: c.audioBase64, sampleRate: c.sampleRate });
+      }
+      assert.equal(received.length, 2);
+      assert.equal(received[0].audioBase64, 'AAAA');
+      assert.equal(received[1].audioBase64, 'BBBB');
+    } finally {
+      globalThis.fetch = origFetch;
+      api.resetTtsCooldown();
+    }
+  });
 });
+

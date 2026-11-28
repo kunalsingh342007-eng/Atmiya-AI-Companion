@@ -1,3 +1,14 @@
+import {
+  alignTimeToVoicedSegments,
+  buildVoicedCueTimeline,
+  describeTimingCapabilities,
+  type NormalizedSpeechSyncFrame,
+  pickVoicedLexicalCue,
+  segmentAudioVoiceSpans,
+  type TimingProviderCapabilities,
+  type VoiceBurstSegment,
+} from './speechSyncAdapter';
+
 export const VERIFIED_GLB_VISEMES = [
   'viseme_sil',
   'viseme_PP',
@@ -1015,8 +1026,14 @@ interface ActiveAudioAnalyserSource {
   analyser: AnalyserNode;
   startCtxTime: number;
   durationSec: number;
-  envelope: AudioEnvelopeSummary;
+  isStreaming: boolean;
+  streamEnded: boolean;
+  envelope: AudioEnvelopeSummary | null;
+  voiceSegments: VoiceBurstSegment[];
+  liveNoiseFloor: number;
+  liveSpeechPeak: number;
   timeline: SpeechCueTimeline | null;
+  voicedTimeline: SpeechCueTimeline | null;
   timeDomainBuf: Float32Array<ArrayBuffer>;
   freqBuf: Uint8Array<ArrayBuffer>;
   binHz: number;
@@ -1045,6 +1062,7 @@ export class LipSyncEngine {
   private smoothedWeights: LipSyncMorphWeights = createNeutralLipSyncWeights();
   private lastSamplePerfMs = 0;
   private lastEvaluatedPerfMs = -Infinity;
+  private lastVoicedProgress = 0;
 
   public startAudioAnalyserSession(params: {
     token: number;
@@ -1060,6 +1078,8 @@ export class LipSyncEngine {
       params.text && params.text.trim()
         ? buildSpeechCueTimeline(params.text, params.rate ?? 1.0)
         : null;
+    const voicedTimeline = buildVoicedCueTimeline(timeline);
+    const voiceSegments = segmentAudioVoiceSpans(params.envelope);
 
     this.source = {
       kind: 'audio-analyser',
@@ -1068,15 +1088,71 @@ export class LipSyncEngine {
       analyser: params.analyser,
       startCtxTime: params.startCtxTime,
       durationSec: Math.max(0.05, params.durationSec),
+      isStreaming: false,
+      streamEnded: true,
       envelope: params.envelope,
+      voiceSegments,
+      liveNoiseFloor: params.envelope.noiseFloor,
+      liveSpeechPeak: params.envelope.speechPeak,
       timeline,
+      voicedTimeline,
       timeDomainBuf: new Float32Array(params.analyser.fftSize),
       freqBuf: new Uint8Array(params.analyser.frequencyBinCount),
       binHz: (params.ctx.sampleRate || 48000) / params.analyser.fftSize,
       prevSmoothedRms: 0,
     };
+    this.lastVoicedProgress = 0;
     this.lastSamplePerfMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
     this.lastEvaluatedPerfMs = -Infinity;
+  }
+
+  public startPcmStreamSession(params: {
+    token: number;
+    ctx: AudioContext;
+    analyser: AnalyserNode;
+    startCtxTime: number;
+    text?: string;
+    rate?: number;
+  }): void {
+    const timeline =
+      params.text && params.text.trim()
+        ? buildSpeechCueTimeline(params.text, params.rate ?? 1.0)
+        : null;
+    const voicedTimeline = buildVoicedCueTimeline(timeline);
+
+    this.source = {
+      kind: 'audio-analyser',
+      token: params.token,
+      ctx: params.ctx,
+      analyser: params.analyser,
+      startCtxTime: params.startCtxTime,
+      durationSec: Math.max(0.6, timeline?.estimatedDurationSec ?? 1.5),
+      isStreaming: true,
+      streamEnded: false,
+      envelope: null,
+      voiceSegments: [],
+      liveNoiseFloor: 0.008,
+      liveSpeechPeak: 0.16,
+      timeline,
+      voicedTimeline,
+      timeDomainBuf: new Float32Array(params.analyser.fftSize),
+      freqBuf: new Uint8Array(params.analyser.frequencyBinCount),
+      binHz: (params.ctx.sampleRate || 48000) / params.analyser.fftSize,
+      prevSmoothedRms: 0,
+    };
+    this.lastVoicedProgress = 0;
+    this.lastSamplePerfMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.lastEvaluatedPerfMs = -Infinity;
+  }
+
+  public updatePcmStreamDuration(token: number, scheduledTotalSec: number, ended = false): void {
+    if (!this.source || this.source.kind !== 'audio-analyser' || this.source.token !== token) {
+      return;
+    }
+    this.source.durationSec = Math.max(0.1, scheduledTotalSec);
+    if (ended) {
+      this.source.streamEnded = true;
+    }
   }
 
   public startSpeechSynthesisSession(params: {
@@ -1221,11 +1297,36 @@ export class LipSyncEngine {
     return this.smoothedWeights;
   }
 
+  public getTimingCapabilities(): TimingProviderCapabilities {
+    const mode: LipSyncMode = this.source ? this.source.kind : 'idle';
+    const hasText = Boolean(this.source?.timeline && this.source.timeline.cues.length > 0);
+    return describeTimingCapabilities(mode, hasText);
+  }
+
+  public getNormalizedSyncFrame(nowMs = this.now()): NormalizedSpeechSyncFrame {
+    const weights = this.sampleFrame(nowMs);
+    const caps = this.getTimingCapabilities();
+    const confidence =
+      !this.source
+        ? 0
+        : this.source.kind === 'audio-analyser'
+        ? this.source.isStreaming
+          ? 0.72
+          : 0.85
+        : 0.55;
+    return {
+      weights,
+      providerKind: caps.providerKind,
+      timingConfidence: confidence,
+      voicedProgress: this.lastVoicedProgress,
+    };
+  }
+
   private evaluateAudioAnalyserSource(src: ActiveAudioAnalyserSource): void {
     resetWeightsInPlace(this.targetWeights, 'audio-analyser');
 
     const elapsedSec = Math.max(0, src.ctx.currentTime - src.startCtxTime);
-    if (elapsedSec > src.durationSec + 0.08) {
+    if (src.streamEnded && elapsedSec > src.durationSec + 0.08) {
       return;
     }
 
@@ -1247,17 +1348,34 @@ export class LipSyncEngine {
     const liveRawRms = Math.sqrt(sumSq / Math.max(1, tdLen));
     const liveZcr = crossings / Math.max(1, tdLen);
 
-    const envDenom = Math.max(0.03, src.envelope.speechPeak - src.envelope.noiseFloor);
-    const liveNormRms = clamp01((liveRawRms - src.envelope.noiseFloor) / envDenom);
+    let combinedNormRms = 0;
+    let effectiveZcr = liveZcr;
 
-    // 2. Calibrated envelope + 24ms lookahead to compensate for morph smoothing latency
-    const envNow = sampleEnvelopeAt(src.envelope, elapsedSec);
-    const envAhead = sampleEnvelopeAt(src.envelope, Math.min(src.durationSec, elapsedSec + 0.024));
-    const combinedNormRms = clamp01(
-      liveNormRms * 0.48 + envNow.normRms * 0.24 + envAhead.normRms * 0.28
-    );
+    if (src.envelope) {
+      const envDenom = Math.max(0.03, src.envelope.speechPeak - src.envelope.noiseFloor);
+      const liveNormRms = clamp01((liveRawRms - src.envelope.noiseFloor) / envDenom);
 
-    const effectiveZcr = liveZcr * 0.65 + envNow.zcr * 0.35;
+      // 2. Calibrated envelope + 24ms lookahead to compensate for morph smoothing latency
+      const envNow = sampleEnvelopeAt(src.envelope, elapsedSec);
+      const envAhead = sampleEnvelopeAt(src.envelope, Math.min(src.durationSec, elapsedSec + 0.024));
+      combinedNormRms = clamp01(
+        liveNormRms * 0.48 + envNow.normRms * 0.24 + envAhead.normRms * 0.28
+      );
+      effectiveZcr = liveZcr * 0.65 + envNow.zcr * 0.35;
+    } else {
+      // Adaptive running peak calibration for streaming raw PCM chunks before full duration is known
+      if (liveRawRms > src.liveSpeechPeak) {
+        src.liveSpeechPeak = lerp(src.liveSpeechPeak, liveRawRms, 0.35);
+      } else {
+        src.liveSpeechPeak = Math.max(0.08, src.liveSpeechPeak * 0.996);
+      }
+      if (liveRawRms > 0.001 && liveRawRms < src.liveNoiseFloor * 1.4) {
+        src.liveNoiseFloor = clamp01(lerp(src.liveNoiseFloor, liveRawRms * 1.35, 0.12));
+      }
+      const denom = Math.max(0.04, src.liveSpeechPeak - src.liveNoiseFloor);
+      combinedNormRms = clamp01((liveRawRms - src.liveNoiseFloor) / denom);
+    }
+
     src.prevSmoothedRms = lerp(src.prevSmoothedRms, combinedNormRms, 0.55);
 
     this.targetWeights.isActive = true;
@@ -1316,14 +1434,21 @@ export class LipSyncEngine {
     let wNN = 0;
     let wRR = 0;
 
-    // 5. Co-articulate cleanly with clock-paced lexical cue anchored to active voiced span
-    const tl = src.timeline;
+    // 5. Co-articulate cleanly using voiced-burst aligned lexical cue (skipping uniform drift over pauses)
+    const voicedTl = src.voicedTimeline ?? src.timeline;
     let cueJawGuide = 0.55;
-    if (tl && tl.cues.length > 0) {
-      const voicedSpan = Math.max(0.25, src.envelope.lastVoicedSec - src.envelope.firstVoicedSec);
-      const progress = clamp01((elapsedSec - src.envelope.firstVoicedSec) / voicedSpan);
-      const cue = findCueAtRatio(tl, progress);
-      if (cue && !cue.isSilence) {
+    if (voicedTl && voicedTl.cues.length > 0) {
+      let progress: number;
+      if (src.envelope && src.voiceSegments.length > 0) {
+        progress = alignTimeToVoicedSegments(src.envelope, src.voiceSegments, elapsedSec);
+      } else {
+        const expectedSpan = Math.max(0.45, src.timeline?.estimatedDurationSec || src.durationSec);
+        progress = clamp01(elapsedSec / expectedSpan);
+      }
+      this.lastVoicedProgress = progress;
+
+      const cue = pickVoicedLexicalCue(voicedTl, progress, findCueAtRatio);
+      if (cue) {
         cueJawGuide = cue.jawScale;
         const guideStrength = 0.44 * combinedNormRms;
         switch (cue.viseme) {

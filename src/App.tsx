@@ -18,6 +18,7 @@ import { DEFAULT_ROOM_CONFIG, storage } from './services/storage';
 import { api } from './services/api';
 import { speechService } from './services/speech';
 import { playGameSound } from './services/gameAudio';
+import { voiceDiagnostics } from './utils/voiceDiagnostics';
 
 // Shell, Onboarding & Primary Screens (4 Primary Navigation Sections)
 import { GameShell } from './components/Game/GameShell';
@@ -146,15 +147,18 @@ export default function App() {
 
   const isSoundEnabled = settings.voiceEngine !== 'none' && settings.autoSpeakResponse;
 
+  const lastSpeechEndAtRef = useRef<number | undefined>(undefined);
+
   useEffect(() => {
     avatarStateRef.current = avatarState;
   }, [avatarState]);
 
-  // Keep React view state synchronized with the UnifiedAnimationController
+  // Single source of truth: keep React view state + ref synchronized strictly from UnifiedAnimationController
   useEffect(() => {
     const ctrl = animControllerRef.current;
     if (!ctrl) return;
     const unsub = ctrl.subscribe((snap) => {
+      avatarStateRef.current = snap.avatarState;
       setUnifiedState(snap.unifiedState);
       setAvatarState(snap.avatarState);
       setCompanionEmotion(snap.emotion);
@@ -294,7 +298,6 @@ export default function App() {
         }
         speechService.stopRecognition();
         animControllerRef.current?.returnToIdle();
-        setAvatarState('idle');
       }
       if (tab !== 'home') {
         setIsChatDrawerOpen(false);
@@ -353,7 +356,7 @@ export default function App() {
       setIsMicMuted(false);
     }
 
-    if (!speechService.isRecognitionSupported()) {
+    if (!speechService.isAnyVoiceInputSupported()) {
       const msg = 'Voice input is not supported in this browser — type your message below.';
       setVoiceError(msg);
       animControllerRef.current?.setError();
@@ -377,6 +380,88 @@ export default function App() {
     });
     setUserTranscript('');
 
+    // Prefer native SpeechRecognition when available; fall back cleanly to Web Audio VAD + MediaRecorder -> /api/transcribe
+    if (!speechService.isRecognitionSupported()) {
+      manualStopListeningRef.current = false;
+      const vadAbort = new AbortController();
+      activeAbortRef.current = vadAbort;
+
+      void speechService.startVadRecordedCapture({
+        onRecordingStart: () => {
+          if (turnEpochRef.current !== epochAtStart) return;
+          refreshMicPermission();
+          setUserTranscript('Listening...');
+          animControllerRef.current?.dispatch({
+            animationState: 'listening',
+            emotion: 'neutral',
+            force: true,
+            source: 'voice',
+          });
+        },
+        onSpeechDetected: () => {
+          if (turnEpochRef.current !== epochAtStart) return;
+          setUserTranscript('Listening to you...');
+        },
+        onSilenceTimeout: () => {
+          if (turnEpochRef.current !== epochAtStart) return;
+          setUserTranscript('');
+          if (!isProcessingRef.current && !speechService.getIsSpeaking()) {
+            animControllerRef.current?.returnToIdle();
+          }
+        },
+        onError: (err) => {
+          if (turnEpochRef.current !== epochAtStart) return;
+          if (/denied|not-allowed|allow microphone/i.test(err)) {
+            markMicDenied();
+          } else {
+            refreshMicPermission();
+          }
+          setUserTranscript('');
+          setVoiceError(err);
+          animControllerRef.current?.setError();
+          showToast(err);
+        },
+        onAudioCaptured: async (audioBase64, mimeType) => {
+          if (turnEpochRef.current !== epochAtStart || manualStopListeningRef.current) return;
+          lastSpeechEndAtRef.current = performance.now();
+          setUserTranscript('Transcribing speech...');
+          setIsThinking(true);
+          animControllerRef.current?.dispatch({
+            animationState: 'thinking',
+            emotion: 'thinking',
+            force: true,
+            source: 'voice',
+          });
+          try {
+            const transcribed = await api.transcribeAudio(audioBase64, mimeType, vadAbort.signal);
+            if (turnEpochRef.current !== epochAtStart || vadAbort.signal.aborted) return;
+            setIsThinking(false);
+            const cleanText = transcribed.trim();
+            if (cleanText.length >= 2) {
+              setUserTranscript(cleanText);
+              await handleSendMessage(cleanText);
+            } else {
+              setUserTranscript('');
+              animControllerRef.current?.returnToIdle();
+            }
+          } catch (err: any) {
+            if (err?.name === 'AbortError' || turnEpochRef.current !== epochAtStart) return;
+            setIsThinking(false);
+            setUserTranscript('');
+            const errMsg = err?.message || 'Could not transcribe recorded speech.';
+            setVoiceError(errMsg);
+            animControllerRef.current?.setError();
+            showToast(errMsg);
+          } finally {
+            if (activeAbortRef.current === vadAbort) {
+              activeAbortRef.current = null;
+            }
+          }
+        },
+      });
+      return;
+    }
+
     const langLocale: 'hi-IN' | 'en-IN' = settings.language === 'hi' ? 'hi-IN' : 'en-IN';
 
     const started = speechService.startRecognition(langLocale, {
@@ -392,7 +477,6 @@ export default function App() {
           force: true,
           source: 'voice',
         });
-        setAvatarState('listening');
       },
       onResult: (transcript, isFinal) => {
         if (turnEpochRef.current !== epochAtStart) return;
@@ -405,17 +489,19 @@ export default function App() {
           speechTimeoutRef.current = null;
         }
 
-        if (!cleanTranscript) return;
-        const debounceMs = isFinal ? 450 : 1300;
+        // Ignore ultra-short accidental noise triggers (< 2 chars)
+        if (cleanTranscript.length < 2) return;
+        const debounceMs = isFinal ? 450 : 1250;
         speechTimeoutRef.current = setTimeout(() => {
           speechTimeoutRef.current = null;
           const pending = latestRecognizedTranscriptRef.current.trim();
           if (
             turnEpochRef.current === epochAtStart &&
-            pending &&
+            pending.length >= 2 &&
             !manualStopListeningRef.current &&
             !isProcessingRef.current
           ) {
+            lastSpeechEndAtRef.current = performance.now();
             latestRecognizedTranscriptRef.current = '';
             handleSendMessage(pending);
           }
@@ -441,7 +527,7 @@ export default function App() {
         if (turnEpochRef.current !== epochAtStart) return;
         const pending = latestRecognizedTranscriptRef.current.trim();
         if (
-          pending &&
+          pending.length >= 2 &&
           !manualStopListeningRef.current &&
           !isProcessingRef.current &&
           !speechService.getIsSpeaking()
@@ -450,13 +536,13 @@ export default function App() {
             clearTimeout(speechTimeoutRef.current);
             speechTimeoutRef.current = null;
           }
+          lastSpeechEndAtRef.current = performance.now();
           latestRecognizedTranscriptRef.current = '';
           handleSendMessage(pending);
           return;
         }
         if (!isProcessingRef.current && !speechService.getIsSpeaking() && avatarStateRef.current === 'listening') {
           animControllerRef.current?.returnToIdle();
-          setAvatarState('idle');
         }
       },
     });
@@ -478,7 +564,6 @@ export default function App() {
     }
     speechService.stopRecognition();
     animControllerRef.current?.returnToIdle();
-    setAvatarState('idle');
   };
 
   const handleToggleListen = () => {
@@ -536,7 +621,6 @@ export default function App() {
         avatarStateRef.current === 'preparing_audio'
       ) {
         animControllerRef.current?.returnToIdle();
-        setAvatarState('idle');
       }
       const updated = { ...settings, autoSpeakResponse: false };
       handleSaveSettings(updated, 'Sound & voice replies muted');
@@ -567,8 +651,6 @@ export default function App() {
     setIsSpeaking(false);
     setVoiceError(null);
     setChatError(null);
-    setAvatarState('idle');
-    setCompanionEmotion('neutral');
     setUserTranscript('');
     showToast('Turn reset');
   };
@@ -637,14 +719,12 @@ export default function App() {
                   force: true,
                   source: 'app-open',
                 });
-                setAvatarState('speaking');
                 setIsSpeaking(true);
               },
               onEnd: () => {
                 if (turnEpochRef.current !== epochAtVoice) return;
                 setIsSpeaking(false);
                 ctrl.finishAppOpenSpeech();
-                setAvatarState('idle');
               },
               onBlocked: () => {
                 // Respect browser autoplay security: keep visual greeting + queue speech for first user gesture
@@ -675,14 +755,12 @@ export default function App() {
                           force: true,
                           source: 'app-open',
                         });
-                        setAvatarState('speaking');
                         setIsSpeaking(true);
                       },
                       onEnd: () => {
                         if (turnEpochRef.current !== deferredEpoch) return;
                         setIsSpeaking(false);
                         ctrl.finishAppOpenSpeech();
-                        setAvatarState('idle');
                       },
                     }
                   );
@@ -811,6 +889,195 @@ export default function App() {
     triggerCompanionReaction('smile', 'Greeted Ātmiya', picked, true, 'wave', 'greeting');
   };
 
+  const speakReplyWithGeminiFallback = async (params: {
+    text: string;
+    voice: string;
+    language: CompanionSettings['language'];
+    speechRate: number;
+    voiceEngine: CompanionSettings['voiceEngine'];
+    myEpoch: number;
+    abortController: AbortController;
+    diagTurnId?: number;
+    onPlaybackStart: () => void;
+    onFinish: () => void;
+  }): Promise<void> => {
+    const {
+      text,
+      voice,
+      language,
+      speechRate,
+      voiceEngine,
+      myEpoch,
+      abortController,
+      diagTurnId,
+      onPlaybackStart,
+      onFinish,
+    } = params;
+
+    if (voiceEngine === 'gemini-native' && !api.isTtsInCooldown()) {
+      if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'ttsRequestStartAt');
+
+      // 1. Try progressive streaming PCM chunks (/api/tts/stream -> playPcmStream) for lowest first-audio latency
+      try {
+        const chunkStream = await api.streamTTS({ text, voice }, abortController.signal);
+        if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) return;
+
+        let streamError: any = null;
+        let firstChunkSeen = false;
+        let chunkCount = 0;
+
+        async function* trackedChunks() {
+          for await (const c of chunkStream) {
+            chunkCount += 1;
+            yield c;
+          }
+        }
+
+        await speechService.playPcmStream(
+          trackedChunks(),
+          () => {
+            if (diagTurnId) {
+              voiceDiagnostics.mark(diagTurnId, 'playbackEndAt');
+              voiceDiagnostics.setMode(diagTurnId, 'gemini-stream-pcm', chunkCount);
+            }
+            onFinish();
+          },
+          (err) => {
+            streamError = err;
+          },
+          {
+            text,
+            lang: language,
+            rate: speechRate,
+            onFirstChunk: () => {
+              firstChunkSeen = true;
+              if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'firstAudioChunkAt');
+            },
+            onStart: () => {
+              if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackStartAt');
+              onPlaybackStart();
+            },
+          }
+        );
+
+        if (!streamError) return;
+        if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) return;
+        // If playback already started and died mid-stream, drop cleanly to browser TTS without replaying from scratch
+        if (firstChunkSeen) {
+          throw streamError;
+        }
+      } catch (streamErr: any) {
+        if (streamErr?.name === 'AbortError' || turnEpochRef.current !== myEpoch) return;
+        const isQuotaError =
+          streamErr?.status === 429 ||
+          streamErr?.code === 'TTS_QUOTA_EXCEEDED' ||
+          streamErr?.code === 'TTS_QUOTA_COOLDOWN';
+        if (isQuotaError) {
+          if (!ttsQuotaNotifiedRef.current) {
+            ttsQuotaNotifiedRef.current = true;
+            showToast('Gemini voice quota reached — switched to browser voice.');
+          }
+          console.warn('Gemini TTS quota reached, using browser voice fallback.');
+          if (turnEpochRef.current !== myEpoch) return;
+          if (diagTurnId) voiceDiagnostics.setMode(diagTurnId, 'browser-tts');
+          speechService.speakWithBrowserTTS(
+            text,
+            language,
+            speechRate,
+            () => {
+              if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackEndAt');
+              onFinish();
+            },
+            () => {
+              if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackStartAt');
+              onPlaybackStart();
+            }
+          );
+          return;
+        }
+        // Stream unavailable / transient error -> fall through cleanly to unary WAV /api/tts
+      }
+
+      // 2. Fallback cleanly to unary WAV endpoint (/api/tts -> playWavAudio)
+      try {
+        const ttsRes = await api.generateTTS({ text, voice }, abortController.signal);
+        if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) return;
+        if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'firstAudioChunkAt');
+
+        if (ttsRes.audioBase64) {
+          await speechService.playWavAudio(
+            ttsRes.audioBase64,
+            () => {
+              if (diagTurnId) {
+                voiceDiagnostics.mark(diagTurnId, 'playbackEndAt');
+                voiceDiagnostics.setMode(diagTurnId, 'gemini-wav', 1);
+              }
+              onFinish();
+            },
+            () => {
+              if (turnEpochRef.current !== myEpoch) return;
+              if (diagTurnId) voiceDiagnostics.setMode(diagTurnId, 'browser-tts');
+              speechService.speakWithBrowserTTS(
+                text,
+                language,
+                speechRate,
+                () => {
+                  if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackEndAt');
+                  onFinish();
+                },
+                () => {
+                  if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackStartAt');
+                  onPlaybackStart();
+                }
+              );
+            },
+            {
+              text,
+              lang: language,
+              rate: speechRate,
+              onStart: () => {
+                if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackStartAt');
+                onPlaybackStart();
+              },
+            }
+          );
+          return;
+        }
+      } catch (e: any) {
+        if (e?.name === 'AbortError' || turnEpochRef.current !== myEpoch) return;
+        const isQuotaError =
+          e?.status === 429 ||
+          e?.code === 'TTS_QUOTA_EXCEEDED' ||
+          e?.code === 'TTS_QUOTA_COOLDOWN';
+        if (isQuotaError) {
+          if (!ttsQuotaNotifiedRef.current) {
+            ttsQuotaNotifiedRef.current = true;
+            showToast('Gemini voice quota reached — switched to browser voice.');
+          }
+          console.warn('Gemini TTS quota reached, using browser voice fallback.');
+        } else {
+          console.warn('TTS playback error, trying browser fallback:', e?.message || e);
+        }
+      }
+    }
+
+    if (turnEpochRef.current !== myEpoch) return;
+    if (diagTurnId) voiceDiagnostics.setMode(diagTurnId, 'browser-tts');
+    speechService.speakWithBrowserTTS(
+      text,
+      language,
+      speechRate,
+      () => {
+        if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackEndAt');
+        onFinish();
+      },
+      () => {
+        if (diagTurnId) voiceDiagnostics.mark(diagTurnId, 'playbackStartAt');
+        onPlaybackStart();
+      }
+    );
+  };
+
   const handleSendMessage = async (text: string, options: { isRetry?: boolean } = {}) => {
     const trimmed = text.trim();
     if (!trimmed || isProcessingRef.current || !activeConvId) return;
@@ -820,6 +1087,9 @@ export default function App() {
     const myEpoch = turnEpochRef.current;
     const abortController = new AbortController();
     activeAbortRef.current = abortController;
+    const speechEndAt = lastSpeechEndAtRef.current;
+    lastSpeechEndAtRef.current = undefined;
+    const diagTurnId = voiceDiagnostics.startTurn(speechEndAt);
 
     setPreviewEmotion(null);
     setVoiceError(null);
@@ -838,7 +1108,6 @@ export default function App() {
       force: true,
       source: 'conversation',
     });
-    setAvatarState('thinking');
     setUserTranscript(trimmed);
     updateCurrentComposerDraft('');
 
@@ -872,6 +1141,7 @@ export default function App() {
     }
 
     try {
+      voiceDiagnostics.mark(diagTurnId, 'chatRequestStartAt');
       const response = await api.sendMessage(
         {
           message: trimmed,
@@ -884,8 +1154,10 @@ export default function App() {
       );
 
       if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) {
+        voiceDiagnostics.setMode(diagTurnId, 'cancelled');
         return;
       }
+      voiceDiagnostics.mark(diagTurnId, 'chatFirstResponseAt');
 
       const replyText = typeof response?.reply === 'string' ? response.reply.trim() : '';
       if (!replyText) {
@@ -930,7 +1202,6 @@ export default function App() {
           force: true,
           source: 'conversation',
         });
-        setAvatarState('preparing_audio');
 
         let speechDispatchId: number | undefined;
 
@@ -952,7 +1223,6 @@ export default function App() {
             speechRate: settings.speechRate,
             requestId: speechDispatchId,
           });
-          setAvatarState('speaking');
           setIsSpeaking(true);
         };
 
@@ -961,7 +1231,6 @@ export default function App() {
           setIsSpeaking(false);
           animControllerRef.current?.endSpeechSession();
           animControllerRef.current?.returnToIdle(speechDispatchId);
-          setAvatarState('idle');
 
           if (settings.handsFreeMode && !isMicMuted && activeTab === 'home') {
             setTimeout(() => {
@@ -972,72 +1241,20 @@ export default function App() {
           }
         };
 
-        if (settings.voiceEngine === 'gemini-native' && !api.isTtsInCooldown()) {
-          try {
-            const ttsRes = await api.generateTTS(
-              {
-                text: replyText,
-                voice: settings.selectedVoice || 'Kore',
-              },
-              abortController.signal
-            );
-
-            if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) {
-              return;
-            }
-
-            if (ttsRes.audioBase64) {
-              await speechService.playWavAudio(
-                ttsRes.audioBase64,
-                onFinish,
-                () => {
-                  if (turnEpochRef.current !== myEpoch) return;
-                  speechService.speakWithBrowserTTS(
-                    replyText,
-                    settings.language,
-                    settings.speechRate,
-                    onFinish,
-                    onPlaybackStart
-                  );
-                },
-                {
-                  text: replyText,
-                  lang: settings.language,
-                  rate: settings.speechRate,
-                  onStart: onPlaybackStart,
-                }
-              );
-              return;
-            }
-          } catch (e: any) {
-            if (e?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
-              return;
-            }
-            const isQuotaError =
-              e?.status === 429 ||
-              e?.code === 'TTS_QUOTA_EXCEEDED' ||
-              e?.code === 'TTS_QUOTA_COOLDOWN';
-            if (isQuotaError) {
-              if (!ttsQuotaNotifiedRef.current) {
-                ttsQuotaNotifiedRef.current = true;
-                showToast('Gemini voice quota reached — switched to browser voice.');
-              }
-              console.warn('Gemini TTS quota reached, using browser voice fallback.');
-            } else {
-              console.warn('TTS playback error, trying browser fallback:', e?.message || e);
-            }
-          }
-        }
-
-        if (turnEpochRef.current !== myEpoch) return;
-        speechService.speakWithBrowserTTS(
-          replyText,
-          settings.language,
-          settings.speechRate,
+        await speakReplyWithGeminiFallback({
+          text: replyText,
+          voice: settings.selectedVoice || 'Kore',
+          language: settings.language,
+          speechRate: settings.speechRate,
+          voiceEngine: settings.voiceEngine,
+          myEpoch,
+          abortController,
+          diagTurnId,
+          onPlaybackStart,
           onFinish,
-          onPlaybackStart
-        );
+        });
       } else {
+        voiceDiagnostics.setMode(diagTurnId, 'silent');
         // Sound off: display resolved emotion pose & gesture cue briefly, then return cleanly to idle/neutral
         const silentGesture: AvatarGesture | undefined =
           gestureHint === 'wave'
@@ -1103,7 +1320,6 @@ export default function App() {
         speechService.stopSpeaking();
         setIsSpeaking(false);
         animControllerRef.current?.returnToIdle();
-        setAvatarState('idle');
         return;
       }
 
@@ -1118,6 +1334,7 @@ export default function App() {
       const myEpoch = turnEpochRef.current;
       const abortController = new AbortController();
       activeAbortRef.current = abortController;
+      const diagTurnId = voiceDiagnostics.startTurn();
 
       setPreviewEmotion(null);
       setVoiceError(null);
@@ -1140,7 +1357,6 @@ export default function App() {
         force: true,
         source: 'user-action',
       });
-      setAvatarState('preparing_audio');
 
       let speechDispatchId: number | undefined;
 
@@ -1162,7 +1378,6 @@ export default function App() {
           speechRate: settings.speechRate,
           requestId: speechDispatchId,
         });
-        setAvatarState('speaking');
         setIsSpeaking(true);
       };
 
@@ -1172,63 +1387,21 @@ export default function App() {
         setActiveReplayMessageId(null);
         animControllerRef.current?.endSpeechSession();
         animControllerRef.current?.returnToIdle(speechDispatchId);
-        setAvatarState('idle');
       };
 
       try {
-        if (settings.voiceEngine === 'gemini-native' && !api.isTtsInCooldown()) {
-          try {
-            const ttsRes = await api.generateTTS(
-              {
-                text: cleanText,
-                voice: settings.selectedVoice || 'Kore',
-              },
-              abortController.signal
-            );
-
-            if (turnEpochRef.current !== myEpoch || abortController.signal.aborted) {
-              return;
-            }
-
-            if (ttsRes.audioBase64) {
-              await speechService.playWavAudio(
-                ttsRes.audioBase64,
-                onFinish,
-                () => {
-                  if (turnEpochRef.current !== myEpoch) return;
-                  speechService.speakWithBrowserTTS(
-                    cleanText,
-                    settings.language,
-                    settings.speechRate,
-                    onFinish,
-                    onPlaybackStart
-                  );
-                },
-                {
-                  text: cleanText,
-                  lang: settings.language,
-                  rate: settings.speechRate,
-                  onStart: onPlaybackStart,
-                }
-              );
-              return;
-            }
-          } catch (e: any) {
-            if (e?.name === 'AbortError' || turnEpochRef.current !== myEpoch) {
-              return;
-            }
-            console.warn('Replay TTS fallback:', e?.message || e);
-          }
-        }
-
-        if (turnEpochRef.current !== myEpoch) return;
-        speechService.speakWithBrowserTTS(
-          cleanText,
-          settings.language,
-          settings.speechRate,
+        await speakReplyWithGeminiFallback({
+          text: cleanText,
+          voice: settings.selectedVoice || 'Kore',
+          language: settings.language,
+          speechRate: settings.speechRate,
+          voiceEngine: settings.voiceEngine,
+          myEpoch,
+          abortController,
+          diagTurnId,
+          onPlaybackStart,
           onFinish,
-          onPlaybackStart
-        );
+        });
       } finally {
         if (activeAbortRef.current === abortController) {
           activeAbortRef.current = null;

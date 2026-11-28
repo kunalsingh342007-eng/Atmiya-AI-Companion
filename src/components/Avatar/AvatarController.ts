@@ -89,7 +89,7 @@ export function useMicrophonePermission(): [
   () => void,
 ] {
   const [status, setStatus] = useState<MicPermissionStatus>(() => {
-    if (typeof window === 'undefined' || !speechService.isRecognitionSupported()) {
+    if (typeof window === 'undefined' || !speechService.isAnyVoiceInputSupported()) {
       return 'unsupported';
     }
     return 'unknown';
@@ -100,7 +100,7 @@ export function useMicrophonePermission(): [
     let permObj: PermissionStatus | null = null;
 
     const queryPerm = () => {
-      if (typeof window === 'undefined' || !speechService.isRecognitionSupported()) {
+      if (typeof window === 'undefined' || !speechService.isAnyVoiceInputSupported()) {
         if (mounted) setStatus('unsupported');
         return;
       }
@@ -133,7 +133,7 @@ export function useMicrophonePermission(): [
   }, []);
 
   const refreshPermission = () => {
-    if (typeof window === 'undefined' || !speechService.isRecognitionSupported()) {
+    if (typeof window === 'undefined' || !speechService.isAnyVoiceInputSupported()) {
       setStatus('unsupported');
       return;
     }

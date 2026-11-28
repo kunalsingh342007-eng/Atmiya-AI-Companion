@@ -1921,12 +1921,14 @@ export function updateExpressionRig(params: {
     for (let i = 0; i < rig.uniqueMorphSlots.length; i += 1) {
       const slot = rig.uniqueMorphSlots[i];
       const targetWeight = _slotTargetWeights.get(slot) ?? 0;
-      const nextWeight = THREE.MathUtils.damp(
+      const dampedWeight = THREE.MathUtils.damp(
         slot.influences[slot.index] || 0,
         targetWeight,
         slot.speed,
         delta
       );
+      const nextWeight =
+        targetWeight === 0 && Math.abs(dampedWeight) < 1e-4 ? 0 : dampedWeight;
       slot.influences[slot.index] = nextWeight;
       if (Math.abs(nextWeight - targetWeight) > 1e-3) {
         morphsDamping = true;
@@ -1940,12 +1942,16 @@ export function updateExpressionRig(params: {
     const init = rig.boneInitialRotations.get(rig.bones.jaw);
     if (init) {
       const jawTarget = init.x + speechJawWeight * 0.28;
-      rig.bones.jaw.rotation.x = THREE.MathUtils.damp(
+      const dampedJaw = THREE.MathUtils.damp(
         rig.bones.jaw.rotation.x,
         jawTarget,
         16,
         delta
       );
+      rig.bones.jaw.rotation.x =
+        speechJawWeight === 0 && Math.abs(dampedJaw - init.x) < 1e-4
+          ? init.x
+          : dampedJaw;
       if (Math.abs(rig.bones.jaw.rotation.x - jawTarget) > 1e-3) {
         jawDamping = true;
       }

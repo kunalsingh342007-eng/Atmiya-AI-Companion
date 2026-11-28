@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import * as THREE from 'three';
 import {
   UnifiedAnimationController,
   createSpeechGestureRunner,
@@ -7,6 +8,16 @@ import {
   resetOpeningGreetingSessionForTests,
   stepSpeechGesturePlan,
 } from '../src/components/Avatar/UnifiedAnimationController';
+import {
+  createRigRuntime,
+  inspectGlbRig,
+  resetSpeechMorphs,
+  updateArmHandRig,
+  updateExpressionRig,
+  updateFullBodyAndLowerRig,
+  updateHeadNeckRig,
+} from '../src/components/Avatar/expressionRig';
+import { createNeutralLipSyncWeights } from '../src/components/Avatar/lipSync';
 
 describe('Body & Unified Animation Controller State Machine', () => {
   it('transitions cleanly across listening, thinking, preparing_audio, speaking, interrupted, error, and idle', () => {
@@ -150,4 +161,162 @@ describe('Body & Unified Animation Controller State Machine', () => {
     c1.dispose();
     c2.dispose();
   });
+
+  it('coordinates facial expressions, blinking, lip-sync, head, arm, and torso without cumulative drift or stuck morphs', () => {
+    const root = new THREE.Group();
+    const makeBone = (name: string) => {
+      const b = new THREE.Bone();
+      b.name = name;
+      return b;
+    };
+
+    const hips = makeBone('Hips');
+    const spine = makeBone('Spine');
+    const spine1 = makeBone('Spine1');
+    const spine2 = makeBone('Spine2');
+    const neck = makeBone('Neck');
+    const head = makeBone('Head');
+    const rightShoulder = makeBone('RightShoulder');
+    const rightArm = makeBone('RightArm');
+    const rightForeArm = makeBone('RightForeArm');
+    const rightHand = makeBone('RightHand');
+
+    hips.add(spine);
+    spine.add(spine1);
+    spine1.add(spine2);
+    spine2.add(neck);
+    spine2.add(rightShoulder);
+    neck.add(head);
+    rightShoulder.add(rightArm);
+    rightArm.add(rightForeArm);
+    rightForeArm.add(rightHand);
+    root.add(hips);
+
+    const headMesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial());
+    headMesh.name = 'Wolf3D_Head';
+    headMesh.morphTargetDictionary = {
+      eyeBlinkLeft: 0,
+      eyeBlinkRight: 1,
+      jawOpen: 2,
+      viseme_aa: 3,
+      mouthSmileLeft: 4,
+      mouthSmileRight: 5,
+    };
+    headMesh.morphTargetInfluences = [0, 0, 0, 0, 0, 0];
+    root.add(headMesh);
+
+    const rig = inspectGlbRig(root);
+    const runtime = createRigRuntime();
+    // Force active blink mid-flight during happy speech
+    runtime.blinkProgress = 0.45;
+    runtime.blinkDuration = 0.2;
+
+    const initialHeadQuat = rig.boneInitialQuaternions.get(head)!.clone();
+    const initialSpineQuat = rig.boneInitialQuaternions.get(spine2)!.clone();
+
+    const baseNeutral = createNeutralLipSyncWeights();
+    const lipSyncActive = {
+      ...baseNeutral,
+      isActive: true,
+      mode: 'audio-analyser' as const,
+      overallLevel: 0.65,
+      jawOpen: 0.48,
+      mouthClose: 0.05,
+      mouthFunnel: 0.08,
+      mouthPucker: 0.02,
+      mouthStretch: 0.1,
+      mouthPress: 0,
+      mouthRollLower: 0.04,
+      isVoiced: true,
+      activeViseme: 'viseme_aa' as const,
+      visemes: {
+        ...baseNeutral.visemes,
+        viseme_aa: 0.62,
+        viseme_E: 0.1,
+        viseme_I: 0.04,
+        viseme_O: 0.02,
+      },
+    };
+
+    for (let i = 0; i < 6; i += 1) {
+      updateExpressionRig({
+        rig,
+        runtime,
+        state: 'speaking',
+        unifiedState: 'speaking',
+        emotion: 'happy',
+        emotionIntensity: 0.85,
+        expressionsEnabled: true,
+        audioLevel: 0.65,
+        lipSyncFrame: lipSyncActive,
+        prefersReducedMotion: false,
+        elapsed: 1 + i * 0.016,
+        delta: 0.016,
+      });
+      updateHeadNeckRig({
+        rig,
+        runtime,
+        state: 'speaking',
+        unifiedState: 'speaking',
+        lipSyncFrame: lipSyncActive,
+        prefersReducedMotion: false,
+        elapsed: 1 + i * 0.016,
+        delta: 0.016,
+      });
+      updateArmHandRig({
+        rig,
+        runtime,
+        prefersReducedMotion: false,
+        postureMode: 'standing',
+        state: 'speaking',
+        unifiedState: 'speaking',
+        elapsed: 1 + i * 0.016,
+        delta: 0.016,
+      });
+      updateFullBodyAndLowerRig({
+        rig,
+        runtime,
+        state: 'speaking',
+        unifiedState: 'speaking',
+        presentationMode: 'upper-body',
+        postureMode: 'standing',
+        prefersReducedMotion: false,
+        elapsed: 1 + i * 0.016,
+        delta: 0.016,
+      });
+    }
+
+    // Coexistence verified: blinking + happy smile + jawOpen + viseme_aa are all active simultaneously
+    assert.ok(headMesh.morphTargetInfluences[0] > 0.2, 'blink should be non-zero');
+    assert.ok(headMesh.morphTargetInfluences[2] > 0.2, 'jawOpen should respond to speech');
+    assert.ok(headMesh.morphTargetInfluences[3] > 0.2, 'viseme_aa should respond to speech');
+    assert.ok(headMesh.morphTargetInfluences[4] > 0.15, 'mouthSmileLeft should coexist with speech');
+
+    // Bind quaternions stay strictly immutable over long frame sequences (zero cumulative drift)
+    assert.ok(rig.boneInitialQuaternions.get(head)!.equals(initialHeadQuat));
+    assert.ok(rig.boneInitialQuaternions.get(spine2)!.equals(initialSpineQuat));
+
+    // Settle back to neutral idle over several frames and confirm exact zero closure on jaw/viseme
+    resetSpeechMorphs(rig);
+    const neutralLip = { ...lipSyncActive, isActive: false, jawOpen: 0, overallLevel: 0, isVoiced: false };
+    for (let i = 0; i < 60; i += 1) {
+      updateExpressionRig({
+        rig,
+        runtime,
+        state: 'idle',
+        unifiedState: 'idle',
+        emotion: 'neutral',
+        emotionIntensity: 0.7,
+        expressionsEnabled: true,
+        audioLevel: 0,
+        lipSyncFrame: neutralLip,
+        prefersReducedMotion: true,
+        elapsed: 2 + i * 0.05,
+        delta: 0.05,
+      });
+    }
+    assert.equal(headMesh.morphTargetInfluences[2], 0);
+    assert.equal(headMesh.morphTargetInfluences[3], 0);
+  });
 });
+

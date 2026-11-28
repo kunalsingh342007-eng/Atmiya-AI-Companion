@@ -28,6 +28,11 @@ export interface TTSResponse {
   voice: string;
 }
 
+export interface TtsStreamChunk {
+  audioBase64: string;
+  sampleRate: number;
+}
+
 async function parseJsonSafe(res: Response): Promise<any> {
   const text = await res.text();
   if (!text) return {};
@@ -251,6 +256,134 @@ export const api = {
       });
     }
     return data;
+  },
+
+  async streamTTS(
+    params: {
+      text: string;
+      voice?: string;
+      style?: string;
+    },
+    signal?: AbortSignal
+  ): Promise<AsyncGenerator<TtsStreamChunk, void, unknown>> {
+    if (api.isTtsInCooldown()) {
+      throw createApiError('Gemini TTS is temporarily in quota cooldown.', {
+        status: 429,
+        code: 'TTS_QUOTA_COOLDOWN',
+      });
+    }
+
+    const res = await fetchWithTimeout(apiUrl('/api/tts/stream'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+      signal,
+      timeoutMs: 25000,
+    });
+
+    if (!res.ok) {
+      const data = await parseJsonSafe(res);
+      if (res.status === 429 || data.error === 'TTS_QUOTA_EXCEEDED' || data.error === 'QUOTA_EXCEEDED') {
+        const retrySec = Number(data.retryAfterSeconds) || 900;
+        const boundedCooldownMs = Math.min(Math.max(retrySec, 60), 1800) * 1000;
+        ttsQuotaCooldownUntil = Date.now() + boundedCooldownMs;
+      }
+      throw createApiError(data.message || data.error || 'Streaming TTS failed', {
+        status: res.status,
+        code: data.error,
+        retryAfterSeconds: data.retryAfterSeconds,
+      });
+    }
+
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    // If proxy/backend returned unary WAV JSON instead of NDJSON, adapt seamlessly
+    if (contentType.includes('application/json') && !contentType.includes('ndjson')) {
+      const jsonData = await parseJsonSafe(res);
+      if (jsonData?.audioBase64) {
+        return (async function* singleWavFallback(): AsyncGenerator<TtsStreamChunk, void, unknown> {
+          throw createApiError('STREAM_RETURNED_UNARY_WAV', {
+            code: 'STREAM_UNSUPPORTED_PAYLOAD',
+          });
+        })();
+      }
+    }
+
+    if (!res.body || typeof res.body.getReader !== 'function') {
+      throw createApiError('Streaming body unavailable in this environment.', {
+        code: 'STREAM_UNAVAILABLE',
+      });
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    async function* iterateNdjson(): AsyncGenerator<TtsStreamChunk, void, unknown> {
+      let buffer = '';
+      try {
+        while (true) {
+          if (signal?.aborted) {
+            throw signal.reason || new DOMException('Aborted', 'AbortError');
+          }
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let nlIdx = buffer.indexOf('\n');
+          while (nlIdx !== -1) {
+            const line = buffer.slice(0, nlIdx).trim();
+            buffer = buffer.slice(nlIdx + 1);
+            nlIdx = buffer.indexOf('\n');
+            if (!line) continue;
+
+            let parsed: any;
+            try {
+              parsed = JSON.parse(line);
+            } catch {
+              continue;
+            }
+
+            if (parsed.type === 'chunk' && typeof parsed.audioBase64 === 'string' && parsed.audioBase64) {
+              yield {
+                audioBase64: parsed.audioBase64,
+                sampleRate: typeof parsed.sampleRate === 'number' && parsed.sampleRate > 0 ? parsed.sampleRate : 24000,
+              };
+            } else if (parsed.type === 'error') {
+              if (parsed.error === 'TTS_QUOTA_EXCEEDED' || parsed.error === 'QUOTA_EXCEEDED') {
+                ttsQuotaCooldownUntil = Date.now() + 900 * 1000;
+              }
+              throw createApiError(parsed.message || 'Streaming TTS interrupted.', {
+                code: parsed.error || 'TTS_ERROR',
+              });
+            } else if (parsed.type === 'done') {
+              return;
+            }
+          }
+        }
+
+        const trailing = buffer.trim();
+        if (trailing) {
+          try {
+            const parsed = JSON.parse(trailing);
+            if (parsed.type === 'chunk' && typeof parsed.audioBase64 === 'string' && parsed.audioBase64) {
+              yield {
+                audioBase64: parsed.audioBase64,
+                sampleRate: typeof parsed.sampleRate === 'number' && parsed.sampleRate > 0 ? parsed.sampleRate : 24000,
+              };
+            }
+          } catch {
+            // ignore trailing incomplete fragment
+          }
+        }
+      } finally {
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    return iterateNdjson();
   },
 
   async transcribeAudio(
