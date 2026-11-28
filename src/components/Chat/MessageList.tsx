@@ -146,18 +146,18 @@ export const MessageList: React.FC<MessageListProps> = ({
         return (
           <div
             key={index}
-            className="my-2.5 max-w-full rounded-xl overflow-hidden bg-[#081020] border border-slate-700/80 text-xs font-mono"
+            className="my-2.5 max-w-full rounded-xl overflow-hidden bg-[#0c1220] border border-slate-700/80 text-xs font-mono"
           >
-            <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-[#0f1b33] border-b border-slate-700/80 text-slate-300">
+            <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-[#121a2d] border-b border-slate-700/80 text-slate-300">
               <span className="flex items-center gap-1.5 min-w-0 text-[11px] font-sans font-semibold">
-                <Terminal className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <Terminal className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
                 <span className="truncate">{language || 'code'}</span>
               </span>
               <button
                 type="button"
                 onClick={() => handleCopyCode(codeKey, code)}
                 aria-label={isCodeCopied ? 'Copied code block' : 'Copy code block'}
-                className="text-[11px] text-slate-300 hover:text-white flex items-center gap-1 py-1 px-2 rounded hover:bg-slate-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                className="text-[11px] text-slate-300 hover:text-white flex items-center gap-1 py-1 px-2 rounded hover:bg-slate-800 transition cursor-pointer shrink-0"
               >
                 {isCodeCopied ? (
                   <>
@@ -172,7 +172,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                 )}
               </button>
             </div>
-            <pre className="p-3 max-w-full overflow-x-auto text-sky-200 leading-relaxed">
+            <pre className="p-3 max-w-full overflow-x-auto text-indigo-100 leading-relaxed">
               <code>{code}</code>
             </pre>
           </div>
@@ -183,7 +183,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         <div
           key={index}
           className={`whitespace-pre-wrap [overflow-wrap:anywhere] break-words leading-[1.58] ${
-            isUser ? 'text-white' : 'text-slate-800 dark:text-slate-100'
+            isUser ? 'text-white' : 'text-[var(--text-primary)]'
           }`}
         >
           {part}
@@ -209,14 +209,14 @@ export const MessageList: React.FC<MessageListProps> = ({
               aria-hidden="true"
               className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-semibold mt-0.5 ${
                 isUser
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200'
+                  ? 'bg-[var(--accent-primary)] text-white'
+                  : 'bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-ink)]'
               }`}
             >
               {isUser ? (
                 <User className="w-3.5 h-3.5" />
               ) : (
-                <span className="font-serif">आ</span>
+                <span className="font-display text-xs">आ</span>
               )}
             </div>
 
@@ -224,14 +224,14 @@ export const MessageList: React.FC<MessageListProps> = ({
             <div
               className={`max-w-[88%] sm:max-w-[85%] min-w-0 rounded-2xl px-3.5 py-2.5 text-[13px] sm:text-sm transition-colors ${
                 isUser
-                  ? 'bg-blue-600 text-white rounded-tr-sm shadow-xs'
-                  : 'bg-slate-100 dark:bg-[#101c36] border border-slate-200/90 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-tl-sm'
+                  ? 'bg-[var(--accent-primary)] text-white rounded-tr-sm shadow-xs'
+                  : 'atmiya-card-subtle text-[var(--text-primary)] rounded-tl-sm'
               }`}
             >
               {/* Unboxed Message Meta */}
               <div
                 className={`flex items-center justify-between gap-3 mb-1.5 text-[11px] min-w-0 ${
-                  isUser ? 'text-blue-100/95' : 'text-slate-500 dark:text-slate-400'
+                  isUser ? 'text-white/85' : 'text-[var(--text-muted)]'
                 }`}
               >
                 <span className="font-semibold truncate min-w-0">
@@ -252,17 +252,17 @@ export const MessageList: React.FC<MessageListProps> = ({
 
               {/* Actions for Model Messages */}
               {!isUser && (
-                <div className="mt-2.5 pt-2 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+                <div className="mt-2.5 pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs">
                   <button
                     type="button"
                     disabled={isThinking && !isMsgSpeaking}
                     onClick={() => handleSpeak(msg)}
                     aria-pressed={isMsgSpeaking}
                     aria-label={isMsgSpeaking ? 'Stop speaking reply' : 'Listen to reply'}
-                    className={`min-h-[32px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    className={`min-h-[32px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                       isMsgSpeaking
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white dark:bg-[#091224] hover:bg-blue-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/70 text-slate-700 dark:text-slate-300'
+                        ? 'bg-[var(--accent-primary)] text-white'
+                        : 'bg-[var(--bg-surface)] hover:bg-[var(--accent-soft)] border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                     title={isMsgSpeaking ? 'Stop speaking' : 'Listen to reply'}
                   >
@@ -273,7 +273,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                       </>
                     ) : (
                       <>
-                        <Volume2 className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
+                        <Volume2 className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
                         <span>Speak</span>
                       </>
                     )}
@@ -282,7 +282,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   <button
                     type="button"
                     onClick={() => handleCopy(msg.id, msg.content)}
-                    className="min-h-[32px] min-w-[32px] px-2 py-1 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-800 inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    className="min-h-[32px] min-w-[32px] px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition cursor-pointer rounded-lg hover:bg-[var(--bg-surface)] inline-flex items-center justify-center"
                     title="Copy message"
                     aria-label={copiedId === msg.id ? 'Message copied' : 'Copy message'}
                   >
@@ -304,11 +304,11 @@ export const MessageList: React.FC<MessageListProps> = ({
       {/* Thinking Indicator */}
       {isThinking && (
         <div className="flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/80 dark:border-blue-500/30 dark:text-sky-200 flex items-center justify-center font-serif text-[11px]">
+          <div className="w-7 h-7 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-ink)] flex items-center justify-center font-display text-xs">
             आ
           </div>
-          <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-[#101c36] border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-xs flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400 animate-spin" />
+          <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm atmiya-card-subtle text-[var(--text-secondary)] text-xs flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-[var(--accent-warm)] animate-spin" />
             <span>{settings.avatarConfig.personaName || 'Ātmiya'} is thinking...</span>
           </div>
         </div>

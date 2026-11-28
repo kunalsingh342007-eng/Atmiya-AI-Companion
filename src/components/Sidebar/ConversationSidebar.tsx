@@ -113,7 +113,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         <div
           onClick={onClose}
           aria-hidden="true"
-          className="fixed inset-0 z-40 bg-slate-950/50 dark:bg-black/60 backdrop-blur-xs transition-opacity"
+          className="fixed inset-0 z-40 bg-stone-950/45 dark:bg-black/60 backdrop-blur-xs transition-opacity"
         />
       )}
 
@@ -123,15 +123,15 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         aria-modal={isOpen ? 'true' : undefined}
         aria-label="Conversation sessions"
         aria-hidden={!isOpen}
-        className={`fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-[var(--bg-surface)] dark:bg-[#091224] border-r border-slate-200 dark:border-slate-800/80 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-[var(--bg-surface)] border-r border-[var(--border-hairline)] shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
         }`}
       >
         {/* Top Branding / Header */}
-        <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
+        <div className="px-4 py-3.5 border-b border-[var(--border-hairline)] flex items-center justify-between bg-[var(--bg-subtle)]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 dark:hidden flex items-center justify-center shrink-0">
-              <span className="font-serif text-sm font-bold text-indigo-700" aria-hidden="true">
+            <div className="w-8 h-8 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] dark:hidden flex items-center justify-center shrink-0">
+              <span className="font-display text-sm text-[var(--accent-ink)]" aria-hidden="true">
                 आ
               </span>
             </div>
@@ -139,13 +139,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               src="/assets/branding/atmiya-logo.png"
               alt=""
               aria-hidden="true"
-              className="hidden dark:block w-8 h-8 rounded-xl object-contain bg-[#0b132b] p-0.5 border border-indigo-400/25 shrink-0"
+              className="hidden dark:block w-8 h-8 rounded-xl object-contain bg-[var(--bg-surface)] p-0.5 border border-[var(--border-hairline)] shrink-0"
             />
             <div>
-              <span className="font-semibold text-sm tracking-tight text-slate-900 dark:text-white block">
+              <span className="font-semibold text-sm tracking-tight text-[var(--text-primary)] block">
                 Sessions
               </span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 block -mt-0.5 tabular-nums">
+              <span className="text-[11px] text-[var(--text-muted)] block -mt-0.5 tabular-nums">
                 {conversations.length} saved locally
               </span>
             </div>
@@ -154,7 +154,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close sessions drawer"
-            className="h-9 w-9 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="h-9 w-9 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)] flex items-center justify-center transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -170,7 +170,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               onNewChat();
               onClose();
             }}
-            className="w-full min-h-[42px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-sm transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            className="w-full min-h-[42px] flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-semibold text-xs shadow-sm transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>New Conversation</span>
@@ -180,21 +180,21 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         {/* Search */}
         <div className="px-3 pb-2.5">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[var(--text-muted)]" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search titles or messages..."
               aria-label="Search conversation sessions"
-              className="w-full bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-8 py-2 text-xs text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
+              className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-xl pl-8 pr-8 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)] transition"
             />
             {searchTerm && (
               <button
                 type="button"
                 onClick={() => setSearchTerm('')}
                 aria-label="Clear search"
-                className="absolute right-2 top-1.5 h-6 w-6 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center cursor-pointer"
+                className="absolute right-2 top-1.5 h-6 w-6 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center justify-center cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -205,13 +205,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         {/* Conversation List */}
         <div className="flex-1 overflow-y-auto px-2.5 space-y-1">
           {filtered.length === 0 ? (
-            <div className="text-center py-8 px-3 text-xs text-slate-500 dark:text-slate-400 space-y-2">
+            <div className="text-center py-8 px-3 text-xs text-[var(--text-muted)] space-y-2">
               <p>No matching sessions found.</p>
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="text-blue-600 dark:text-sky-300 font-semibold hover:underline cursor-pointer"
+                  className="text-[var(--accent-ink)] font-semibold hover:underline cursor-pointer"
                 >
                   Clear search
                 </button>
@@ -229,17 +229,15 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                   <div
                     className={`group relative flex items-center justify-between gap-1 p-1.5 rounded-xl transition text-xs ${
                       isActive
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-200 border border-blue-200 dark:border-blue-500/40 font-semibold'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/70 border border-transparent'
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-ink)] border border-[var(--accent-border)] font-semibold'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] border border-transparent'
                     }`}
                   >
                     {isEditing ? (
                       <div className="flex items-center gap-2 min-w-0 flex-1 px-1 py-1">
                         <MessageSquare
                           className={`w-3.5 h-3.5 shrink-0 ${
-                            isActive
-                              ? 'text-blue-600 dark:text-sky-400'
-                              : 'text-slate-400 dark:text-slate-500'
+                            isActive ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'
                           }`}
                         />
                         <input
@@ -252,7 +250,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                             if (e.key === 'Escape') setEditingId(null);
                           }}
                           aria-label="Session title"
-                          className="bg-white dark:bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs text-slate-900 dark:text-slate-100 w-full focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          className="bg-[var(--bg-input)] border border-[var(--accent-primary)] rounded px-2 py-1 text-xs text-[var(--text-primary)] w-full focus:outline-none"
                           autoFocus
                         />
                       </div>
@@ -265,27 +263,25 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                           onClose();
                         }}
                         aria-current={isActive ? 'true' : undefined}
-                        className="flex items-center gap-2.5 min-w-0 flex-1 text-left px-1.5 py-1 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        className="flex items-center gap-2.5 min-w-0 flex-1 text-left px-1.5 py-1 rounded-lg cursor-pointer"
                       >
                         <MessageSquare
                           className={`w-3.5 h-3.5 shrink-0 ${
-                            isActive
-                              ? 'text-blue-600 dark:text-sky-400'
-                              : 'text-slate-400 dark:text-slate-500'
+                            isActive ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'
                           }`}
                         />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="truncate block" title={conv.title}>
+                            <span className="truncate block text-[var(--text-primary)]" title={conv.title}>
                               {conv.title || 'Untitled Session'}
                             </span>
                             {isActive && (
-                              <span className="text-[10px] font-semibold text-blue-600 dark:text-sky-300 shrink-0">
+                              <span className="text-[10px] font-semibold text-[var(--accent-ink)] shrink-0">
                                 Active
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 tabular-nums">
+                          <span className="text-[10px] font-normal text-[var(--text-muted)] tabular-nums">
                             {conv.messages.length} msg{conv.messages.length === 1 ? '' : 's'}
                             {timeLabel ? ` · ${timeLabel}` : ''}
                           </span>
@@ -301,7 +297,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                             type="button"
                             disabled={!editTitle.trim()}
                             onClick={(e) => handleSaveRename(conv.id, e)}
-                            className="h-8 w-8 inline-flex items-center justify-center text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                            className="h-8 w-8 inline-flex items-center justify-center text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded-lg cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
                             title="Save rename"
                             aria-label="Save conversation title"
                           >
@@ -313,7 +309,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                               e.stopPropagation();
                               setEditingId(null);
                             }}
-                            className="h-8 w-8 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                            className="h-8 w-8 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg cursor-pointer"
                             title="Cancel rename"
                             aria-label="Cancel rename"
                           >
@@ -324,7 +320,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         <button
                           type="button"
                           onClick={(e) => handleStartRename(conv, e)}
-                          className="h-8 w-8 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          className="h-8 w-8 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg cursor-pointer"
                           title="Rename"
                           aria-label={`Rename ${conv.title || 'conversation'}`}
                         >
@@ -334,7 +330,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                       <button
                         type="button"
                         onClick={(e) => handleRequestDelete(conv, e)}
-                        className="h-8 w-8 inline-flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                        className="h-8 w-8 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-rose-600 dark:hover:text-rose-400 rounded-lg cursor-pointer"
                         title="Delete"
                         aria-label={`Delete ${conv.title || 'conversation'}`}
                       >
@@ -360,7 +356,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteId(null)}
-                          className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
+                          className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-primary)] cursor-pointer"
                         >
                           Cancel
                         </button>
@@ -374,7 +370,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         </div>
 
         {/* Clear All Confirmation */}
-        <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-200 dark:border-slate-800/80">
+        <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-[var(--border-hairline)]">
           {showClearConfirm ? (
             <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-[11px] text-rose-800 dark:text-rose-200 space-y-2">
               <div className="flex items-center gap-1.5 font-medium">
@@ -396,7 +392,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowClearConfirm(false)}
-                  className="flex-1 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  className="flex-1 py-1.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-primary)] cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -407,7 +403,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               <button
                 type="button"
                 onClick={() => setShowClearConfirm(true)}
-                className="w-full min-h-[36px] flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer"
+                className="w-full min-h-[38px] flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] text-[var(--text-muted)] hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
               >
                 <Trash2 className="w-3 h-3" />
                 <span>Clear All Sessions</span>

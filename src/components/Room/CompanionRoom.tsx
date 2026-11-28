@@ -158,11 +158,11 @@ export const CompanionRoom: React.FC<CompanionRoomProps> = ({
       {/* Subtle Top & Bottom Legibility Vignettes (do not wash out room) */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-slate-900/15 dark:from-[#040818]/55 to-transparent pointer-events-none"
+        className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-stone-900/12 dark:from-[#090d16]/60 to-transparent pointer-events-none"
       />
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-slate-900/20 dark:from-[#040818]/82 via-transparent to-transparent pointer-events-none"
+        className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-stone-900/18 dark:from-[#090d16]/80 via-transparent to-transparent pointer-events-none"
       />
 
       {/* Room Foreground Content Layer */}

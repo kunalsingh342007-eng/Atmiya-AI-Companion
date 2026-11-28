@@ -174,28 +174,28 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
               clearTimers();
               onBackToHub();
             }}
-            className="h-10 px-3.5 rounded-xl bg-[var(--bg-surface)] dark:bg-[#0c1528] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
+            className="h-10 px-3.5 rounded-xl atmiya-card hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Games</span>
           </button>
 
-          <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-            <span className="font-semibold text-indigo-700 dark:text-sky-300 tabular-nums">
+          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+            <span className="font-semibold text-[var(--accent-ink)] tabular-nums">
               Round {Math.min(completedRounds + 1, TOTAL_ROUNDS)}/{TOTAL_ROUNDS}
             </span>
-            <span aria-hidden="true" className="text-slate-400">·</span>
+            <span aria-hidden="true" className="text-[var(--text-muted)]">·</span>
             <span className="tabular-nums">Length {sequence.length || 2}</span>
           </div>
         </div>
 
-        <div className="rounded-2xl bg-[var(--bg-surface)] dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm dark:shadow-2xl space-y-5">
+        <div className="rounded-2xl atmiya-card p-5 sm:p-6 shadow-sm space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+              <h2 className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">
                 Pattern Match
               </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                 Watch the glowing sequence and repeat it in order across {TOTAL_ROUNDS} rounds.
               </p>
             </div>
@@ -209,7 +209,7 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
                     setActivePad(null);
                     setPhase('paused');
                   }}
-                  className="h-10 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5 cursor-pointer"
+                  className="h-10 px-3.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-hairline)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Pause className="w-3.5 h-3.5" />
                   <span>Pause</span>
@@ -219,7 +219,7 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
                 <button
                   type="button"
                   onClick={() => playSequence(sequence)}
-                  className="h-10 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                  className="h-10 px-3.5 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5" />
                   <span>Resume</span>
@@ -229,7 +229,7 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
                 <button
                   type="button"
                   onClick={startGame}
-                  className="h-10 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5 cursor-pointer"
+                  className="h-10 px-3.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-hairline)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Restart</span>
@@ -239,22 +239,22 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
           </div>
 
           {phase === 'ready' ? (
-            <div className="py-10 px-4 rounded-2xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 text-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-600 dark:text-sky-300 flex items-center justify-center mx-auto">
+            <div className="py-10 px-4 rounded-2xl atmiya-card-subtle text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-ink)] flex items-center justify-center mx-auto">
                 <Sparkles className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                  Train visual rhythm & recall
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                  Train visual rhythm &amp; recall
                 </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
+                <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">
                   Each pad has a unique symbol, color, and gentle chime. Complete {TOTAL_ROUNDS} rounds for +25 XP.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={startGame}
-                className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm cursor-pointer"
+                className="h-11 px-6 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm cursor-pointer"
               >
                 <Play className="w-4 h-4" />
                 <span>Start Sequence</span>
@@ -262,18 +262,18 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
             </div>
           ) : phase === 'won' ? (
             <div
-              className={`py-8 px-4 rounded-2xl bg-blue-50 dark:bg-[#081020] border border-amber-300 dark:border-amber-400/35 text-center space-y-4 ${
+              className={`py-8 px-4 rounded-2xl bg-[var(--accent-soft)] border border-amber-400/45 text-center space-y-4 ${
                 prefersReducedMotion ? '' : 'animate-fadeIn'
               }`}
             >
-              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-400/20 border border-amber-300 dark:border-amber-300/50 text-amber-600 dark:text-amber-200 flex items-center justify-center mx-auto">
+              <div className="w-14 h-14 rounded-2xl bg-amber-400/20 border border-amber-400/50 text-[var(--accent-warm)] flex items-center justify-center mx-auto">
                 <Trophy className="w-7 h-7" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                <h3 className="text-xl font-bold text-[var(--text-primary)]">
                   Pattern Mastered!
                 </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-200">
+                <p className="text-xs text-[var(--text-secondary)]">
                   Completed all {TOTAL_ROUNDS} sequence rounds · Score 100 · +25 XP earned
                 </p>
               </div>
@@ -281,7 +281,7 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
                 <button
                   type="button"
                   onClick={startGame}
-                  className="h-11 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  className="h-11 px-5 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>Play Again</span>
@@ -289,7 +289,7 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
                 <button
                   type="button"
                   onClick={onReturnHome}
-                  className="h-11 px-5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  className="h-11 px-5 rounded-xl atmiya-card hover:bg-[var(--bg-hover)] text-[var(--text-primary)] text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
                 >
                   <Home className="w-4 h-4" />
                   <span>Back to Companion</span>
@@ -297,10 +297,10 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
               </div>
             </div>
           ) : phase === 'missed' ? (
-            <div className="py-8 px-4 rounded-2xl bg-rose-50 dark:bg-[#081020] border border-rose-200 dark:border-rose-400/35 text-center space-y-4">
+            <div className="py-8 px-4 rounded-2xl bg-rose-50 dark:bg-rose-950/35 border border-rose-200 dark:border-rose-400/35 text-center space-y-4">
               <div className="space-y-1">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Almost there!</h3>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
+                <h3 className="text-lg font-bold text-[var(--text-primary)]">Almost there!</h3>
+                <p className="text-xs text-[var(--text-secondary)]">
                   You cleared {completedRounds} of {TOTAL_ROUNDS} rounds. Want to replay the current pattern or restart?
                 </p>
               </div>
@@ -308,14 +308,14 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
                 <button
                   type="button"
                   onClick={() => playSequence(sequence)}
-                  className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
+                  className="h-10 px-4 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-xs font-semibold cursor-pointer"
                 >
                   Replay Pattern
                 </button>
                 <button
                   type="button"
                   onClick={startGame}
-                  className="h-10 px-4 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold cursor-pointer"
+                  className="h-10 px-4 rounded-xl atmiya-card hover:bg-[var(--bg-hover)] text-[var(--text-primary)] text-xs font-semibold cursor-pointer"
                 >
                   Restart Fresh
                 </button>
@@ -325,15 +325,15 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
             <div className="space-y-4 relative">
               <div className="text-center text-xs font-semibold">
                 {phase === 'showing' ? (
-                  <span className="text-amber-600 dark:text-amber-300">
+                  <span className="text-[var(--accent-warm)]">
                     Watch the sequence carefully...
                   </span>
                 ) : phase === 'paused' ? (
-                  <span className="text-slate-500 dark:text-slate-300">
+                  <span className="text-[var(--text-secondary)]">
                     Paused — press Resume to replay this round
                   </span>
                 ) : (
-                  <span className="text-blue-700 dark:text-sky-300 tabular-nums">
+                  <span className="text-[var(--accent-ink)] tabular-nums">
                     Your turn ({inputStep}/{sequence.length})
                   </span>
                 )}
@@ -349,7 +349,7 @@ export const PatternMatchGame: React.FC<PatternMatchGameProps> = ({
                       type="button"
                       disabled={phase !== 'input'}
                       onClick={() => handlePadClick(pad.id)}
-                      className={`h-28 sm:h-32 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition cursor-pointer disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                      className={`h-28 sm:h-32 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition cursor-pointer disabled:cursor-default ${
                         isLit ? pad.litClass : pad.idleClass
                       }`}
                     >

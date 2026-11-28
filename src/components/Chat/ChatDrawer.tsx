@@ -65,7 +65,6 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     setIsScrolledUp(!nearBottom && el.scrollHeight > el.clientHeight + 40);
   };
 
-  // Snap to latest when opening the drawer cleanly
   useEffect(() => {
     if (isOpen) {
       shouldStickToBottomRef.current = true;
@@ -78,7 +77,6 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     }
   }, [isOpen]);
 
-  // Follow new messages/thinking/errors ONLY if user is near bottom
   useEffect(() => {
     if (isOpen && shouldStickToBottomRef.current && (messages.length > 0 || isThinking || chatError)) {
       messagesEndRef.current?.scrollIntoView({
@@ -100,7 +98,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
         <div
           onClick={onClose}
           aria-hidden="true"
-          className="fixed inset-0 z-40 bg-slate-950/50 dark:bg-black/60 backdrop-blur-xs"
+          className="fixed inset-0 z-40 bg-stone-950/45 dark:bg-black/60 backdrop-blur-xs"
         />
       )}
 
@@ -109,20 +107,20 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
         aria-modal={isOpen ? 'true' : undefined}
         aria-hidden={!isOpen}
         aria-label="Conversation history"
-        className={`fixed top-0 right-0 bottom-0 z-50 w-full sm:w-[460px] bg-white dark:bg-[#081020] border-l border-slate-200 dark:border-slate-800/90 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 bottom-0 z-50 w-full sm:w-[460px] bg-[var(--bg-surface)] border-l border-[var(--border-hairline)] shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
         }`}
       >
-        <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-[#0c162b] shrink-0">
+        <div className="px-4 py-3.5 border-b border-[var(--border-hairline)] flex items-center justify-between gap-2 bg-[var(--bg-subtle)] shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-sky-400 shrink-0">
+            <div className="p-2 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-ink)] shrink-0">
               <MessageSquare className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
                 Conversation &amp; Notes
               </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              <p className="text-[11px] text-[var(--text-muted)] truncate">
                 Full message history with {settings.avatarConfig.personaName || 'Ātmiya'}
               </p>
             </div>
@@ -131,7 +129,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close chat drawer"
-            className="h-10 w-10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-slate-200/60 dark:hover:bg-slate-800 flex items-center justify-center transition cursor-pointer shrink-0"
+            className="h-10 w-10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-hover)] flex items-center justify-center transition cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -153,13 +151,13 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                   />
                 ) : (
                   <div className="text-center py-4 space-y-1.5">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-[var(--text-muted)]">
                       Start typing or speak using the microphone below.
                     </p>
                     <button
                       type="button"
                       onClick={() => setSuggestionsDismissed(false)}
-                      className="text-xs font-medium text-blue-600 dark:text-sky-300 hover:underline cursor-pointer"
+                      className="text-xs font-medium text-[var(--accent-ink)] hover:underline cursor-pointer"
                     >
                       Show suggestions
                     </button>
@@ -189,7 +187,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                         <button
                           type="button"
                           onClick={onRetryLastMessage}
-                          className="h-7 px-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold inline-flex items-center gap-1 cursor-pointer"
+                          className="h-8 px-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold inline-flex items-center gap-1 cursor-pointer"
                         >
                           <RefreshCw className="w-3 h-3" />
                           Retry
@@ -200,7 +198,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                           type="button"
                           onClick={onDismissChatError}
                           aria-label="Dismiss error"
-                          className="h-7 w-7 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 inline-flex items-center justify-center cursor-pointer"
+                          className="h-8 w-8 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 inline-flex items-center justify-center cursor-pointer"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -218,7 +216,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               type="button"
               onClick={() => scrollToLatest()}
               aria-label="Scroll to latest message"
-              className="absolute bottom-3 right-4 z-10 h-9 px-3.5 rounded-full bg-white/95 dark:bg-[#0e193a]/95 border border-slate-200 dark:border-indigo-400/35 text-xs font-semibold text-indigo-700 dark:text-sky-200 shadow-lg inline-flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-[#152452] transition cursor-pointer"
+              className="absolute bottom-3 right-4 z-10 h-9 px-3.5 rounded-full atmiya-glass-interactive text-xs font-semibold text-[var(--accent-ink)] inline-flex items-center gap-1.5 cursor-pointer"
             >
               <ArrowDown className="w-3.5 h-3.5" />
               <span>Latest</span>
@@ -226,7 +224,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           )}
         </div>
 
-        <div className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#091224] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shrink-0">
+        <div className="border-t border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shrink-0">
           <ChatInput
             onSendMessage={onSendMessage}
             isThinking={isThinking}

@@ -207,13 +207,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   onClick={() => setIsDesktopPanelOpen(true)}
                   aria-expanded={false}
                   aria-label={`Open workspace and chat with ${companionName}`}
-                  title={`Open Workspace & Chat`}
-                  className="pointer-events-auto hidden lg:inline-flex items-center gap-2 absolute right-4 top-1/2 -translate-y-1/2 z-20 px-3.5 py-2.5 rounded-full bg-white/92 dark:bg-[#0b132b]/86 hover:bg-white dark:hover:bg-[#131f47] border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold backdrop-blur-xl shadow-lg transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  title="Open Workspace & Chat"
+                  className="pointer-events-auto hidden lg:inline-flex items-center gap-2 absolute right-4 top-1/2 -translate-y-1/2 z-20 px-3.5 py-2.5 rounded-full atmiya-glass-interactive text-[var(--text-primary)] text-xs font-semibold cursor-pointer"
                 >
-                  <PanelRightOpen className="w-4 h-4 text-blue-600 dark:text-sky-300 shrink-0" />
+                  <PanelRightOpen className="w-4 h-4 text-[var(--accent-primary)] shrink-0" />
                   <span>Workspace &amp; Chat</span>
                   {messages.length > 0 && (
-                    <span className="tabular-nums text-[11px] text-blue-600 dark:text-sky-300">
+                    <span className="tabular-nums text-[11px] text-[var(--accent-ink)]">
                       · {messages.length}
                     </span>
                   )}
@@ -222,14 +222,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
               {/* Frosted Greeting / Reply Bubble */}
               {speechBubbleText && (
-                <div className="pointer-events-none absolute bottom-2 inset-x-0 md:inset-auto md:top-3 md:right-4 lg:right-6 z-20 flex justify-center md:justify-end px-3 md:px-0 animate-fadeIn">
-                  <div className="pointer-events-auto relative max-w-[min(300px,calc(100vw-1.5rem))] rounded-2xl bg-white/95 dark:bg-[#0f1a36]/92 text-slate-900 dark:text-slate-100 px-4 py-3 text-xs sm:text-[13px] font-medium shadow-xl border border-slate-200/90 dark:border-indigo-400/30 backdrop-blur-xl flex items-start gap-2">
+                <div className="pointer-events-none absolute bottom-3 inset-x-0 md:inset-auto md:top-3 md:right-4 lg:right-6 z-20 flex justify-center md:justify-end px-3 md:px-0 atmiya-blur-fade">
+                  <div className="pointer-events-auto relative max-w-[min(310px,calc(100vw-1.5rem))] rounded-2xl atmiya-glass-strong text-[var(--text-primary)] px-4 py-3 text-xs sm:text-[13px] font-medium flex items-start gap-2">
                     <span className="leading-snug flex-1 min-w-0 break-words">{speechBubbleText}</span>
                     <button
                       type="button"
                       onClick={onDismissBubble}
                       aria-label="Dismiss speech bubble"
-                      className="text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white p-1 -mr-1 -mt-0.5 rounded-lg cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 -mr-1 -mt-0.5 rounded-lg cursor-pointer shrink-0 transition"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -238,15 +238,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               )}
 
               {showFirstTimeHint && !speechBubbleText && (
-                <div className="pointer-events-none absolute bottom-2 inset-x-0 z-20 flex justify-center px-3 animate-fadeIn">
-                  <div className="pointer-events-auto rounded-full bg-white/94 dark:bg-[#0b132b]/90 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 px-3.5 py-1.5 text-[11px] font-medium shadow-md flex items-center gap-2 backdrop-blur-md">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300 shrink-0" />
+                <div className="pointer-events-none absolute bottom-3 inset-x-0 z-20 flex justify-center px-3 atmiya-blur-fade">
+                  <div className="pointer-events-auto rounded-full atmiya-glass-strong text-[var(--text-primary)] px-3.5 py-1.5 text-[11px] font-medium flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--accent-primary)] shrink-0" />
                     <span>Tap {companionName} to greet, or talk &amp; message below</span>
                     <button
                       type="button"
                       onClick={onDismissHint}
                       aria-label="Dismiss hint"
-                      className="text-slate-400 hover:text-slate-700 dark:text-slate-300 dark:hover:text-white cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer rounded transition"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -291,6 +291,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 isMicMuted={isMicMuted}
                 isThinking={isThinking}
                 isSpeaking={isSpeaking}
+                audioLevel={avatarControllerState.audioLevel}
                 isChatDrawerOpen={isChatDrawerOpen}
                 unreadCount={messages.length}
                 language={settings.language}

@@ -153,30 +153,30 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
           <button
             type="button"
             onClick={onBackToHub}
-            className="h-10 px-3.5 rounded-xl bg-[var(--bg-surface)] dark:bg-[#0c1528] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer transition"
+            className="h-10 px-3.5 rounded-xl atmiya-card hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Games</span>
           </button>
 
           {phase === 'playing' && (
-            <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-              <span className="font-semibold text-indigo-700 dark:text-sky-300 tabular-nums">
+            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+              <span className="font-semibold text-[var(--accent-ink)] tabular-nums">
                 Question {currentIdx + 1}/{questions.length}
               </span>
-              <span aria-hidden="true" className="text-slate-400">·</span>
+              <span aria-hidden="true" className="text-[var(--text-muted)]">·</span>
               <span className="tabular-nums">Correct {correctCount}</span>
             </div>
           )}
         </div>
 
-        <div className="rounded-2xl bg-[var(--bg-surface)] dark:bg-[#0c1528] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm dark:shadow-2xl space-y-5">
+        <div className="rounded-2xl atmiya-card p-5 sm:p-6 shadow-sm space-y-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+              <h2 className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">
                 Math Quiz
               </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                 5 short math &amp; general-knowledge questions with instant explanations.
               </p>
             </div>
@@ -184,7 +184,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
               <button
                 type="button"
                 onClick={startQuiz}
-                className="h-10 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5 cursor-pointer"
+                className="h-10 px-3.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-hairline)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Restart</span>
@@ -193,22 +193,22 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
           </div>
 
           {phase === 'ready' ? (
-            <div className="py-10 px-4 rounded-2xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 text-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-600 dark:text-sky-300 flex items-center justify-center mx-auto">
+            <div className="py-10 px-4 rounded-2xl atmiya-card-subtle text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-ink)] flex items-center justify-center mx-auto">
                 <HelpCircle className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">
                   Test your curiosity
                 </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
+                <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">
                   Answer 5 quick questions across science, culture, and everyday facts. No timers, no pressure.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={startQuiz}
-                className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm cursor-pointer"
+                className="h-11 px-6 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm cursor-pointer"
               >
                 <Play className="w-4 h-4" />
                 <span>Start Quiz</span>
@@ -216,18 +216,18 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
             </div>
           ) : phase === 'won' ? (
             <div
-              className={`py-8 px-4 rounded-2xl bg-blue-50 dark:bg-[#081020] border border-amber-300 dark:border-amber-400/35 text-center space-y-4 ${
+              className={`py-8 px-4 rounded-2xl bg-[var(--accent-soft)] border border-amber-400/45 text-center space-y-4 ${
                 prefersReducedMotion ? '' : 'animate-fadeIn'
               }`}
             >
-              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-400/20 border border-amber-300 dark:border-amber-300/50 text-amber-600 dark:text-amber-200 flex items-center justify-center mx-auto">
+              <div className="w-14 h-14 rounded-2xl bg-amber-400/20 border border-amber-400/50 text-[var(--accent-warm)] flex items-center justify-center mx-auto">
                 <Trophy className="w-7 h-7" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                <h3 className="text-xl font-bold text-[var(--text-primary)]">
                   Quiz Complete!
                 </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-200 tabular-nums">
+                <p className="text-xs text-[var(--text-secondary)] tabular-nums">
                   You answered {correctCount} out of {questions.length} correctly · Score{' '}
                   {correctCount * 20} · +{15 + correctCount * 3} XP
                 </p>
@@ -236,7 +236,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                 <button
                   type="button"
                   onClick={startQuiz}
-                  className="h-11 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  className="h-11 px-5 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>Play Again</span>
@@ -244,7 +244,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                 <button
                   type="button"
                   onClick={onReturnHome}
-                  className="h-11 px-5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  className="h-11 px-5 rounded-xl atmiya-card hover:bg-[var(--bg-hover)] text-[var(--text-primary)] text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
                 >
                   <Home className="w-4 h-4" />
                   <span>Back to Companion</span>
@@ -254,9 +254,9 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
           ) : (
             <div className="space-y-4">
               {/* Progress Bar */}
-              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-[#081020] overflow-hidden border border-slate-200 dark:border-slate-800">
+              <div className="w-full h-2 rounded-full bg-[var(--bg-subtle)] overflow-hidden border border-[var(--border-subtle)]">
                 <div
-                  className="h-full bg-gradient-to-r from-blue-600 to-sky-400 transition-all duration-300"
+                  className="h-full bg-[var(--accent-primary)] transition-all duration-300"
                   style={{
                     width: `${
                       ((currentIdx + (selectedOption !== null ? 1 : 0)) / questions.length) * 100
@@ -265,8 +265,8 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                 />
               </div>
 
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-[#081020] border border-slate-200 dark:border-slate-800 space-y-4">
-                <p className="text-sm sm:text-base font-semibold text-slate-900 dark:text-white leading-relaxed">
+              <div className="p-4 sm:p-5 rounded-2xl atmiya-card-subtle space-y-4">
+                <p className="text-sm sm:text-base font-semibold text-[var(--text-primary)] leading-relaxed">
                   {currentQuestion.prompt}
                 </p>
 
@@ -277,7 +277,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                     const revealed = selectedOption !== null;
 
                     let cardStyle =
-                      'bg-white dark:bg-[#0c1528] hover:bg-blue-50 dark:hover:bg-blue-950/60 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100';
+                      'bg-[var(--bg-surface)] hover:bg-[var(--accent-soft)] border-[var(--border-hairline)] hover:border-[var(--accent-border)] text-[var(--text-primary)]';
                     if (revealed) {
                       if (isCorrect) {
                         cardStyle =
@@ -287,7 +287,7 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                           'bg-rose-50 dark:bg-rose-950/80 border-rose-500 text-rose-900 dark:text-rose-100';
                       } else {
                         cardStyle =
-                          'bg-slate-100 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-400';
+                          'bg-[var(--bg-subtle)] border-[var(--border-subtle)] text-[var(--text-muted)]';
                       }
                     }
 
@@ -312,14 +312,14 @@ export const QuickQuizGame: React.FC<QuickQuizGameProps> = ({
                 </div>
 
                 {selectedOption !== null && (
-                  <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
-                    <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+                  <div className="p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+                    <p className="text-xs text-[var(--text-primary)] leading-relaxed">
                       {currentQuestion.fact}
                     </p>
                     <button
                       type="button"
                       onClick={handleNext}
-                      className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shrink-0 cursor-pointer"
+                      className="h-10 px-4 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-xs font-semibold shrink-0 cursor-pointer"
                     >
                       {currentIdx + 1 >= questions.length ? 'Finish Round' : 'Next Question'}
                     </button>

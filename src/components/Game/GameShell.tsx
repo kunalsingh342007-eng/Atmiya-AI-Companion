@@ -96,7 +96,7 @@ export const GameShell: React.FC<GameShellProps> = ({
       {/* Desktop & Tablet Left Navigation Sidebar (md+) */}
       <aside
         aria-label="Primary companion navigation"
-        className="hidden md:flex flex-col justify-between shrink-0 w-[72px] lg:w-[216px] xl:w-[232px] bg-[var(--bg-surface)] dark:bg-[#070d22] border-r border-slate-200 dark:border-slate-800/80 z-30 py-3.5 px-2.5 lg:px-3.5 transition-colors duration-200"
+        className="hidden md:flex flex-col justify-between shrink-0 w-[72px] lg:w-[216px] xl:w-[232px] bg-[var(--bg-surface)] border-r border-[var(--border-hairline)] z-30 py-3.5 px-2.5 lg:px-3.5 transition-colors duration-200"
       >
         <div className="space-y-4 min-h-0 flex-1 flex flex-col">
           {/* Ātmiya Brand Logo — adaptive Light & Dark/Night presentation */}
@@ -104,15 +104,15 @@ export const GameShell: React.FC<GameShellProps> = ({
             type="button"
             onClick={() => onSelectTab('home')}
             aria-label="Ātmiya Home"
-            className="w-full rounded-2xl bg-indigo-50/75 dark:bg-[#060c23] border border-indigo-200/80 dark:border-indigo-400/20 p-2 lg:px-3 lg:py-2.5 flex flex-col items-center justify-center transition hover:border-indigo-300 dark:hover:border-indigo-400/40 cursor-pointer shrink-0"
+            className="w-full rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-hairline)] hover:border-[var(--accent-border)] p-2 lg:px-3 lg:py-2.5 flex flex-col items-center justify-center transition cursor-pointer shrink-0"
           >
             {/* Light mode clean brand lockup */}
             <div className="flex dark:hidden flex-col items-center py-1 text-center">
               <FallbackLotusMark className="w-8 h-8 lg:w-9 lg:h-9" />
-              <span className="hidden lg:block text-base font-bold text-slate-900 mt-1 leading-tight">
+              <span className="hidden lg:block font-display text-lg text-[var(--text-primary)] mt-1 leading-tight">
                 Ātmiya
               </span>
-              <span className="hidden lg:block text-[10px] font-medium text-slate-500">
+              <span className="hidden lg:block text-[10px] font-medium text-[var(--text-secondary)]">
                 Your AI Companion
               </span>
             </div>
@@ -133,10 +133,10 @@ export const GameShell: React.FC<GameShellProps> = ({
               ) : (
                 <div className="flex flex-col items-center py-1 text-center">
                   <FallbackLotusMark className="w-8 h-8 lg:w-9 lg:h-9" />
-                  <span className="hidden lg:block text-base font-bold text-white mt-1 leading-tight">
+                  <span className="hidden lg:block font-display text-lg text-[var(--text-primary)] mt-1 leading-tight">
                     Ātmiya
                   </span>
-                  <span className="hidden lg:block text-[10px] text-slate-300">
+                  <span className="hidden lg:block text-[10px] text-[var(--text-secondary)]">
                     Your AI Companion
                   </span>
                 </div>
@@ -160,13 +160,13 @@ export const GameShell: React.FC<GameShellProps> = ({
                   title={item.label}
                   className={`w-full min-h-[42px] px-2.5 lg:px-3 py-2 rounded-xl flex items-center justify-center lg:justify-start gap-3 text-[13px] transition cursor-pointer whitespace-nowrap border ${
                     isActive
-                      ? 'bg-indigo-600 border-indigo-500 text-white font-semibold shadow-sm'
-                      : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05] font-medium'
+                      ? 'bg-[var(--accent-primary)] border-[var(--accent-primary)] text-white font-semibold shadow-sm'
+                      : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-medium'
                   }`}
                 >
                   <Icon
                     className={`w-4 h-4 shrink-0 ${
-                      isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'
+                      isActive ? 'text-white' : 'text-[var(--text-muted)]'
                     }`}
                   />
                   <span className="hidden lg:inline truncate">{item.label}</span>
@@ -177,13 +177,13 @@ export const GameShell: React.FC<GameShellProps> = ({
         </div>
 
         {/* Bottom Profile + Adaptive Lotus Footer */}
-        <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 space-y-2.5 shrink-0">
+        <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5 shrink-0">
           <button
             type="button"
             onClick={() => onSelectTab('settings')}
             aria-label={`Profile: ${displayUser}`}
             title={`${displayUser} — Open Profile & Settings`}
-            className="w-full px-2 lg:px-2.5 py-2 rounded-xl bg-slate-100/80 dark:bg-[#0d1633] hover:bg-slate-200/80 dark:hover:bg-[#131f47] border border-slate-200/80 dark:border-slate-800 flex items-center justify-center lg:justify-start gap-2.5 transition cursor-pointer"
+            className="w-full px-2 lg:px-2.5 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-hairline)] flex items-center justify-center lg:justify-start gap-2.5 transition cursor-pointer"
           >
             <ProfileAvatar
               displayName={displayUser}
@@ -191,22 +191,22 @@ export const GameShell: React.FC<GameShellProps> = ({
               size="sm"
             />
             <div className="hidden lg:block min-w-0 flex-1 text-left">
-              <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+              <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
                 {displayUser}
               </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              <div className="text-[11px] text-[var(--text-muted)] truncate">
                 {profileSubtitle}
               </div>
             </div>
-            <ChevronRight className="hidden lg:block w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <ChevronRight className="hidden lg:block w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
           </button>
 
           {/* Adaptive Lotus Footer */}
-          <div className="hidden lg:block rounded-xl overflow-hidden bg-indigo-50/70 dark:bg-[#040818] border border-indigo-200/75 dark:border-indigo-400/15 p-1.5">
+          <div className="hidden lg:block rounded-xl overflow-hidden bg-[var(--bg-subtle)] border border-[var(--border-subtle)] p-1.5">
             {/* Light mode lotus footer */}
             <div className="py-2.5 px-2 flex dark:hidden flex-col items-center justify-center text-center gap-1">
               <FallbackLotusMark className="w-7 h-7" />
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                 Always here for you
               </span>
             </div>
@@ -224,7 +224,7 @@ export const GameShell: React.FC<GameShellProps> = ({
               ) : (
                 <div className="py-3 px-2 flex flex-col items-center justify-center text-center gap-1">
                   <FallbackLotusMark className="w-7 h-7" />
-                  <span className="text-[11px] font-medium text-slate-200">
+                  <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                     Always here for you
                   </span>
                 </div>
@@ -242,7 +242,7 @@ export const GameShell: React.FC<GameShellProps> = ({
       {/* Mobile Only Compact Bottom Navigation (< md / 768px) */}
       <nav
         aria-label="Mobile companion navigation"
-        className="md:hidden relative z-30 shrink-0 w-full bg-[var(--bg-surface)]/95 dark:bg-[#070d22]/95 border-t border-slate-200 dark:border-slate-800 backdrop-blur-xl px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
+        className="md:hidden relative z-30 shrink-0 w-full bg-[var(--glass-bg-strong)] border-t border-[var(--border-hairline)] backdrop-blur-md px-2 pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))]"
       >
         <div className="max-w-2xl mx-auto grid grid-cols-4 gap-1">
           {PRIMARY_NAV_ITEMS.map((item) => {
@@ -257,15 +257,15 @@ export const GameShell: React.FC<GameShellProps> = ({
                 aria-label={item.label}
                 className={`min-h-[44px] px-1 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                   isActive
-                    ? 'bg-indigo-50 dark:bg-indigo-600/25 text-indigo-700 dark:text-indigo-200'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.04]'
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent-ink)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 <Icon
                   className={`w-4 h-4 shrink-0 ${
                     isActive
-                      ? 'text-indigo-600 dark:text-indigo-300'
-                      : 'text-slate-500 dark:text-slate-400'
+                      ? 'text-[var(--accent-primary)]'
+                      : 'text-[var(--text-muted)]'
                   }`}
                 />
                 <span className="truncate max-w-full">{item.label}</span>

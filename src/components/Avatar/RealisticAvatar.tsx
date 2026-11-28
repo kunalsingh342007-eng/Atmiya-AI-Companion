@@ -980,12 +980,12 @@ const StageLoadingPlaceholder: React.FC<{ label: string; sublabel?: string }> = 
   sublabel,
 }) => (
   <div className="w-full h-full flex flex-col items-center justify-center px-4">
-    <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-[#091428]/70 border border-sky-400/20 flex flex-col items-center justify-center gap-2.5 shadow-xl">
-      <Loader2 className="w-7 h-7 text-sky-300 animate-spin" />
-      <div className="text-center px-3">
-        <span className="block text-xs font-semibold text-slate-100">{label}</span>
+    <div className="w-44 h-44 sm:w-52 sm:h-52 rounded-full atmiya-glass-strong flex flex-col items-center justify-center gap-2.5">
+      <Loader2 className="w-7 h-7 text-[var(--accent-primary)] animate-spin" />
+      <div className="text-center px-4">
+        <span className="block text-xs font-semibold text-[var(--text-primary)]">{label}</span>
         {sublabel && (
-          <span className="block text-[11px] text-slate-400 mt-0.5">{sublabel}</span>
+          <span className="block text-[11px] text-[var(--text-secondary)] mt-0.5">{sublabel}</span>
         )}
       </div>
     </div>
@@ -1043,18 +1043,18 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
   onSelect,
   onClose,
 }) => (
-  <div className="mt-3 w-full max-w-md max-h-[58vh] overflow-y-auto rounded-2xl bg-white/95 dark:bg-[#0b1528]/96 border border-slate-200 dark:border-slate-700/80 p-3 shadow-2xl text-left">
-    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-sky-300">
-        <Smile className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
-        <span>Expression & Full-Body Rig Controls</span>
+  <div className="mt-3 w-full max-w-md max-h-[58vh] overflow-y-auto rounded-2xl atmiya-glass-strong atmiya-blur-fade p-3.5 text-left">
+    <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[var(--border-hairline)]">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-ink)]">
+        <Smile className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+        <span>Expression &amp; Full-Body Rig Controls</span>
       </div>
       <div className="flex items-center gap-2">
         {previewEmotion && (
           <button
             type="button"
             onClick={() => onSelect(null)}
-            className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
+            className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-hairline)] text-[var(--text-primary)] cursor-pointer"
           >
             Auto
           </button>
@@ -1062,7 +1062,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-0.5 rounded cursor-pointer"
+          className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded-md hover:bg-[var(--bg-hover)] cursor-pointer"
           aria-label="Close expression preview"
         >
           <X className="w-3.5 h-3.5" />
@@ -1081,8 +1081,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
             onClick={() => onSelect(previewEmotion === expr ? null : expr)}
             className={`px-2 py-1.5 rounded-lg border text-[11px] text-left transition cursor-pointer flex items-center justify-between gap-1 ${
               isActive
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white font-semibold'
-                : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-slate-700'
+                ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent-border)] hover:text-[var(--text-primary)]'
             }`}
             title={
               hasGlbLoaded
@@ -1099,7 +1099,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
                   ? 'bg-amber-400/70'
                   : isSupportedInGlb
                   ? 'bg-emerald-500 dark:bg-emerald-400'
-                  : 'bg-slate-400 dark:bg-slate-600'
+                  : 'bg-[var(--text-muted)]/50'
               }`}
             />
           </button>
@@ -1108,10 +1108,10 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
     </div>
 
     {hasGlbLoaded && (
-      <div className="mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2">
+      <div className="mt-3 pt-2.5 border-t border-[var(--border-hairline)] space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-            Head & Neck Movement
+          <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+            Head &amp; Neck Movement
           </span>
           <button
             type="button"
@@ -1119,7 +1119,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
             className={`px-2 py-0.5 rounded-md border text-[10px] font-semibold transition cursor-pointer ${
               idleMovementEnabled
                 ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                : 'bg-[var(--bg-subtle)] border-[var(--border-hairline)] text-[var(--text-secondary)]'
             }`}
           >
             Idle: {idleMovementEnabled ? 'On' : 'Off'}
@@ -1130,7 +1130,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
           <button
             type="button"
             onClick={onTestHeadNod}
-            className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 hover:border-blue-400 text-[11px] font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer"
+            className="px-2 py-1.5 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-subtle)] hover:border-[var(--accent-border)] text-[11px] font-medium text-[var(--text-primary)] transition cursor-pointer"
           >
             Head Nod
           </button>
@@ -1139,8 +1139,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
             onClick={() => onTestHeadPose(activeHeadPose === 'turn-left' ? 'neutral' : 'turn-left')}
             className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition cursor-pointer ${
               activeHeadPose === 'turn-left'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white'
-                : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-700 dark:text-slate-200 hover:border-blue-400'
+                ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--accent-border)]'
             }`}
           >
             Turn Left
@@ -1150,8 +1150,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
             onClick={() => onTestHeadPose(activeHeadPose === 'turn-right' ? 'neutral' : 'turn-right')}
             className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition cursor-pointer ${
               activeHeadPose === 'turn-right'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white'
-                : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-700 dark:text-slate-200 hover:border-blue-400'
+                ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--accent-border)]'
             }`}
           >
             Turn Right
@@ -1161,8 +1161,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
             onClick={() => onTestHeadPose(activeHeadPose === 'tilt-left' ? 'neutral' : 'tilt-left')}
             className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition cursor-pointer ${
               activeHeadPose === 'tilt-left'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white'
-                : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-700 dark:text-slate-200 hover:border-blue-400'
+                ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--accent-border)]'
             }`}
           >
             Tilt Left
@@ -1172,8 +1172,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
             onClick={() => onTestHeadPose(activeHeadPose === 'tilt-right' ? 'neutral' : 'tilt-right')}
             className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition cursor-pointer ${
               activeHeadPose === 'tilt-right'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white'
-                : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-700 dark:text-slate-200 hover:border-blue-400'
+                ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--accent-border)]'
             }`}
           >
             Tilt Right
@@ -1181,7 +1181,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
           <button
             type="button"
             onClick={() => onTestHeadPose('neutral')}
-            className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/80 hover:border-amber-400 text-[11px] font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer"
+            className="px-2 py-1.5 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-elevated)] hover:border-amber-400 text-[11px] font-medium text-[var(--text-primary)] transition cursor-pointer"
           >
             Neutral
           </button>
@@ -1219,13 +1219,13 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
         )}
 
         {/* Phase 3: Arms, Hands & Fingers */}
-        <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2">
+        <div className="pt-2.5 border-t border-[var(--border-hairline)] space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-              Arms, Hands & Fingers
+            <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+              Arms, Hands &amp; Fingers
             </span>
             {activeArmGesture !== 'none' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-sky-300 font-medium">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-ink)] font-medium">
                 Active: {activeArmGesture}
               </span>
             )}
@@ -1248,8 +1248,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
                   onClick={() => onTriggerArmGesture(item.id)}
                   className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition cursor-pointer ${
                     isActive
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-700 dark:text-slate-200 hover:border-blue-400'
+                      ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                      : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--accent-border)]'
                   }`}
                   title={isActive ? 'Click again to cancel smoothly' : `Trigger ${item.label} gesture`}
                 >
@@ -1260,7 +1260,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
             <button
               type="button"
               onClick={onResetArmPose}
-              className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/80 hover:border-amber-400 text-[11px] font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer col-span-2"
+              className="px-2 py-1.5 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-elevated)] hover:border-amber-400 text-[11px] font-medium text-[var(--text-primary)] transition cursor-pointer col-span-2"
               title="Smoothly return arm, hand, and fingers to relaxed resting baseline"
             >
               Reset Arm Pose
@@ -1268,7 +1268,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 pt-0.5">
-            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
+            <span className="text-[10px] font-medium text-[var(--text-muted)] shrink-0">
               Hand Pose:
             </span>
             <div className="grid grid-cols-3 gap-1 flex-1">
@@ -1285,8 +1285,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
                   onClick={() => onSelectHandPose(pose.id)}
                   className={`px-2 py-1 rounded-md border text-[10px] font-medium transition cursor-pointer ${
                     activeHandPose === pose.id
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-600 dark:text-slate-300 hover:border-blue-400'
+                      ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                      : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent-border)]'
                   }`}
                 >
                   {pose.label}
@@ -1301,7 +1301,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
                 className={`px-1.5 py-0.5 rounded text-[10px] border ${
                   verifiedArmHand.hasRightArmReady
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                    : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500'
+                    : 'bg-[var(--bg-subtle)] border-[var(--border-subtle)] text-[var(--text-muted)]'
                 }`}
                 title={
                   [
@@ -1320,7 +1320,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
                 className={`px-1.5 py-0.5 rounded text-[10px] border ${
                   verifiedArmHand.hasLeftArmReady
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                    : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500'
+                    : 'bg-[var(--bg-subtle)] border-[var(--border-subtle)] text-[var(--text-muted)]'
                 }`}
                 title={
                   [
@@ -1339,7 +1339,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
                 className={`px-1.5 py-0.5 rounded text-[10px] border ${
                   verifiedArmHand.hasFingerRig
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                    : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500'
+                    : 'bg-[var(--bg-subtle)] border-[var(--border-subtle)] text-[var(--text-muted)]'
                 }`}
                 title={`Right: ${verifiedArmHand.rightFingerBones.length} bones, Left: ${verifiedArmHand.leftFingerBones.length} bones`}
               >
@@ -1356,15 +1356,15 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
         </div>
 
         {/* Phase 4: Breathing, Torso & Lower-Body Idle */}
-        <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2">
+        <div className="pt-2.5 border-t border-[var(--border-hairline)] space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-              Body Breathing & Standing Idle
+            <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+              Body Breathing &amp; Standing Idle
             </span>
             <button
               type="button"
               onClick={onResetFullPose}
-              className="px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:border-amber-400 text-[10px] font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer"
+              className="px-2 py-0.5 rounded-md border border-[var(--border-hairline)] bg-[var(--bg-elevated)] hover:border-amber-400 text-[10px] font-medium text-[var(--text-primary)] transition cursor-pointer"
               title="Reset face preview, head, arms, torso, and legs smoothly back to neutral pose"
             >
               Reset Pose
@@ -1372,7 +1372,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
+            <span className="text-[10px] font-medium text-[var(--text-muted)] shrink-0">
               Idle Intensity:
             </span>
             <div className="grid grid-cols-3 gap-1 flex-1">
@@ -1390,8 +1390,8 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
                   onClick={() => onChangeIdleIntensity(lvl.id)}
                   className={`px-2 py-1 rounded-md border text-[10px] font-medium transition cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
                     idleIntensity === lvl.id
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-600/30 text-blue-800 dark:text-white'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#081020]/80 text-slate-600 dark:text-slate-300 hover:border-blue-400'
+                      ? 'border-[var(--accent-primary)] bg-[var(--accent-soft)] text-[var(--accent-ink)] font-semibold'
+                      : 'border-[var(--border-hairline)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent-border)]'
                   }`}
                 >
                   {lvl.label}
@@ -1435,7 +1435,7 @@ const ExpressionPreviewDrawer: React.FC<ExpressionPreviewDrawerProps> = ({
       </div>
     )}
 
-    <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+    <p className="mt-2.5 text-[10px] text-[var(--text-muted)] leading-snug">
       {hasGlbLoaded
         ? 'Green dot = morphs/bones detected on loaded GLB. Gray dot = requires additional blendshapes on the model.'
         : 'Amber dot = no 3D GLB model loaded at /models/atmiya-avatar.glb yet (preview applies 2D aura/posture fallback).'}
@@ -1773,8 +1773,8 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
         />
 
         {isImmersive ? (
-          <div className="mt-2 px-3 py-1.5 rounded-xl bg-[#081226]/85 border border-sky-400/20 text-[11px] text-slate-200 flex items-center gap-2 shadow-lg">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+          <div className="mt-2 px-3 py-1.5 rounded-xl atmiya-glass-strong text-[11px] text-[var(--text-primary)] flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-[var(--accent-warm)] shrink-0" />
             <span className="truncate max-w-[200px] sm:max-w-xs">
               {contextLost
                 ? '3D display paused (using 2D portrait)'
@@ -1783,18 +1783,18 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
             <button
               type="button"
               onClick={handleRetry}
-              className="text-sky-300 hover:text-white font-medium underline cursor-pointer whitespace-nowrap"
+              className="text-[var(--accent-ink)] hover:underline font-semibold cursor-pointer whitespace-nowrap"
               title={errorReason}
             >
               Retry 3D
             </button>
             {onOpenCustomize && (
               <>
-                <span className="text-slate-500" aria-hidden="true">·</span>
+                <span className="text-[var(--text-muted)]" aria-hidden="true">·</span>
                 <button
                   type="button"
                   onClick={onOpenCustomize}
-                  className="text-slate-300 hover:text-white underline cursor-pointer whitespace-nowrap"
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline cursor-pointer whitespace-nowrap"
                 >
                   Customize
                 </button>
@@ -1886,10 +1886,10 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
             aria-expanded={isStageControlsOpen}
             aria-label="Toggle 3D camera and expression controls"
             title="Camera & Expressions"
-            className={`h-8 px-2.5 rounded-xl border text-[11px] font-medium inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
+            className={`h-8 px-2.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer ${
               isStageControlsOpen || isExpressionPanelOpen || previewEmotion
-                ? 'bg-blue-600/95 border-sky-400/50 text-white'
-                : 'bg-white/90 dark:bg-[#081226]/90 hover:bg-white dark:hover:bg-[#0e1c38] border-slate-200/80 dark:border-sky-400/20 text-slate-700 dark:text-slate-200'
+                ? 'bg-[var(--accent-primary)] border border-[var(--accent-primary)] text-white shadow-sm'
+                : 'atmiya-glass-interactive text-[var(--text-primary)]'
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -1897,11 +1897,11 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
           </button>
 
           {isStageControlsOpen && (
-            <div className="mt-1.5 p-2 rounded-2xl bg-white/95 dark:bg-[#081226]/96 border border-slate-200 dark:border-sky-400/25 shadow-2xl flex flex-col gap-1.5 min-w-[190px] animate-fadeIn">
+            <div className="mt-1.5 p-2 rounded-2xl atmiya-glass-strong atmiya-blur-fade flex flex-col gap-1.5 min-w-[196px]">
               <div
                 role="group"
                 aria-label="Camera framing presets"
-                className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 dark:bg-[#0d1930] p-0.5"
+                className="grid grid-cols-3 gap-1 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] p-0.5"
               >
                 {(
                   [
@@ -1919,8 +1919,8 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                     }}
                     className={`px-2 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
                       cameraPreset === preset.id
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                        ? 'bg-[var(--accent-primary)] text-white shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
                     {preset.label}
@@ -1935,9 +1935,9 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                     setCameraPreset('close-up');
                     triggerResetCamera();
                   }}
-                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-left text-[11px] font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-2 transition cursor-pointer"
+                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-left text-[11px] font-medium text-[var(--text-primary)] inline-flex items-center gap-2 transition cursor-pointer"
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-sky-500 dark:text-sky-300" />
+                  <RotateCcw className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
                   <span>Reset Camera</span>
                 </button>
 
@@ -1948,9 +1948,9 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                       setIsExpressionPanelOpen((v) => !v);
                       setIsStageControlsOpen(false);
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-left text-[11px] font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-2 transition cursor-pointer"
+                    className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-left text-[11px] font-medium text-[var(--text-primary)] inline-flex items-center gap-2 transition cursor-pointer"
                   >
-                    <Smile className="w-3.5 h-3.5 text-blue-600 dark:text-sky-300" />
+                    <Smile className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
                     <span>Expressions &amp; Rig</span>
                   </button>
                 )}
@@ -1962,9 +1962,9 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                       handleResetFullPose();
                       setIsStageControlsOpen(false);
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-left text-[11px] font-medium text-slate-700 dark:text-slate-200 inline-flex items-center gap-2 transition cursor-pointer"
+                    className="w-full px-2.5 py-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-left text-[11px] font-medium text-[var(--text-primary)] inline-flex items-center gap-2 transition cursor-pointer"
                   >
-                    <UserCheck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300" />
+                    <UserCheck className="w-3.5 h-3.5 text-[var(--accent-warm)]" />
                     <span>Neutral Pose</span>
                   </button>
                 )}
@@ -2043,11 +2043,11 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   onContextRestored={() => setContextLost(false)}
                 />
                 <StudioEnvironment />
-                <hemisphereLight args={['#dbeafe', '#141d38', 0.48]} />
+                <hemisphereLight args={['#e8eefc', '#1d2436', 0.5]} />
                 <directionalLight
                   position={[2.4, 2.4, 2.8]}
-                  intensity={1.15}
-                  color="#ffe9d2"
+                  intensity={1.16}
+                  color="#fff1de"
                   castShadow={!isSoftwareGl}
                   shadow-mapSize-width={1024}
                   shadow-mapSize-height={1024}
@@ -2132,7 +2132,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 <span>Needs attention</span>
               </div>
             ) : (
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/90 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full atmiya-glass text-[var(--text-primary)] text-xs font-medium">
                 <span>
                   {effectiveEmotion !== 'neutral'
                     ? `3D Avatar · ${AVATAR_EMOTION_LABELS[effectiveEmotion]}`
@@ -2146,7 +2146,7 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                 <div
                   role="group"
                   aria-label="Camera framing presets"
-                  className="inline-flex items-center rounded-xl bg-white/90 dark:bg-[#0b1528]/80 border border-slate-200/90 dark:border-slate-700/60 p-0.5 backdrop-blur-md shadow-xs"
+                  className="inline-flex items-center rounded-xl atmiya-glass p-0.5"
                 >
                   {(
                     [
@@ -2162,10 +2162,10 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                         setCameraPreset(preset.id);
                         triggerResetCamera();
                       }}
-                      className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
                         cameraPreset === preset.id
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                          ? 'bg-[var(--accent-primary)] text-white shadow-xs'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                       title={`Switch to ${preset.label} camera view`}
                     >
@@ -2180,10 +2180,10 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                     setCameraPreset('close-up');
                     triggerResetCamera();
                   }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl atmiya-glass-interactive text-[var(--text-primary)] text-[11px] font-medium cursor-pointer"
                   title="Reset 3D camera to close-up portrait framing"
                 >
-                  <RotateCcw className="w-3 h-3" />
+                  <RotateCcw className="w-3 h-3 text-[var(--accent-primary)]" />
                   <span>Reset Camera</span>
                 </button>
 
@@ -2191,10 +2191,10 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   <button
                     type="button"
                     onClick={() => setIsExpressionPanelOpen((v) => !v)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs ${
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium transition cursor-pointer ${
                       isExpressionPanelOpen || previewEmotion
-                        ? 'bg-blue-600 border-blue-500 text-white'
-                        : 'bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200'
+                        ? 'bg-[var(--accent-primary)] border border-[var(--accent-primary)] text-white shadow-sm'
+                        : 'atmiya-glass-interactive text-[var(--text-primary)]'
                     }`}
                     title="Test 16 facial expressions & inspect GLB rig support"
                   >
@@ -2207,14 +2207,14 @@ export const RealisticAvatar: React.FC<RealisticAvatarProps> = React.memo(({
                   <button
                     type="button"
                     onClick={handleResetFullPose}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11px] font-medium backdrop-blur-md transition cursor-pointer shadow-xs ${
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium transition cursor-pointer ${
                       activeGesture !== 'none' ||
                       previewEmotion ||
                       activeHeadPose !== 'neutral' ||
                       activeArmGesture !== 'none' ||
                       activeHandPose !== 'relaxed'
-                        ? 'bg-amber-500/90 hover:bg-amber-500 border-amber-400 text-white'
-                        : 'bg-white/90 dark:bg-[#0b1528]/80 hover:bg-white dark:hover:bg-[#11203b] border-slate-200/90 dark:border-slate-700/60 text-slate-700 dark:text-slate-200'
+                        ? 'bg-amber-500/95 hover:bg-amber-500 border border-amber-400 text-white shadow-sm'
+                        : 'atmiya-glass-interactive text-[var(--text-primary)]'
                     }`}
                     title="Return expression, head, arm, and body smoothly to neutral pose"
                   >
